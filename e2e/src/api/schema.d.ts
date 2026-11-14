@@ -3874,6 +3874,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/widgets/{widget_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Widget Status
+         * @description Whether this widget can chat, for an install to show "Connected".
+         *     Only reads: GET /widgets/{id} binds the caller to a customer, so checking an
+         *     install through it added a visitor to the inbox on every check. A plain def,
+         *     so FastAPI runs the queries off the event loop.
+         */
+        get: operations["get_widget_status_api_v1_widgets__widget_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/widgets/{widget_id}": {
         parameters: {
             query?: never;
@@ -10080,6 +10103,22 @@ export interface components {
             agent_id?: string | null;
             /** Token */
             token?: string | null;
+        };
+        /**
+         * WidgetStatusResponse
+         * @description Whether a widget can chat, for install checks such as the WordPress
+         *     plugin's "Connected" line. Public, like GET /widgets/{id}, and no more
+         *     revealing: the agent's visitor-facing name and how visitors get in.
+         */
+        WidgetStatusResponse: {
+            /** Widget Id */
+            widget_id: string;
+            /** Agent Name */
+            agent_name: string;
+            /** Requires Token */
+            requires_token: boolean;
+            /** Collects Email */
+            collects_email: boolean;
         };
         /** WorkflowConnectionOperation */
         WorkflowConnectionOperation: {
@@ -18015,6 +18054,37 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_widget_status_api_v1_widgets__widget_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                widget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetStatusResponse"];
                 };
             };
             /** @description Validation Error */

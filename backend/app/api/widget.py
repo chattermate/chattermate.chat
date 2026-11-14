@@ -34,7 +34,7 @@ from app.repositories.agent import AgentRepository
 from app.core.security import verify_conversation_token
 from app.services import conversation_token, widget_plan, widget_ui
 from app.repositories.customer import CustomerRepository
-from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse
+from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse, WidgetStatusResponse
 from app.core.logger import get_logger
 from app.repositories.session_to_agent import SessionToAgentRepository, session_in_scope
 from app.services.contact_capture import CONTACT_EMAIL_META_KEY
@@ -266,6 +266,32 @@ def _widget_data_response(db: Session, widget: Widget, agent: Agent, customer_id
     if token:
         data["token"] = token
     return data
+
+
+@router.get("/{widget_id}/status", response_model=WidgetStatusResponse)
+def get_widget_status(widget_id: str, response: Response, db: Session = Depends(get_db)):
+    """Whether this widget can chat, for an install to show "Connected".
+    Only reads: GET /widgets/{id} binds the caller to a customer, so checking an
+    install through it added a visitor to the inbox on every check. A plain def,
+    so FastAPI runs the queries off the event loop."""
+    response.headers["Cache-Control"] = "no-store"
+    widget = db.query(Widget).filter(Widget.id == widget_id).first()
+    if not widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+
+    agent = WidgetRepository(db).get_widget_agent(widget)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    customization = agent.customization
+    requires_token = bool(getattr(agent, 'require_token_auth', False))
+    return WidgetStatusResponse(
+        widget_id=widget.id,
+        # GET /widgets/{id} names no agent to callers without a site token: neither do we.
+        agent_name="" if requires_token else (agent.display_name or agent.name),
+        requires_token=requires_token,
+        collects_email=bool(customization and getattr(customization, 'collect_email', False)),
+    )
 
 
 @router.get("/{widget_id}", response_model=WidgetResponse)
