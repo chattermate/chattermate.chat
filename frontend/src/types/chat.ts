@@ -81,12 +81,26 @@ export interface InboxCounts {
   ai_handling: number
   negative: number
   resolved_by_ai_today: number
+  /** Open conversations with a note mentioning you */
+  mentions: number
+  snoozed: number
   /** Open conversations per channel ('web', 'whatsapp', ...) */
   channels: Record<string, number>
 }
 
 /** The inbox's saved views (backend app/repositories/inbox_views.py). */
-export type InboxViewKey = 'mine' | 'waiting' | 'open' | 'ai' | 'resolved_by_ai' | 'closed' | 'negative'
+export type InboxViewKey =
+  | 'mine' | 'mentions' | 'waiting' | 'open' | 'ai' | 'resolved_by_ai' | 'closed' | 'negative' | 'snoozed'
+
+/** A note the team left on a conversation. The customer never sees it. */
+export interface ConversationNote {
+  id: number
+  body: string
+  user_id: string | null
+  user_name?: string | null
+  mentions: Array<{ user_id: string; name?: string | null }>
+  created_at: string
+}
 
 export type InboxSort = 'newest' | 'waiting_longest'
 
@@ -122,6 +136,8 @@ export interface Conversation {
   /** A short AI-written title, once the chat has closed */
   title?: string | null
   sentiment_label?: SentimentLabel | null
+  /** Out of the views until then (or until the customer writes) */
+  snoozed_until?: string | null
   attributes?: {
     message_type?: string
     shopify_output?: {
@@ -164,4 +180,9 @@ export interface ChatDetail {
   transfer_description?: string | null
   sentiment_label?: SentimentLabel | null
   title?: string | null
+  snoozed_until?: string | null
+  /** Minutes your sent reply stays editable here; null: the channel can't change a sent message */
+  message_edit_minutes?: number | null
+  /** The team's notes, apart from `messages` (what the customer saw) */
+  notes?: ConversationNote[]
 }

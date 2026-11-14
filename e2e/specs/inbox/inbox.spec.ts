@@ -1,15 +1,4 @@
-import { test, expect, AI_REPLY, type ChatWidget, type FakeLlm, type TestAgent } from '@e2e'
-
-/** A named customer (the contact form follows a handover) waiting for the team */
-async function askForAPerson(agent: TestAgent, widget: ChatWidget, llm: FakeLlm): Promise<void> {
-  await llm.script(agent, (s) => s
-    .when(/human|person/i).handOver('Connecting you with a teammate.')
-    .otherwise().reply('Happy to help!'))
-  await widget.embed()
-  await widget.open()
-  await widget.send('I want to talk to a person')
-  await widget.shareContactDetails()
-}
+import { test, expect, askForAPerson, AI_REPLY } from '@e2e'
 
 test.describe('inbox', () => {
   test.use({ agentSettings: { transferToHuman: true } })
@@ -65,6 +54,30 @@ test.describe('inbox', () => {
     await expect(widget.lastAgentMessage()).toHaveText('Your parcel ships tomorrow.', AI_REPLY)
   })
 
+  test("a chat open in the inbox shows the customer's message and the AI's answer as they come @inbox", async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm, (s) => s.when(/parcel/i).reply('Your parcel ships tomorrow.'))
+
+    await inbox.goto()
+    await inbox.openConversationWith(widget.customer.name)
+    await inbox.takeOver()
+    await inbox.handBackToAi()
+    await expect(inbox.banner).toContainText('is answering this chat')
+
+    await widget.send('Where is my parcel?')
+    await expect(inbox.lastCustomerMessage()).toContainText('Where is my parcel?')
+    await expect(inbox.aiMessage('Your parcel ships tomorrow.')).toBeVisible()
+    await expect(inbox.conversation(widget.customer.name)).toContainText('Your parcel ships tomorrow.')
+  })
+
+  test('a waiting chat open in the inbox shows the customer writing again @inbox @handover', async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm)
+
+    await inbox.goto('/conversations?view=waiting')
+    await inbox.openConversationWith(widget.customer.name)
+    await widget.send('Are you still there?')
+    await expect(inbox.lastCustomerMessage()).toContainText('Are you still there?')
+  })
+
   test('a conversation moves between the views as it changes hands @inbox', async ({ agent, widget, inbox, llm }) => {
     await askForAPerson(agent, widget, llm)
 
@@ -72,19 +85,19 @@ test.describe('inbox', () => {
     await inbox.openConversationWith(widget.customer.name)
 
     await inbox.takeOver()
-    await inbox.openView('Your inbox')
+    await inbox.openViewFor('Your inbox', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
 
     await inbox.handBackToAi()
-    await inbox.openView('AI handling now')
+    await inbox.openViewFor('AI handling now', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
-    await inbox.openView('Your inbox')
+    await inbox.openViewFor('Your inbox', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeHidden()
 
-    await inbox.openView('AI handling now')
+    await inbox.openViewFor('AI handling now', widget.customer.name)
     await inbox.conversation(widget.customer.name).click()
     await inbox.handToTeam()
-    await inbox.openView('Waiting for a human')
+    await inbox.openViewFor('Waiting for a human', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
   })
 

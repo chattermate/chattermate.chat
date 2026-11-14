@@ -1230,7 +1230,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 "status": SessionStatus.CLOSED,
                 "end_chat_reason": response_content.end_chat_reason.value if response_content.end_chat_reason else None,
                 "end_chat_description": response_content.end_chat_description,
-                "closed_at": datetime.now()
+                # closed_at: stamped (timezone-aware) by the model on the status change
             }
         )
 

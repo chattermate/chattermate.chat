@@ -155,6 +155,16 @@ const closeSidebar = () => {
     }
 }
 
+// The drawer over the page (tablet and below) closes on Escape, like any overlay
+const closeSidebarOnEscape = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && isSidebarOpen.value && isMobile.value) closeSidebar()
+}
+watch(isSidebarOpen, (open) => {
+    if (open && isMobile.value) document.addEventListener('keydown', closeSidebarOnEscape)
+    else document.removeEventListener('keydown', closeSidebarOnEscape)
+})
+onBeforeUnmount(() => document.removeEventListener('keydown', closeSidebarOnEscape))
+
 // Computed for layout classes
 const layoutClasses = computed(() => ({
     'sidebar-collapsed': !isSidebarOpen.value || props.hideSidebar,

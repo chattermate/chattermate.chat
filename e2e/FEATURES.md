@@ -16,7 +16,15 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Dashboard shell | Theme switch, online/offline from the header and the account menu, Inbox badge after a handover | `specs/shell/shell.spec.ts` | P2 | ✅ |
 | Inbox | A handed-over chat waits in Waiting for a human with the AI's reason and summary; taking it over pauses the AI and moves it to Your inbox | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Hand back to AI: the customer is told and the AI answers the next message; the chat moves through the views (yours, AI handling, waiting again via Hand to my team) | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
+| Inbox | A chat open in the inbox that nobody holds (the AI answering, or waiting) shows the customer's messages and the AI's answers as they come, and its row with them | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Below 1440px the details open over the thread and Escape closes them; search finds a customer by name or email | `specs/inbox/inbox.spec.ts` | P2 | ✅ |
+| Inbox | A note on a waiting chat needs no takeover and never reaches the customer's widget | `specs/inbox/notes.spec.ts` | P1 | ✅ |
+| Inbox | An @-mention notifies the teammate and lists the chat in their Mentions view | `specs/inbox/notes.spec.ts` | P2 | ✅ |
+| Inbox | Assigning a chat gives it to the teammate and takes it out of your inbox; one taken from you leaves your inbox live, without a reload | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | Close asks first, tells the customer and files the chat under Closed; Send and close sends the reply, then closes once confirmed | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | A half-written note never becomes the reply when the chat is taken over | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | J/K move through the list, / finds, ? shows the shortcuts, E then Enter closes a chat you hold and moves on to the next (E on one you don't says why); a closed chat reopens as yours; on a phone the list and thread take turns | `specs/inbox/handling.spec.ts` | P2 | ✅ |
+| Inbox | Edit a reply you sent (15 minutes): the widget and Telegram show the new text marked Edited; WhatsApp and the other channels that can't change a sent message offer no Edit | `specs/inbox/handling.spec.ts`, `specs/channels/edits.spec.ts` | P1 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

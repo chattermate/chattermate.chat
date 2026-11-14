@@ -20,7 +20,7 @@ limitations under the License.
  * sorted, a search over customers, and the rows, loading more as you scroll.
  * Below 1024px the views pane folds into the picker at the top.
  */
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Conversation, InboxSort } from '@/types/chat'
 import { navIconSvg } from '@/components/layout/navIcons'
 import ConversationRow from './ConversationRow.vue'
@@ -89,6 +89,21 @@ watch(loadMoreTrigger, (el) => {
 
 onBeforeUnmount(() => observer?.disconnect())
 
+const rowsEl = ref<HTMLElement | null>(null)
+
+// J/K (or a deep link) can select a row scrolled out of sight: bring it in
+watch(() => props.selectedSessionId, async (id) => {
+  if (!id) return
+  await nextTick()
+  // Session ids are UUIDs: safe in the selector as they are
+  rowsEl.value?.querySelector(`[data-session-id="${id}"]`)?.scrollIntoView?.({ block: 'nearest' })
+})
+
+// Another view, sort, search or filter is a new list: start it at the top
+watch([() => props.view.id, sort, search, filters], () => {
+  if (rowsEl.value) rowsEl.value.scrollTop = 0
+})
+
 /** For the "/" shortcut */
 function focusSearch() {
   searchInput.value?.focus()
@@ -141,6 +156,8 @@ defineExpose({ focusSearch })
         </select>
         <span class="sort-chevron" aria-hidden="true" v-html="navIconSvg('chevronDown', 12)"></span>
       </label>
+      <!-- The enterprise module's: the selected saved view's menu, and New view -->
+      <slot name="view-actions" />
       <button
         v-if="canStartConversation"
         type="button"
@@ -159,7 +176,8 @@ defineExpose({ focusSearch })
           ref="searchInput"
           v-model="search"
           type="search"
-          placeholder="Search name, email, phone or order"
+          placeholder="Search customers or orders"
+          title="Search by name, email, phone or order number"
           aria-label="Search conversations"
           aria-keyshortcuts="/"
         />
@@ -174,7 +192,7 @@ defineExpose({ focusSearch })
       </div>
     </div>
 
-    <div class="rows" aria-live="polite" :aria-busy="loading">
+    <div ref="rowsEl" class="rows" aria-live="polite" :aria-busy="loading">
       <p v-if="error" class="state">
         {{ error }}
         <button type="button" class="link-btn" @click="emit('retry')">Try again</button>

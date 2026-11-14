@@ -38,6 +38,7 @@ const html = computed(() => {
     return renderMarkdown(streaming.value ? ctrl.displayText(props.index, full) : full)
 })
 const files = computed(() => props.message.attachments ?? [])
+const edited = computed(() => !!props.message.attributes?.edited_at)
 </script>
 
 <template>
@@ -46,6 +47,7 @@ const files = computed(() => props.message.attachments ?? [])
         <div class="cm-human__col">
             <span class="cm-human__name">{{ name }}</span>
             <div class="message-bubble" :aria-busy="streaming" v-html="html"></div>
+            <span v-if="edited" class="cm-human__edited">Edited</span>
             <AttachmentList v-if="files.length" :attachments="files" />
         </div>
     </div>
@@ -53,4 +55,5 @@ const files = computed(() => props.message.attachments ?? [])
 
 <style scoped>
 .cm-human__col { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 80%; }
+
 </style>

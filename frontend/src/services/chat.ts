@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import type { Conversation, ChatDetail, InboxCounts, InboxSort, InboxViewKey } from '@/types/chat'
+import type { Conversation, ChatDetail, ConversationNote, InboxCounts, InboxSort, InboxViewKey, Message } from '@/types/chat'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 import emitter from '@/utils/emitter'
 
@@ -45,6 +45,15 @@ export function localDayStart(now = new Date()): string {
 }
 
 let inboxCountsInFlight: Promise<InboxCounts> | null = null
+// Bumped by each change: a counts request started before it can't answer for after it
+let inboxGeneration = 0
+let inFlightGeneration = -1
+
+/** Something changed the views' sizes: tell the inbox and the nav badge. */
+export function inboxChanged(): void {
+  inboxGeneration += 1
+  emitter.emit('inbox-changed')
+}
 
 export const chatService = {
   async getRecentChats(params?: ChatParams) {
@@ -62,14 +71,17 @@ export const chatService = {
    * inbox's instead of asking again.
    */
   getInboxCounts(): Promise<InboxCounts> {
-    inboxCountsInFlight ??= api
+    if (inboxCountsInFlight && inFlightGeneration === inboxGeneration) return inboxCountsInFlight
+    inFlightGeneration = inboxGeneration
+    const request: Promise<InboxCounts> = api
       .get<InboxCounts>('/chats/counts', { params: { today_start: localDayStart() } })
       .then((response) => {
         emitter.emit('inbox-counts', response.data)
         return response.data
       })
-      .finally(() => { inboxCountsInFlight = null })
-    return inboxCountsInFlight
+      .finally(() => { if (inboxCountsInFlight === request) inboxCountsInFlight = null })
+    inboxCountsInFlight = request
+    return request
   },
 
   async getChatDetail(sessionId: string) {
@@ -82,27 +94,49 @@ export const chatService = {
 
   async takeoverChat(sessionId: string): Promise<void> {
     const response = await api.post(`/sessions/${sessionId}/takeover`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data
   },
 
   /** Stop the AI on this chat and queue it for the team, without claiming it. */
   async routeToHuman(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/route-to-human`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   },
 
   /** Give the chat back to the AI: nobody holds it and it leaves the queue. */
   async releaseToAi(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/release`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   },
 
+  /** Change a reply you sent; the customer's copy changes too. */
+  async editMessage(sessionId: string, messageId: number, message: string): Promise<Message> {
+    const response = await api.patch(`/sessions/${sessionId}/messages/${messageId}`, { message })
+    return response.data as Message
+  },
+
+  /** Open a closed chat again, held by you: you reply next. */
+  async reopenChat(sessionId: string): Promise<ChatDetail> {
+    const response = await api.post(`/sessions/${sessionId}/reopen`)
+    inboxChanged()
+    return response.data as ChatDetail
+  },
+
+  /** A note for the team on this conversation; the teammates in `mentions` are notified. */
+  async addNote(sessionId: string, body: string, mentions: string[]): Promise<ConversationNote> {
+    const response = await api.post(`/sessions/${sessionId}/notes`, { body, mentions })
+    return response.data as ConversationNote
+  },
+
+  /** Out of the inbox's views until `until`, or until the customer writes again. */
+
+
   async reassignChat(sessionId: string, toUserId: string) {
     const response = await api.post(`/sessions/${sessionId}/reassign`, null, { params: { to_user_id: toUserId } })
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   }
 } 

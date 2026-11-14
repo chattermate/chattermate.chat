@@ -96,6 +96,9 @@ const assigneeLabel = computed(() =>
         <span class="assignee-name">{{ assigneeName }}</span>
       </span>
 
+      <!-- More tools for the conversation (the enterprise module's Snooze) -->
+      <slot name="tools" />
+
       <button
         v-if="canClose"
         type="button"
@@ -217,7 +220,10 @@ const assigneeLabel = computed(() =>
   cursor: pointer;
 }
 
+/* Nothing to change: a label, not a button */
 .assignee.static {
+  border-color: transparent;
+  background: transparent;
   cursor: default;
 }
 

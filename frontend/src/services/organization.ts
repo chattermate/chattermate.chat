@@ -36,9 +36,16 @@ export const createOrganization = async (data: OrganizationCreate) => {
   return response.data
 }
 
+// Setup never goes from done back to not done: once it is, every later
+// navigation (the router asks on each one, an inbox view or conversation
+// included) answers without a request
+let setupDone = false
+
 export async function getSetupStatus(): Promise<boolean> {
+  if (setupDone) return true
   try {
     const response = await api.get<{ is_setup: boolean }>('/organizations/setup-status')
+    setupDone = response.data.is_setup
     return response.data.is_setup
   } catch (err) {
     console.error('Failed to fetch organization setup status:', err)

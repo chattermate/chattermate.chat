@@ -108,3 +108,28 @@ async def test_verify_webhook_rejects_bad_or_missing_secret(adapter):
 def test_format_outbound_enforces_length_cap(adapter):
     assert adapter.format_outbound("x" * (MAX_MESSAGE_LENGTH + 100)) == "x" * MAX_MESSAGE_LENGTH
     assert adapter.format_outbound("short **markdown**") == "short **markdown**"
+
+
+@pytest.mark.asyncio
+async def test_edit_changes_the_sent_message(adapter, monkeypatch):
+    from unittest.mock import AsyncMock
+    api = AsyncMock(return_value={"ok": True, "result": {"message_id": 77}})
+    monkeypatch.setattr("app.channels.telegram._call_api", api)
+    monkeypatch.setattr(adapter, "_bot_token", lambda account: "tok")
+    conversation = MagicMock(external_conversation_id="222")
+
+    result = await adapter.edit_text(MagicMock(), conversation, "77", "Fixed text")
+
+    assert adapter.supports_edit is True
+    assert result.ok
+    api.assert_awaited_once_with("tok", "editMessageText", {"chat_id": "222", "message_id": 77, "text": "Fixed text"})
+
+
+@pytest.mark.asyncio
+async def test_an_edit_telegram_refuses_says_why(adapter, monkeypatch):
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr("app.channels.telegram._call_api",
+                        AsyncMock(return_value={"ok": False, "description": "message can't be edited"}))
+    monkeypatch.setattr(adapter, "_bot_token", lambda account: "tok")
+    result = await adapter.edit_text(MagicMock(), MagicMock(external_conversation_id="222"), "77", "x")
+    assert (result.ok, result.error) == (False, "message can't be edited")

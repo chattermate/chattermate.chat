@@ -16,6 +16,8 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
+import { defineComponent, h, inject, nextTick, ref } from 'vue'
+import { COMPOSER_HANDLE } from '@/components/inbox/composerHandle'
 import ThreadHeader from '@/components/inbox/ThreadHeader.vue'
 import ThreadBanner from '@/components/inbox/ThreadBanner.vue'
 import HandoverSummaryCard from '@/components/inbox/HandoverSummaryCard.vue'
@@ -23,6 +25,8 @@ import ThreadMessage from '@/components/inbox/ThreadMessage.vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import DetailsPanel from '@/components/inbox/DetailsPanel.vue'
 import ThreadComposer from '@/components/inbox/ThreadComposer.vue'
+import ThreadNote from '@/components/inbox/ThreadNote.vue'
+import { useComposerDrafts } from '@/components/inbox/composerDrafts'
 import type { ChatDetail, Message } from '@/types/chat'
 
 const people = vi.hoisted(() => ({ getPerson: vi.fn() }))
@@ -31,6 +35,14 @@ vi.mock('@/utils/permissions', () => ({
   permissionChecks: { canViewTickets: () => false, canViewPeople: () => true },
 }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
+// The open-source build: every enterprise slot renders nothing
+vi.mock('@/composables/useEnterpriseFeatures', () => ({
+  useEnterpriseFeatures: () => ({
+    hasEnterpriseModule: false,
+    moduleImports: {},
+    enterpriseComponent: () => ({ render: () => null }),
+  }),
+}))
 
 const NOW = new Date('2026-11-13T12:00:00Z')
 const ago = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString()
@@ -114,6 +126,14 @@ describe('ThreadBanner', () => {
     expect(human.text()).toContain('Nobody has picked it up yet.')
   })
 
+  it('closed: whoever may manage chats can reopen it', async () => {
+    const wrapper = mountBanner({ status: 'closed' }, { canManage: true })
+    expect(wrapper.text()).toContain('This conversation is closed')
+    await wrapper.find('button').trigger('click')
+    expect(wrapper.find('button').text()).toBe('Reopen')
+    expect(wrapper.emitted('reopen')).toHaveLength(1)
+  })
+
   it("yours: the AI is paused, and can have it back", async () => {
     const wrapper = mountBanner({ status: 'open', user_id: 'me' })
     expect(wrapper.text()).toContain('Shop assistant is paused while you handle this chat')
@@ -130,7 +150,7 @@ describe('ThreadBanner', () => {
     expect(ai.emitted('take-over')).toHaveLength(1)
 
     expect(mountBanner({ status: 'open', user_id: 'asha', user_name: 'Asha' }).text()).toBe('Asha is handling this chat')
-    expect(mountBanner({ status: 'closed' }).find('button').exists()).toBe(false)
+    expect(mountBanner({ status: 'closed' }, { canManage: false }).find('button').exists()).toBe(false)
   })
 
   it('offers no actions to someone who may not take chats over', () => {
@@ -150,6 +170,18 @@ describe('HandoverSummaryCard', () => {
     expect(wrapper.find('.handover-line').text()).toContain('Shop assistant handed over')
     expect(wrapper.find('.handover-line').text()).toContain('No answer in knowledge')
     expect(wrapper.find('.summary').text()).toBe('Wants a refund.')
+  })
+
+  it('puts its actions slot in place of the plain knowledge link, and shows a newer summary', () => {
+    const wrapper = mount(HandoverSummaryCard, {
+      props: { agentName: 'Shop assistant', summary: 'Wants a refund.', knowledgeLink: '/faq?question=Refund', latestSummary: 'Refund sent.' },
+      slots: { actions: () => h('button', { class: 'refresh' }, 'Refresh') },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+    expect(wrapper.find('.refresh').exists()).toBe(true)
+    expect(wrapper.findComponent(RouterLinkStub).exists()).toBe(false)
+    expect(wrapper.find('.summary').text()).toBe('Refund sent.')
+    expect(wrapper.find('.card-title').text()).toContain('updated just now')
   })
 
   it('reads a summary of "- " lines as a list', () => {
@@ -204,6 +236,55 @@ describe('ThreadMessage', () => {
   it('a system line centred, and a failed delivery said plainly', () => {
     expect(mountMessage({ message_type: 'system', message: 'Chat ended' }).find('.system-line').text()).toBe('Chat ended')
     expect(mountMessage({ message_type: 'agent', user_id: 'me', attributes: { delivery_status: 'failed' } }).find('.delivery-failed').text()).toBe('Not delivered')
+  })
+  describe('editing your reply', () => {
+    const mine = { message_type: 'agent', user_id: 'me', id: 5, message: 'Your refund is on its way' }
+
+    it('offers Edit only when it may be edited, and says Edited once it was', () => {
+      expect(mountMessage(mine, { editable: true, saveEdit: vi.fn() }).find('.edit-btn').text()).toBe('Edit')
+      expect(mountMessage(mine, { editable: false, saveEdit: vi.fn() }).find('.edit-btn').exists()).toBe(false)
+      expect(mountMessage({ ...mine, attributes: { edited_at: ago(1) } }).find('.edited').text()).toBe('Edited')
+      expect(mountMessage(mine).find('.edited').exists()).toBe(false)
+    })
+
+    it('edits in place: Enter saves, Escape puts it back', async () => {
+      const saveEdit = vi.fn().mockResolvedValue(undefined)
+      const wrapper = mountMessage(mine, { editable: true, saveEdit })
+      await wrapper.find('.edit-btn').trigger('click')
+      const box = wrapper.find('textarea')
+      expect(box.element.value).toBe('Your refund is on its way')
+      expect(wrapper.find('.edit-btn').exists()).toBe(false)
+
+      await box.trigger('keydown', { key: 'Escape' })
+      expect(wrapper.find('textarea').exists()).toBe(false)
+      expect(saveEdit).not.toHaveBeenCalled()
+
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').setValue('  Your refund reaches you in 3 days ')
+      await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(saveEdit).toHaveBeenCalledWith('Your refund reaches you in 3 days')
+      expect(wrapper.find('textarea').exists()).toBe(false)
+    })
+
+    it('Shift+Enter breaks the line; unchanged text saves nothing; a refused save keeps the draft', async () => {
+      const saveEdit = vi.fn().mockRejectedValue(new Error('502'))
+      const wrapper = mountMessage(mine, { editable: true, saveEdit })
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      expect(saveEdit).not.toHaveBeenCalled()
+
+      await wrapper.find('form').trigger('submit')
+      expect(saveEdit).not.toHaveBeenCalled()
+      expect(wrapper.find('textarea').exists()).toBe(false)
+
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').setValue('Changed')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(saveEdit).toHaveBeenCalledTimes(1)
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Changed')
+    })
   })
 })
 
@@ -284,14 +365,13 @@ describe('DetailsPanel', () => {
     expect(wrapper.find('#details-conversation').isVisible()).toBe(false)
   })
 
-  it("lists the customer's other conversations and opens one", async () => {
+  it("leaves the customer's history and orders to the enterprise module", async () => {
     const wrapper = mountPanel()
     await flushPromises()
 
-    const items = wrapper.findAll('.history-item')
-    expect(items.map((i) => i.find('.history-title').text())).toEqual(['Where is my parcel?'])
-    await items[0].trigger('click')
-    expect(wrapper.emitted('open-conversation')).toEqual([['s0']])
+    expect(people.getPerson).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('Previous conversations')
+    expect(wrapper.text()).not.toContain('Shopify orders')
   })
 
   it('has a close button only as a drawer', async () => {
@@ -305,7 +385,10 @@ describe('DetailsPanel', () => {
 describe('ThreadComposer', () => {
   const mountComposer = (props: Record<string, unknown> = {}) =>
     mount(ThreadComposer, {
-      props: { modelValue: '', canSend: true, hasFiles: false, showTemplateNotice: false, ...props },
+      props: {
+        modelValue: '', mode: 'reply', canReply: true, canTakeOver: false, canSend: true, hasFiles: false,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+      },
       attachTo: document.body,
     })
 
@@ -332,5 +415,131 @@ describe('ThreadComposer', () => {
     await wrapper.find('.window-closed .btn').trigger('click')
     expect(wrapper.emitted('send-template')).toHaveLength(1)
     wrapper.unmount()
+  })
+})
+
+describe('ThreadComposer tools (#tools)', () => {
+  const Tool = defineComponent({
+    setup() {
+      const handle = inject(COMPOSER_HANDLE)!
+      handle.onKeydown((event) => {
+        if (event.key !== 'Enter' || handle.text.value !== '/x') return false
+        handle.text.value = 'Expanded reply'
+        return true
+      })
+      return () => h('button', { class: 'tool', onClick: () => { handle.text.value = 'From a tool' } }, 'tool')
+    },
+  })
+  const mountWithTool = (props: Record<string, unknown> = {}) =>
+    mount(ThreadComposer, {
+      props: {
+        modelValue: '', mode: 'reply', canReply: true, canTakeOver: false, canSend: true, hasFiles: false,
+        showTemplateNotice: false, teammates: [], 'onUpdate:modelValue': () => {}, ...props,
+      },
+      slots: { tools: () => h(Tool) },
+    })
+
+  it('lets a tool write the draft, and handle a key before the composer sends', async () => {
+    const wrapper = mountWithTool({ modelValue: '/x' })
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('send')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['Expanded reply'])
+
+    await wrapper.find('.tool').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['From a tool'])
+  })
+
+  it('shows no reply tools while writing a note', () => {
+    expect(mountWithTool({ mode: 'note' }).find('.tool').exists()).toBe(false)
+  })
+})
+
+describe('ThreadComposer notes', () => {
+  const mountComposer = (props: Record<string, unknown> = {}) =>
+    mount(ThreadComposer, {
+      props: {
+        modelValue: '', mode: 'note', canReply: false, canTakeOver: true, canSend: false, hasFiles: false,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+      },
+      attachTo: document.body,
+    })
+
+  it('adds a note with the teammates still mentioned in it', async () => {
+    const wrapper = mountComposer({ modelValue: '' })
+    const box = wrapper.find('textarea')
+    await wrapper.setProps({ modelValue: 'Check this @As' })
+    ;(box.element as HTMLTextAreaElement).setSelectionRange(14, 14)
+    await box.trigger('input')
+    expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Asha Rao'])
+
+    await box.trigger('keydown', { key: 'Enter' })
+    const picked = wrapper.emitted('update:modelValue')!.at(-1)![0] as string
+    expect(picked).toBe('Check this @Asha Rao ')
+
+    await wrapper.setProps({ modelValue: picked + 'please' })
+    await box.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('send-note')).toEqual([['Check this @Asha Rao please', ['a']]])
+    wrapper.unmount()
+  })
+
+  it("is amber and needs no takeover; Reply asks to take the chat over", async () => {
+    const wrapper = mountComposer({ modelValue: 'x' })
+    expect(wrapper.find('.composer').classes()).toContain('note')
+    expect(wrapper.find('.send').text()).toBe('Add note')
+    expect(wrapper.find('.send').attributes('disabled')).toBeUndefined()
+    await wrapper.find('[role="tab"]').trigger('click')
+    expect(wrapper.emitted('take-over')).toHaveLength(1)
+    expect(wrapper.emitted('update:mode')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('switches to Reply once the chat is yours, and Escape closes the mention list', async () => {
+    const wrapper = mountComposer({ canReply: true, modelValue: '@' })
+    const box = wrapper.find('textarea')
+    ;(box.element as HTMLTextAreaElement).setSelectionRange(1, 1)
+    await box.trigger('input')
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(2)
+    await box.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+
+    await wrapper.find('[role="tab"]').trigger('click')
+    expect(wrapper.emitted('update:mode')).toEqual([['reply']])
+    wrapper.unmount()
+  })
+})
+
+describe('ThreadNote', () => {
+  const note = { id: 1, body: '@Tom the EU list is missing <b>here</b>', user_id: 'me', user_name: 'Sam', mentions: [{ user_id: 't', name: 'Tom' }], created_at: '2026-11-13T10:00:00Z' }
+
+  it("is labelled private, says who wrote it, bolds mentions and never renders markup", () => {
+    const wrapper = mount(ThreadNote, { props: { note, currentUserId: 'me' } })
+    expect(wrapper.find('.label').text()).toBe('Note · only your team sees this')
+    expect(wrapper.find('.meta').text()).toMatch(/^You · /)
+    expect(wrapper.find('.mention').text()).toBe('@Tom')
+    expect(wrapper.find('b').exists()).toBe(false)
+    expect(wrapper.find('.body').text()).toContain('<b>here</b>')
+  })
+})
+
+describe('useComposerDrafts', () => {
+  it('keeps a note out of the reply when the mode flips under it', async () => {
+    const mode = ref<'reply' | 'note'>('note')
+    const reply = ref('')
+    const session = ref('a')
+    const { text, note } = useComposerDrafts(mode, reply, () => session.value)
+
+    text.value = 'Customer is abusive, deny the refund'
+    mode.value = 'reply' // taken over
+    expect(text.value).toBe('')
+    expect(reply.value).toBe('')
+
+    text.value = 'Hi! Looking into it.'
+    mode.value = 'note'
+    expect(text.value).toBe('Customer is abusive, deny the refund')
+    expect(reply.value).toBe('Hi! Looking into it.')
+
+    session.value = 'b'
+    await nextTick()
+    expect(note.value).toBe('')
   })
 })

@@ -40,8 +40,9 @@ import InboxList from './InboxList.vue'
 import ThreadPane from './ThreadPane.vue'
 import DetailsPanel from './DetailsPanel.vue'
 import ShortcutsSheet from './ShortcutsSheet.vue'
-import { selectionId, type InboxViewItem } from './inboxViews'
+import { isPreset, type InboxViewItem } from './inboxViews'
 import { OPEN_NAV_KEY } from '@/components/layout/navDrawer'
+import { patchQuery } from '@/utils/patchQuery'
 
 /** Remembers that you folded the views pane away */
 const VIEWS_HIDDEN_KEY = 'cm-inbox-views-hidden'
@@ -53,6 +54,10 @@ const router = useRouter()
 const { isMobile, isTablet, isBelowWide } = useBreakpoint()
 const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
 const PromoInboxCard = enterpriseComponent(moduleImports.promoUsageCard)
+// Saved views (nothing in open source): the loader, each one's menu, and New view
+const InboxSavedViews = enterpriseComponent(moduleImports.inboxSavedViews)
+const InboxSavedViewMenu = enterpriseComponent(moduleImports.inboxSavedViewMenu)
+const InboxNewView = enterpriseComponent(moduleImports.inboxNewView)
 
 const currentUserId = userService.getUserId()
 // Tablet widths hide the sidebar behind the header's menu button; the inbox has no header
@@ -63,6 +68,23 @@ const list = useInboxList()
 const thread = useInboxThread((reply) => {
   list.patchConversation(reply.session_id, { last_message: reply.message, updated_at: reply.created_at })
 })
+
+// The open thread refetches when the AI answers (its turns aren't streamed):
+// its row shows the same latest message rather than waiting for a poll
+watch(
+  () => {
+    const messages = thread.chat.value?.messages
+    return messages?.[messages.length - 1]
+  },
+  (last) => {
+    const sessionId = thread.chat.value?.session_id
+    const row = list.conversations.value.find((c) => c.session_id === sessionId)
+    // Only newer: opening a chat must not move its row's time back
+    if (sessionId && row && last?.message && Date.parse(last.created_at) > Date.parse(row.updated_at)) {
+      list.patchConversation(sessionId, { last_message: last.message, updated_at: last.created_at })
+    }
+  },
+)
 
 const listRef = ref<InstanceType<typeof InboxList> | null>(null)
 const threadRef = ref<InstanceType<typeof ThreadPane> | null>(null)
@@ -104,7 +126,7 @@ const detailsOpen = computed(() => {
 function toggleDetails() {
   if (isMobile.value) {
     if (route.query.info === '1') router.back()
-    else void router.push({ query: { ...route.query, info: '1' } })
+    else void patchQuery(router, { info: '1' }, 'push')
   } else if (detailsOverlay.value) {
     detailsDrawerOpen.value = !detailsDrawerOpen.value
   } else {
@@ -127,10 +149,8 @@ const mobilePane = computed(() => {
 
 function openConversation(sessionId: string) {
   if (sessionId === sessionInUrl.value) return
-  const query = { ...route.query, session: sessionId, info: undefined }
   // Phones push, so back returns to the list; elsewhere the URL just follows
-  if (isMobile.value) void router.push({ query })
-  else void router.replace({ query })
+  void patchQuery(router, { session: sessionId, info: undefined }, isMobile.value ? 'push' : 'replace')
 }
 
 watch(sessionInUrl, (sessionId) => {
@@ -143,17 +163,30 @@ watch(() => list.conversations.value, (rows) => {
   if (!isMobile.value && !sessionInUrl.value && rows.length) openConversation(rows[0].session_id)
 })
 
+/**
+ * You closed the open chat: on to the next one in the list (the one above at
+ * the end), as the list drops it; a phone goes back to the list.
+ */
+function onClosed(sessionId: string) {
+  if (isMobile.value) return backToList()
+  const rows = list.conversations.value
+  const at = rows.findIndex((row) => row.session_id === sessionId)
+  const next = at === -1 ? undefined : rows[at + 1] ?? rows[at - 1]
+  if (next) openConversation(next.session_id)
+}
+
 function backToList() {
   const previous = window.history.state?.back
   if (typeof previous === 'string' && previous.startsWith('/conversations') && !previous.includes('session=')) {
     router.back()
   } else {
-    void router.replace({ query: { ...route.query, session: undefined, info: undefined } })
+    void patchQuery(router, { session: undefined, info: undefined })
   }
 }
 
 function selectView(item: InboxViewItem) {
-  list.select(item.selection)
+  if (isPreset(item)) list.applyPreset(item)
+  else list.select(item.selection)
 }
 
 function onChatUpdated(chat: ChatDetail) {
@@ -231,12 +264,21 @@ useInboxShortcuts({
       v-if="showViewsPane"
       class="pane-views"
       :groups="list.viewGroups.value"
-      :selected-id="selectionId(list.selection.value)"
+      :selected-id="list.selectedId.value"
       :can-start-conversation="whatsappAccounts.length > 0"
       @select="selectView"
       @new-conversation="startingConversation = true"
       @hide="setViewsHidden(true)"
-    />
+    >
+      <template v-if="hasEnterpriseModule" #item-actions="{ item }">
+        <InboxSavedViewMenu v-if="isPreset(item)" :item="item" :state="list.state.value" />
+      </template>
+      <template v-if="hasEnterpriseModule" #footer>
+        <InboxNewView :state="list.state.value" @saved="list.markPreset" />
+      </template>
+    </InboxViews>
+    <!-- Loads the saved views into the list (the narrow view picker too) -->
+    <InboxSavedViews @update="list.setPresets" />
 
     <div class="pane-list">
       <PromoInboxCard v-if="isMobile && hasEnterpriseModule" compact class="promo" />
@@ -270,7 +312,17 @@ useInboxShortcuts({
         @restore-views="setViewsHidden(false)"
         @new-conversation="startingConversation = true"
         @open-nav="openNav?.()"
-      />
+      >
+        <template v-if="hasEnterpriseModule" #view-actions>
+          <InboxSavedViewMenu
+            v-if="isPreset(list.currentView.value)"
+            :item="list.currentView.value"
+            :state="list.state.value"
+            inline
+          />
+          <InboxNewView :state="list.state.value" compact @saved="list.markPreset" />
+        </template>
+      </InboxList>
     </div>
 
     <div class="pane-thread">
@@ -284,6 +336,7 @@ useInboxShortcuts({
         :now="now"
         :show-back="isMobile"
         @chat-updated="onChatUpdated"
+        @closed="onClosed"
         @refresh="refreshThread"
         @toggle-details="toggleDetails"
         @back="backToList"

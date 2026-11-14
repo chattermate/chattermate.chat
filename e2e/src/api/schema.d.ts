@@ -4287,6 +4287,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Chat
+         * @description Open a closed chat again, held by whoever reopens it: they reply next,
+         *     so the AI stays out. The customer isn't told; the next message is theirs.
+         */
+        post: operations["reopen_chat_api_v1_sessions__session_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Sent Message
+         * @description Change a reply you sent, for the customer too (message_edits.py says
+         *     which replies, for how long and on which channels).
+         */
+        patch: operations["edit_sent_message_api_v1_sessions__session_id__messages__message_id__patch"];
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/reassign": {
         parameters: {
             query?: never;
@@ -4301,6 +4343,31 @@ export interface paths {
          * @description Reassign a chat session to a different user
          */
         post: operations["reassign_chat_api_v1_sessions__session_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Note
+         * @description Leave a note on the conversation for the team.
+         *
+         *     It is stored apart from the messages, so the customer, their channel and
+         *     the AI never see it. Each teammate it mentions (an active member of the
+         *     organization who can see the conversation; anyone else is dropped) gets
+         *     a notification.
+         */
+        post: operations["add_note_api_v1_sessions__session_id__notes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6399,6 +6466,15 @@ export interface components {
             sentiment_label?: string | null;
             /** Title */
             title?: string | null;
+            /** Snoozed Until */
+            snoozed_until?: string | null;
+            /** Message Edit Minutes */
+            message_edit_minutes?: number | null;
+            /**
+             * Notes
+             * @default []
+             */
+            notes: components["schemas"]["ConversationNoteResponse"][];
             /**
              * Created At
              * Format: date-time
@@ -6441,6 +6517,8 @@ export interface components {
             title?: string | null;
             /** Sentiment Label */
             sentiment_label?: string | null;
+            /** Snoozed Until */
+            snoozed_until?: string | null;
             /**
              * Session Id
              * Format: uuid
@@ -6483,6 +6561,30 @@ export interface components {
             op?: ("eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "exists") | null;
             /** Operand */
             operand?: string | number | boolean | null;
+        };
+        /**
+         * ConversationNoteResponse
+         * @description A note the team left on a conversation; the customer never sees it.
+         */
+        ConversationNoteResponse: {
+            /** Id */
+            id: number;
+            /** Body */
+            body: string;
+            /** User Id */
+            user_id?: string | null;
+            /** User Name */
+            user_name?: string | null;
+            /**
+             * Mentions
+             * @default []
+             */
+            mentions: components["schemas"]["NoteMention"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** CreateJiraIssueModel */
         CreateJiraIssueModel: {
@@ -7493,6 +7595,16 @@ export interface components {
              */
             resolved_by_ai_today: number;
             /**
+             * Mentions
+             * @default 0
+             */
+            mentions: number;
+            /**
+             * Snoozed
+             * @default 0
+             */
+            snoozed: number;
+            /**
              * Channels
              * @default {}
              */
@@ -7512,7 +7624,7 @@ export interface components {
          *     always the number of rows the view lists.
          * @enum {string}
          */
-        InboxView: "mine" | "waiting" | "open" | "ai" | "resolved_by_ai" | "closed" | "negative";
+        InboxView: "mine" | "mentions" | "waiting" | "open" | "ai" | "resolved_by_ai" | "closed" | "negative" | "snoozed";
         /** InstagramConnectRequest */
         InstagramConnectRequest: {
             /** Ig Id */
@@ -8166,6 +8278,14 @@ export interface components {
             /** Attachments */
             attachments?: unknown[] | null;
         };
+        /**
+         * MessageEdit
+         * @description A sent reply's new text.
+         */
+        MessageEdit: {
+            /** Message */
+            message: string;
+        };
         /** MessengerConnectRequest */
         MessengerConnectRequest: {
             /** App Secret */
@@ -8232,6 +8352,26 @@ export interface components {
          * @enum {string}
          */
         NodeType: "message" | "llm" | "condition" | "form" | "action" | "human_transfer" | "wait" | "end" | "landing_page" | "user_input" | "guardrails";
+        /**
+         * NoteCreate
+         * @description A note for the team, and the teammates it @-mentions.
+         */
+        NoteCreate: {
+            /** Body */
+            body: string;
+            /** Mentions */
+            mentions?: string[];
+        };
+        /** NoteMention */
+        NoteMention: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Name */
+            name?: string | null;
+        };
         /** NotificationResponse */
         NotificationResponse: {
             /** Id */
@@ -19118,6 +19258,77 @@ export interface operations {
             };
         };
     };
+    reopen_chat_api_v1_sessions__session_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_sent_message_api_v1_sessions__session_id__messages__message_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                message_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reassign_chat_api_v1_sessions__session_id__reassign_post: {
         parameters: {
             query: {
@@ -19140,6 +19351,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_note_api_v1_sessions__session_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationNoteResponse"];
                 };
             };
             /** @description Validation Error */

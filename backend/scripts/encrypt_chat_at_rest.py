@@ -51,7 +51,9 @@ JSON = "json"
 # (table, primary key, columns, kind) — kind picks the "already encrypted" test and
 # the value transform, which is all that differs between text and JSONB columns.
 TARGETS = (
-    ("chat_history", "id", ("message",), TEXT),
+    # original_message: a person's reply before they edited it; written
+    # encrypted from the first row, listed so the guard test holds
+    ("chat_history", "id", ("message", "original_message"), TEXT),
     ("session_to_agents", "session_id",
      ("transfer_description", "end_chat_description", "ticket_summary",
       "ticket_description", "title"), TEXT),
@@ -63,6 +65,9 @@ TARGETS = (
     # encrypted like any other visitor text. Included so the table is covered if
     # excerpts are ever written before the column type lands on an environment.
     ("guardrail_events", "id", ("excerpt",), TEXT),
+    # Team notes: written encrypted from the first row; listed so the guard test
+    # holds and a re-run is a no-op.
+    ("conversation_notes", "id", ("body",), TEXT),
     # Integration tokens. Alembic revision integration_secrets_001 encrypts these
     # on deploy; listed so a re-run catches any row written by an older process
     # during the rollout. mcp_tools.env_vars / headers are encrypted by that

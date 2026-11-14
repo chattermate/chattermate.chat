@@ -94,6 +94,56 @@ export const FEATURE_GATES = {
     description: 'Let the agent open and investigate tickets.',
     bullets: ['AI-written tickets', 'Investigations'],
   },
+  // The inbox's (the enterprise module's inbox tools). Snooze, saved replies
+  // and saved views are on every catalog plan (Free caps the last two): their
+  // gates only lock on a custom plan without them.
+  'inbox-snooze': {
+    feature: 'inbox_snooze',
+    newFlag: true,
+    name: 'Snooze',
+    title: 'Unlock Snooze',
+    description: "Snooze isn't on your plan: park a chat until later, and it comes back when the customer writes.",
+    bullets: ['Snooze for an hour, a day or a week', 'Back early when the customer writes'],
+  },
+  'saved-replies': {
+    feature: 'saved_replies',
+    newFlag: true,
+    name: 'Saved replies',
+    title: 'Unlock Saved Replies',
+    description: "Saved replies aren't on your plan: answer common questions in two keystrokes.",
+    bullets: ['Type / to insert a reply', "Fills in the customer's name"],
+  },
+  'inbox-views': {
+    feature: 'inbox_saved_views',
+    newFlag: true,
+    name: 'Saved views',
+    title: 'Unlock Saved Views',
+    description: "Saved views aren't on your plan: save the filters you use under a name.",
+    bullets: ['One click back to your filters'],
+  },
+  'inbox-shared-views': {
+    feature: 'inbox_shared_views',
+    newFlag: true,
+    name: 'Shared views',
+    title: 'Unlock Shared Views',
+    description: 'Sharing views with the team is on the Starter plan and up.',
+    bullets: ['One view for the whole team', 'Change it once, everyone sees it'],
+  },
+  'inbox-ai': {
+    feature: 'inbox_ai',
+    newFlag: true,
+    name: 'AI in the inbox',
+    title: 'Unlock AI in the Inbox',
+    description: 'AI in the inbox is on the Starter plan and up: improve a reply and refresh the summary. Each answer counts as one AI message.',
+    bullets: ['Improve a reply', 'Refresh the summary'],
+  },
+  'inbox-ai-knowledge': {
+    feature: 'help_center',
+    name: 'AI help articles',
+    title: 'Unlock AI Help Articles',
+    description: 'AI help articles from conversations are on the Growth plan and up, with the help center.',
+    bullets: ['Turns a team answer into a general FAQ', 'Leaves out the customer\'s details'],
+  },
 } as const
 
 export type GateKey = keyof typeof FEATURE_GATES

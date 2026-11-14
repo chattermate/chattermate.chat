@@ -40,6 +40,7 @@ from app.services import reply_ui
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key
+from app.services import conversation_activity
 from app.services.file_storage import PUBLIC_UPLOAD_FOLDERS
 from app.services.firebase import initialize_firebase
 from app.database import engine, Base
@@ -66,6 +67,7 @@ try:
 except ImportError:
     print("Enterprise models not available")
 from app.api import session_to_agent
+from app.api import session_notes
 from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
 from app.workers.journey_data_purge import run_purge_loop
@@ -113,6 +115,8 @@ async def startup_event(api: FastAPI):
     custom lifespan was set. The module-level `app` is rebound to the Socket.IO
     ASGI wrapper below, so the instance has to be passed in."""
     configure_socketio(cors_origins)
+    # Messages stored from worker threads announce themselves on this loop
+    conversation_activity.bind_loop(asyncio.get_running_loop())
 
     # Channel extensions (e.g. an external-app integration) hook into message
     # handling; loaded explicitly so other entry points never pull them in.
@@ -324,6 +328,11 @@ app.include_router(
 
 app.include_router(
     session_to_agent.router,
+    prefix=f"{settings.API_V1_STR}/sessions",
+    tags=["session_to_agent"]
+)
+app.include_router(
+    session_notes.router,
     prefix=f"{settings.API_V1_STR}/sessions",
     tags=["session_to_agent"]
 )

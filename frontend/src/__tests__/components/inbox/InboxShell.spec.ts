@@ -23,6 +23,8 @@ const router = {
   replace: vi.fn(({ query }) => { route.query = query }),
   push: vi.fn(({ query }) => { route.query = query }),
   back: vi.fn(),
+  // patchQuery reads the URL as the last change left it
+  currentRoute: { get value() { return route } },
 }
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
@@ -46,7 +48,10 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
 }))
 
 const chat = vi.hoisted(() => ({ getRecentChats: vi.fn(), getInboxCounts: vi.fn(), getChatDetail: vi.fn() }))
-vi.mock('@/services/chat', () => ({ chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z' }))
+vi.mock('@/services/chat', async () => {
+  const { default: emitter } = await import('@/utils/emitter')
+  return { chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z', inboxChanged: () => emitter.emit('inbox-changed') }
+})
 vi.mock('@/services/socket', () => ({
   socketService: { connect: vi.fn(), emit: vi.fn(), on: vi.fn(), off: vi.fn(), onReconnect: vi.fn(), offReconnect: vi.fn() },
 }))
@@ -72,7 +77,7 @@ const conversation = (id: string, name: string) => ({
 const ThreadPaneStub = {
   name: 'ThreadPane',
   props: ['chat', 'detailsOpen'],
-  emits: ['toggle-details', 'back'],
+  emits: ['toggle-details', 'back', 'closed'],
   setup: () => ({ requestClose: vi.fn() }),
   template: '<section class="thread-stub">{{ chat.session_id }} <button class="toggle" @click="$emit(\'toggle-details\')">details</button></section>',
 }
@@ -106,6 +111,22 @@ describe('InboxShell', () => {
     expect(wrapper.find('.thread-stub').text()).toContain('s1')
     expect(wrapper.find('.details-stub').attributes('data-overlay')).toBe('false')
     expect(wrapper.find('.views').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('moves on to the next conversation once you close one, or back to the list on a phone', async () => {
+    const wrapper = mountShell()
+    await flushPromises()
+    router.replace.mockClear()
+
+    wrapper.findComponent({ name: 'ThreadPane' }).vm.$emit('closed', 's1')
+    await flushPromises()
+    expect(router.replace).toHaveBeenLastCalledWith({ query: { session: 's2', info: undefined } })
+
+    // The last one in the list: the one above it
+    wrapper.findComponent({ name: 'ThreadPane' }).vm.$emit('closed', 's2')
+    await flushPromises()
+    expect(router.replace).toHaveBeenLastCalledWith({ query: { session: 's1', info: undefined } })
     wrapper.unmount()
   })
 

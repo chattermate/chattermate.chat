@@ -149,6 +149,19 @@ class ShopifyOutputData(BaseModel):
         # Override json method to ensure proper serialization
         return self.dict()
 
+class MessageEdit(BaseModel):
+    """A sent reply's new text."""
+    message: str = Field(min_length=1, max_length=4000)
+
+    @field_validator('message')
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('A reply needs some text')
+        return value
+
+
 class Message(BaseModel):
     id: Optional[int] = None
     message: Optional[str] = None
@@ -204,6 +217,7 @@ class ChatOverviewResponse(BaseModel):
     # A short AI-written title, once the chat has closed
     title: Optional[str] = None
     sentiment_label: Optional[str] = None
+    snoozed_until: Optional[datetime] = None
     session_id: UUID
 
 
@@ -216,8 +230,31 @@ class InboxCountsResponse(BaseModel):
     ai_handling: int = 0
     negative: int = 0
     resolved_by_ai_today: int = 0
+    mentions: int = 0
+    snoozed: int = 0
     # Open conversations per channel ('web', 'whatsapp', ...)
     channels: Dict[str, int] = {}
+
+
+class NoteMention(BaseModel):
+    user_id: UUID
+    name: Optional[str] = None
+
+
+class ConversationNoteResponse(BaseModel):
+    """A note the team left on a conversation; the customer never sees it."""
+    id: int
+    body: str
+    user_id: Optional[UUID] = None
+    user_name: Optional[str] = None
+    mentions: List[NoteMention] = []
+    created_at: datetime
+
+
+class NoteCreate(BaseModel):
+    """A note for the team, and the teammates it @-mentions."""
+    body: str = Field(min_length=1, max_length=4000)
+    mentions: List[UUID] = Field(default_factory=list, max_length=20)
 
 
 class ChatDetailResponse(BaseModel):
@@ -238,6 +275,12 @@ class ChatDetailResponse(BaseModel):
     transfer_description: Optional[str] = None
     sentiment_label: Optional[str] = None
     title: Optional[str] = None
+    snoozed_until: Optional[datetime] = None
+    # Minutes a person's sent reply stays editable on this channel; None: the
+    # channel can't change a sent message
+    message_edit_minutes: Optional[int] = None
+    # The team's notes, kept apart from `messages` (what the customer saw)
+    notes: List[ConversationNoteResponse] = []
     created_at: datetime
     updated_at: datetime
 

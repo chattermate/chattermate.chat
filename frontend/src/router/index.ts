@@ -275,6 +275,15 @@ const allRoutes = hasEnterpriseModule
         },
       },
       {
+        path: '/settings/saved-replies',
+        name: 'saved-replies-settings',
+        component: loadEnterpriseComponent(moduleImports.savedRepliesView),
+        meta: {
+          requiresAuth: true,
+          layout: 'dashboard',
+        },
+      },
+      {
         path: '/settings/subscription/setup/:planId',
         name: 'billing-setup',
         component: loadEnterpriseComponent(moduleImports.billingSetupView),

@@ -123,6 +123,21 @@ describe('BaseModal', () => {
     wrapper.unmount()
   })
 
+  it('opens on its own container, or on the control it marks data-autofocus', () => {
+    const plain = mountModal()
+    expect(document.activeElement?.getAttribute('role')).toBe('dialog')
+    plain.unmount()
+
+    withVisibleElements()
+    const marked = mount(BaseModal, {
+      props: { title: 'Close this conversation?' },
+      slots: { actions: '<button class="cancel">Cancel</button><button class="confirm" data-autofocus>Close</button>' },
+      attachTo: document.body,
+    })
+    expect(document.activeElement?.className).toBe('confirm')
+    marked.unmount()
+  })
+
   it('gives focus back to whatever opened it', async () => {
     withVisibleElements()
     const trigger = document.createElement('button')

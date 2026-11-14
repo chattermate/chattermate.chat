@@ -229,6 +229,7 @@ class SlackAdapter(ChannelAdapter):
     """
 
     channel_type: ClassVar[str] = ChannelType.SLACK.value
+    supports_edit: ClassVar[bool] = True
 
     async def verify_webhook(self, headers: dict, raw_body: bytes, account: Optional[ChannelAccount]) -> bool:
         return verify_slack_signature(headers, raw_body)
@@ -311,6 +312,19 @@ class SlackAdapter(ChannelAdapter):
                 _typing_placeholders[self._placeholder_key(account, conversation)] = (data["ts"], time.time())
         except Exception as e:
             logger.debug(f"Slack typing placeholder failed (non-critical): {e}")
+
+    async def edit_text(self, account: ChannelAccount, conversation: ChannelConversation,
+                        external_message_id: str, text: str) -> SendResult:
+        channel, _ = self._split_conversation(conversation.external_conversation_id)
+        try:
+            data = await slack_api("chat.update", self._access_token(account),
+                                   {"channel": channel, "ts": external_message_id, "text": text})
+            if not data.get("ok"):
+                return SendResult(ok=False, error=str(data.get("error") or "chat.update failed"))
+            return SendResult(ok=True, external_message_id=external_message_id)
+        except Exception as e:
+            logger.error(f"Slack edit failed: {e}")
+            return SendResult(ok=False, error=str(e))
 
     async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
         channel, thread_ts = self._split_conversation(conversation.external_conversation_id)

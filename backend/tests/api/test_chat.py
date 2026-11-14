@@ -732,7 +732,7 @@ def test_inbox_counts_for_a_view_all_user(
     assert response.json() == {
         "open": 1, "waiting_for_human": 0, "assigned_to_me": 1,
         "ai_handling": 0, "negative": 0, "resolved_by_ai_today": 0,
-        "channels": {"web": 1},
+        "mentions": 0, "snoozed": 0, "channels": {"web": 1},
     }
 
 

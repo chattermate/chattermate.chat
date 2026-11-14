@@ -19,10 +19,12 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, false, or_
+from sqlalchemy import String, and_, cast, false, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.agent import Agent
+from app.models.chat_history import ChatHistory
+from app.models.conversation_note import ConversationNote, ConversationNoteMention
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 
@@ -34,12 +36,14 @@ class InboxView(str, Enum):
     agent joined), shared by the list and its counts so a view's count is
     always the number of rows the view lists."""
     MINE = 'mine'
+    MENTIONS = 'mentions'
     WAITING = 'waiting'
     OPEN = 'open'
     AI = 'ai'
     RESOLVED_BY_AI = 'resolved_by_ai'
     CLOSED = 'closed'
     NEGATIVE = 'negative'
+    SNOOZED = 'snoozed'
 
 
 class InboxSort(str, Enum):
@@ -49,6 +53,28 @@ class InboxSort(str, Enum):
 
 def not_closed() -> ColumnElement:
     return SessionToAgent.status != SessionStatus.CLOSED
+
+
+def awake(now: datetime) -> ColumnElement:
+    """Not snoozed, or its snooze is over. A customer's new message clears the
+    snooze (ChatRepository.create_message), so a reply always shows."""
+    return or_(SessionToAgent.snoozed_until.is_(None), SessionToAgent.snoozed_until <= now)
+
+
+def snoozed(now: datetime) -> ColumnElement:
+    return SessionToAgent.snoozed_until > now
+
+
+def mentions(user_id: Optional[UUID]) -> ColumnElement:
+    """A team note on the conversation mentions this user."""
+    if not user_id:
+        return false()
+    return (
+        select(ConversationNoteMention.note_id)
+        .join(ConversationNote, ConversationNote.id == ConversationNoteMention.note_id)
+        .where(ConversationNote.session_id == SessionToAgent.session_id, ConversationNoteMention.user_id == user_id)
+        .exists()
+    )
 
 
 def waiting_for_human() -> ColumnElement:
@@ -78,14 +104,20 @@ def ai_handling() -> ColumnElement:
 
 
 def resolved_by_ai(since: datetime) -> ColumnElement:
-    """Closed since `since` with no person ever involved: never handed over
-    and never held. Sessions closed before closed_at existed have none and
-    never match."""
+    """Closed since `since` with no person ever involved: never handed over,
+    not held at the end, and no teammate ever wrote to the customer (a chat
+    taken over, answered, then handed back is the team's work, not the AI's).
+    Sessions closed before closed_at existed have none and never match."""
+    team_replied = select(ChatHistory.id).where(
+        ChatHistory.session_id == SessionToAgent.session_id,
+        ChatHistory.message_type == 'agent',
+    ).correlate(SessionToAgent).exists()  # the list query also reads chat_history
     return and_(
         SessionToAgent.status == SessionStatus.CLOSED,
         SessionToAgent.closed_at >= since,
         SessionToAgent.user_id.is_(None),
         SessionToAgent.handed_over_at.is_(None),
+        ~team_replied,
     )
 
 
@@ -97,22 +129,33 @@ def mine(current_user_id: Optional[UUID]) -> ColumnElement:
     return SessionToAgent.user_id == current_user_id if current_user_id else false()
 
 
-def view_clause(view: InboxView, current_user_id: Optional[UUID], today_start: datetime) -> ColumnElement:
+def active(now: datetime) -> ColumnElement:
+    """In the open views: not closed and not snoozed."""
+    return and_(not_closed(), awake(now))
+
+
+def view_clause(
+    view: InboxView, current_user_id: Optional[UUID], today_start: datetime, now: datetime,
+) -> ColumnElement:
     """The condition a session meets to be listed in `view`."""
     if view == InboxView.MINE:
-        return and_(not_closed(), mine(current_user_id))
+        return and_(active(now), mine(current_user_id))
+    if view == InboxView.MENTIONS:
+        return and_(active(now), mentions(current_user_id))
     if view == InboxView.WAITING:
-        return and_(not_closed(), waiting_for_human())
+        return and_(active(now), waiting_for_human())
     if view == InboxView.OPEN:
-        return not_closed()
+        return active(now)
     if view == InboxView.AI:
-        return and_(not_closed(), ai_handling())
+        return and_(active(now), ai_handling())
     if view == InboxView.RESOLVED_BY_AI:
         return resolved_by_ai(today_start)
     if view == InboxView.CLOSED:
         return SessionToAgent.status == SessionStatus.CLOSED
     if view == InboxView.NEGATIVE:
-        return and_(not_closed(), negative_sentiment())
+        return and_(active(now), negative_sentiment())
+    if view == InboxView.SNOOZED:
+        return and_(not_closed(), snoozed(now))
     raise ValueError(f"Unknown inbox view: {view}")
 
 

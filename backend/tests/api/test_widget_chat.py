@@ -1799,7 +1799,8 @@ class TestComplexScenarios:
         mock_session.organization_id = str(test_widget.organization_id)
         
         with patch("app.repositories.session_to_agent.SessionToAgentRepository.get_session", return_value=mock_session), \
-             patch("app.repositories.session_to_agent.SessionToAgentRepository.update_session_status") as mock_update_status:
+             patch("app.repositories.session_to_agent.SessionToAgentRepository.update_session_status") as mock_update_status, \
+             patch.object(widget_chat, "emit_to_org_inbox", new=AsyncMock()) as announce:
             
             data = {
                 "message": "Thank you for contacting us. This chat is now ended.",
@@ -1812,6 +1813,10 @@ class TestComplexScenarios:
             
             # Verify session status was updated to closed (session_id is converted to string)
             mock_update_status.assert_called_with(str(session_id), "CLOSED")
+            # Then the inboxes hear it's closed, so their refresh finds it so
+            announce.assert_awaited_once_with(
+                'room_event', {'type': 'closed', 'session_id': str(session_id)},
+                mock_session.organization_id, mock_session.user_id)
             
             # Verify response includes end_chat and request_rating
             chat_response_calls = [call for call in mock_sio.emit.call_args_list if call[0][0] == 'chat_response']

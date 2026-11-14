@@ -90,7 +90,10 @@ const onKeydown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   previouslyFocused = document.activeElement as HTMLElement | null
-  dialog.value?.focus()
+  // The dialog's main control when it marks one (data-autofocus): Enter then
+  // does what was asked (E, then Enter, closes a chat); else the dialog itself
+  const preferred = dialog.value?.querySelector<HTMLElement>('[data-autofocus]')
+  ;(preferred ?? dialog.value)?.focus()
 })
 
 onBeforeUnmount(() => {

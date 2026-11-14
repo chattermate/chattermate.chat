@@ -48,6 +48,9 @@ class ChatHistory(Base):
     # Encrypted at rest — see app.core.encryption. Storage stays text, so rows
     # written before the change read back as plaintext until the backfill lands.
     message = Column(EncryptedText, nullable=False)
+    # A person's reply they edited after sending: what it said first
+    # (app/services/message_edits.py; attributes.edited_at says when)
+    original_message = Column(EncryptedText, nullable=True)
     # 'user', 'bot', or 'agent'
     message_type = Column(String, nullable=False)
     attributes = Column(JSON, default={})

@@ -47,6 +47,33 @@ export interface InboxViewItem {
   empty: string
 }
 
+/**
+ * Everything the list shows, as one value: the view, its sort and search, and
+ * the AI agent / teammate filters. What a preset view (the enterprise
+ * module's saved views) brings back in one click.
+ */
+export interface InboxListState {
+  selection: InboxSelection
+  sort: InboxSort
+  search: string
+  agentId: string
+  assigneeId: string
+}
+
+/** A view that brings back a whole list state rather than a selection */
+export interface InboxPresetItem extends InboxViewItem {
+  preset: InboxListState
+}
+
+export const isPreset = (item: InboxViewItem): item is InboxPresetItem => 'preset' in item
+
+/** Two list states show the same conversations (a search's case and spaces aside). */
+export function sameListState(a: InboxListState, b: InboxListState): boolean {
+  return selectionId(a.selection) === selectionId(b.selection) && a.sort === b.sort
+    && a.search.trim().toLowerCase() === b.search.trim().toLowerCase()
+    && a.agentId === b.agentId && a.assigneeId === b.assigneeId
+}
+
 export interface InboxViewGroup {
   /** No heading for the first group */
   heading: string | null
@@ -64,18 +91,21 @@ interface ViewDef {
 
 const VIEW_DEFS: Record<InboxViewKey, ViewDef> = {
   mine: { view: 'mine', label: 'Your inbox', countKey: 'assigned_to_me', tone: 'plain', empty: 'Nothing is assigned to you.' },
+  mentions: { view: 'mentions', label: 'Mentions', countKey: 'mentions', tone: 'plain', empty: 'Nobody has mentioned you in an open conversation.' },
   waiting: { view: 'waiting', label: 'Waiting for a human', countKey: 'waiting_for_human', tone: 'waiting', empty: 'Nobody is waiting for a person.' },
   open: { view: 'open', label: 'All open', countKey: 'open', tone: 'plain', empty: 'No open conversations.' },
   ai: { view: 'ai', label: 'AI handling now', countKey: 'ai_handling', tone: 'ai', empty: 'The AI has no live conversations.' },
   resolved_by_ai: { view: 'resolved_by_ai', label: 'Resolved by AI', title: 'Resolved by AI today', countKey: 'resolved_by_ai_today', tone: 'plain', empty: 'Nothing resolved by the AI yet today.' },
   closed: { view: 'closed', label: 'Closed', countKey: null, tone: 'plain', empty: 'No closed conversations.' },
   negative: { view: 'negative', label: 'Negative sentiment', countKey: 'negative', tone: 'plain', empty: 'No unhappy customers right now.' },
+  snoozed: { view: 'snoozed', label: 'Snoozed', countKey: 'snoozed', tone: 'plain', empty: 'Nothing is snoozed.' },
 }
 
 const GROUPS: Array<{ heading: string | null; views: InboxViewKey[] }> = [
-  { heading: null, views: ['mine', 'waiting', 'open'] },
+  { heading: null, views: ['mine', 'mentions', 'waiting', 'open', 'snoozed'] },
   { heading: 'AI agents', views: ['ai', 'resolved_by_ai', 'closed'] },
 ]
+// Snoozed shows once something is (snoozing is the enterprise module's)
 const SAVED_VIEWS: InboxViewKey[] = ['negative']
 
 export const DEFAULT_SELECTION: InboxSelection = { view: 'open', channel: null }
@@ -130,7 +160,9 @@ function channelItem(channel: string, count: number): InboxViewItem {
  * open conversation, busiest first; the selected one stays even when it
  * empties, so the list under it doesn't jump away.
  */
-export function inboxViewGroups(counts: InboxCounts | null, selected?: InboxSelection): InboxViewGroup[] {
+export function inboxViewGroups(
+  counts: InboxCounts | null, selected?: InboxSelection, presets: InboxPresetItem[] = [],
+): InboxViewGroup[] {
   const channelCounts = { ...(counts?.channels ?? {}) }
   if (selected?.channel && !(selected.channel in channelCounts)) channelCounts[selected.channel] = 0
   const channels = Object.entries(channelCounts)
@@ -138,9 +170,12 @@ export function inboxViewGroups(counts: InboxCounts | null, selected?: InboxSele
     .map(([channel, count]) => channelItem(channel, count))
 
   return [
-    ...GROUPS.map(({ heading, views }) => ({ heading, items: views.map((v) => viewItem(v, counts)) })),
+    ...GROUPS.map(({ heading, views }) => ({
+      heading,
+      items: views.filter((v) => v !== 'snoozed' || counts?.snoozed || selected?.view === 'snoozed').map((v) => viewItem(v, counts)),
+    })),
     ...(channels.length ? [{ heading: 'Channels', items: channels }] : []),
-    { heading: 'Saved views', items: SAVED_VIEWS.map((v) => viewItem(v, counts)) },
+    { heading: 'Saved views', items: [...SAVED_VIEWS.map((v) => viewItem(v, counts)), ...presets] },
   ]
 }
 

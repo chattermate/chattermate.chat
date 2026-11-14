@@ -63,6 +63,8 @@ export const permissionChecks = {
   // administration — PEOPLE_WRITE_PERMISSIONS equals the read set.
   canManagePeople: () => hasAnyPermission(PEOPLE_PERMISSIONS),
   canTakeOverChats: () => hasAnyPermission(CHAT_MANAGE_PERMISSIONS),
+  // Release, reassign or snooze a chat a teammate holds (the server's may_change_hands)
+  canManageAllChats: () => hasAnyPermission(['manage_all_chats']),
   canManageKnowledge: () => hasAnyPermission(['manage_knowledge']),
   canViewKnowledge: () => hasAnyPermission(KNOWLEDGE_PERMISSIONS),
   canViewAnalytics: () => hasAnyPermission(['view_analytics']),

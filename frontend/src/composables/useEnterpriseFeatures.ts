@@ -120,6 +120,25 @@ const moduleImports = {
   setupService: '/src/modules/enterprise/utils/setupService.ts',
   // The setup assistant docked beside the onboarding wizard (nothing in open source)
   setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
+  // The inbox's paid tools (nothing in open source): Snooze in the thread's
+  // header and its notice above the messages, saved replies and Improve in the
+  // composer (they reach the draft through COMPOSER_HANDLE), and Refresh and
+  // the AI-drafted article on the handover summary
+  inboxThreadTools: '/src/modules/enterprise/components/inbox/InboxThreadTools.vue',
+  inboxThreadNotice: '/src/modules/enterprise/components/inbox/InboxThreadNotice.vue',
+  inboxComposerTools: '/src/modules/enterprise/components/inbox/InboxComposerTools.vue',
+  inboxSummaryTools: '/src/modules/enterprise/components/inbox/InboxSummaryTools.vue',
+  // The details panel's additions (nothing in open source): the customer's
+  // history beside their contact facts; Shopify orders and previous conversations
+  inboxCustomerFacts: '/src/modules/enterprise/components/inbox/InboxCustomerFacts.vue',
+  inboxDetailsSections: '/src/modules/enterprise/components/inbox/InboxDetailsSections.vue',
+  // Saved views in the inbox's views pane (nothing in open source): the loader
+  // that hands them to the list, each one's menu, and "New view"
+  inboxSavedViews: '/src/modules/enterprise/components/inbox/InboxSavedViews.ts',
+  inboxSavedViewMenu: '/src/modules/enterprise/components/inbox/InboxSavedViewMenu.vue',
+  inboxNewView: '/src/modules/enterprise/components/inbox/InboxNewView.vue',
+  // The team's saved replies (settings page)
+  savedRepliesView: '/src/modules/enterprise/views/SavedRepliesView.vue',
   // WordPress connect: teach the agent the site through the plugin (nothing in open source)
   wordpressLearnOption: '/src/modules/enterprise/components/wordpress/WordPressLearnOption.vue',
   wordpressSites: '/src/modules/enterprise/utils/wordpressSites.ts',

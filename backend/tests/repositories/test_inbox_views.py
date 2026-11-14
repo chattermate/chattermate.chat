@@ -146,6 +146,21 @@ def test_a_chat_that_was_handed_over_was_not_resolved_by_the_ai(db, test_organiz
     assert counts["resolved_by_ai_today"] == 0
 
 
+
+def test_a_chat_a_person_answered_was_not_resolved_by_the_ai(db, test_organization_id, make_session):
+    """Taken over, answered, handed back, then closed by the auto-closer: nobody
+    holds it and it was never handed over, but the team did the work."""
+    chat = make_session()
+    db.add(ChatHistory(message="Refund sent", message_type="agent", session_id=chat.session_id,
+                       organization_id=test_organization_id, agent_id=chat.agent_id,
+                       customer_id=chat.customer_id))
+    chat.status = SessionStatus.CLOSED
+    db.commit()
+
+    counts = ChatRepository(db).get_inbox_counts(organization_id=test_organization_id)
+
+    assert counts["resolved_by_ai_today"] == 0
+
 class TestStatusTimes:
     def test_a_handover_records_when_it_happened(self, db, make_session):
         chat = make_session()

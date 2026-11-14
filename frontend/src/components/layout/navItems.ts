@@ -93,6 +93,9 @@ export function useNavItems() {
           link('/settings/organization', 'org', canAccessPath('/settings/organization')),
           link('/settings/subscription', 'subscription', hasEnterpriseModule && permissionChecks.canViewSubscription()),
           link('/settings/ticketing', 'ticketing', canAccessPath('/settings/ticketing')),
+          // The enterprise module's page; agents reach it from the composer's picker,
+          // so the nav entry is for admins
+          link('/settings/saved-replies', 'bolt', hasEnterpriseModule && permissionChecks.canManageOrganization() && canAccessPath('/settings/saved-replies')),
           link('/settings/integrations', 'integrations', canAccessPath('/settings/integrations')),
           link('/settings/app-integrations', 'integrations', hasEnterpriseModule && canAccessPath('/settings/app-integrations')),
           link('/settings/widget-apps', 'widgets', canAccessPath('/settings/widget-apps')),

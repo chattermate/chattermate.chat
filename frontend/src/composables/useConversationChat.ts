@@ -28,7 +28,6 @@ import { permissionChecks } from '@/utils/permissions'
 import { findMessage, newClientId } from '@/utils/messageMatch'
 import { withVisitorFeedback } from '@/utils/visitorFeedback'
 import { useOrgInboxRoom } from '@/composables/useOrgInboxRoom'
-import emitter from '@/utils/emitter'
 
 // Define valid chat statuses
 type ChatStatus = 'open' | 'closed' | 'transferred'
@@ -178,6 +177,14 @@ export function useConversationChat(
     chat.value = { ...newChat }
   }
 
+  /** A reply you edited, as the server stored it: here, and passed up */
+  const applyEditedMessage = (edited: Message) => {
+    const messages = chat.value.messages.map((m) =>
+      m.id === edited.id ? { ...m, message: edited.message, attributes: edited.attributes ?? m.attributes } : m)
+    chat.value = { ...chat.value, messages }
+    emit('chatUpdated', chat.value)
+  }
+
   const sendMessage = async () => {
     if (!newMessage.value.trim() || !canSendMessage.value) return
 
@@ -281,8 +288,8 @@ export function useConversationChat(
     }
   }
 
-  // Add endChat function
-  const endChat = async (requestRating = true) => {
+  /** Ends the chat; true once it is closed */
+  const endChat = async (requestRating = true): Promise<boolean> => {
     try {
       isLoading.value = true
 
@@ -333,13 +340,12 @@ export function useConversationChat(
         closeButton: true
       })
       
-      // Emit refresh event to update chat status
-      emit('refresh')
+      // Shown closed now; the inbox refetches once the server says it's
+      // stored (room_event 'closed'): a refetch sooner gets it back open
       emit('chatUpdated', chat.value)
-      // Navigation badges: one fewer open chat
-      emitter.emit('inbox-changed')
       
       scrollToBottom()
+      return true
     } catch (err) {
       console.error('Failed to end chat:', err)
       toast.error('Failed to end chat', {
@@ -347,6 +353,7 @@ export function useConversationChat(
         duration: 4000,
         closeButton: true
       })
+      return false
     } finally {
       isLoading.value = false
     }
@@ -461,6 +468,7 @@ export function useConversationChat(
     handlerCaption,
     updateChat,
     replaceChatFromProps,
+    applyEditedMessage,
     handledByAI,
     endChat,
     templateCanReopen,
