@@ -19,6 +19,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { knowledgeService } from '@/services/knowledge'
 import { groupChunksIntoPages } from '@/utils/knowledgePages'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 import { isPdfSource, learnedSoFar } from '@/composables/useLearningWatch'
 import DeleteIcon from '@/assets/delete.svg'
 import EditIcon from '@/assets/edit.svg'
@@ -291,7 +292,7 @@ const closeKnowledgeModal = () => {
                     <div class="queue-item-content">
                         <div class="queue-item-header">
                             <div class="queue-info">
-                                <span class="queue-source" :title="item.source">{{ item.source }}</span>
+                                <span class="queue-source" :title="sourceLabel(item.source)">{{ sourceLabel(item.source) }}</span>
                                 <span class="queue-meta">
                                     <span class="queue-type">{{ item.source_type }}</span>
                                     <span class="queue-time">• {{ formatDate(item.created_at) }}</span>
@@ -352,7 +353,7 @@ const closeKnowledgeModal = () => {
 
             <template v-for="item in knowledgeItems" :key="item.id">
                 <div class="knowledge-grid-row">
-                    <div class="grid-cell source-cell" :title="item.name">{{ item.name }}</div>
+                    <div class="grid-cell source-cell" :title="sourceLabel(item.name)">{{ sourceLabel(item.name) }}</div>
                     <div class="grid-cell">
                         <span class="type-tag"
                             :class="String(item.type).toLowerCase().includes('pdf') || String(item.type).toLowerCase().includes('file') ? 'type-tag--pdf' : 'type-tag--web'">{{
@@ -467,7 +468,7 @@ const closeKnowledgeModal = () => {
 
                     <template v-for="item in orgKnowledgeItems" :key="item.id">
                         <div class="knowledge-grid-row">
-                            <div class="grid-cell source-cell">{{ item.name }}</div>
+                            <div class="grid-cell source-cell">{{ sourceLabel(item.name) }}</div>
                             <div class="grid-cell type-cell">{{ item.type }}</div>
                             <div class="grid-cell action-cell">
                                 <button v-if="!isKnowledgeLinked(item.id)" class="link-button"

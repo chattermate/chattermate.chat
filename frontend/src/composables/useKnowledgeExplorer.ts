@@ -17,6 +17,7 @@ limitations under the License.
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { isKnowledgeSourceLimit, showPlanLimitError } from '@/utils/planLimitToast'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 import type {
   KnowledgeItem,
   KnowledgeLinkedAgent,
@@ -46,7 +47,10 @@ export type AddSourcePayload = (
 /** A knowledge source enriched with lazily-loaded, grouped sub-page content. */
 export interface ExplorerSource {
   id: number
+  // The backend's key for the source (its URL or file); matches queue items
   name: string
+  // What it is called on screen
+  label: string
   type: string
   // Agents this source is linked to (for the "Used by" chips).
   agents: KnowledgeLinkedAgent[]
@@ -118,6 +122,7 @@ export function useKnowledgeExplorer(
   const toExplorerSource = (item: KnowledgeItem): ExplorerSource => ({
     id: item.id,
     name: item.name,
+    label: sourceLabel(item.name),
     type: item.type,
     agents: item.agents || [],
     pageStubs: item.pages || [],
@@ -198,6 +203,7 @@ export function useKnowledgeExplorer(
   const toSyntheticSource = (item: QueueItem): ExplorerSource => ({
     id: -item.id,
     name: queueSourceName(item),
+    label: sourceLabel(queueSourceName(item)),
     type: queueKind(item.source_type),
     agents: [],
     pageStubs: [],
@@ -326,7 +332,7 @@ export function useKnowledgeExplorer(
     const q = normalizedQuery.value
     if (!q) return allSources.value
     return allSources.value.filter((source) => {
-      if (source.name.toLowerCase().includes(q)) return true
+      if (source.label.toLowerCase().includes(q)) return true
       const rows = pageRows(source)
       return rows.some((r) => r.title.toLowerCase().includes(q) || r.page_id.toLowerCase().includes(q))
     })

@@ -21,6 +21,7 @@ import {
   type AddSourcePayload,
 } from '@/composables/useKnowledgeExplorer'
 import { useAgentKnowledgeCoverage } from '@/composables/useAgentKnowledgeCoverage'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 import KnowledgeSourceTree from './KnowledgeSourceTree.vue'
 import KnowledgePageDetail from './KnowledgePageDetail.vue'
 import KnowledgePageEditor from './KnowledgePageEditor.vue'
@@ -67,7 +68,7 @@ const agentHasNoKnowledge = computed(
 // On the org page, a source no agent uses is easy to miss
 const flagUnlinked = computed(() => props.mode === 'org' && coverage.orgAgents.value.length > 0)
 const replaceable = computed(() =>
-  ex.orgSources.value.map((s) => ({ id: s.id, name: s.name, usedBy: (s.agents || []).map((a) => a.name) })),
+  ex.orgSources.value.map((s) => ({ id: s.id, name: sourceLabel(s.name), usedBy: (s.agents || []).map((a) => a.name) })),
 )
 
 // Add-source modal state.
@@ -131,7 +132,7 @@ function askDeleteSource(source: ExplorerSource) {
     // A failed crawl — not an in-flight one to "cancel".
     confirmState.value = {
       title: 'Dismiss source',
-      message: `Dismiss the failed source “${source.name}”?`,
+      message: `Dismiss the failed source “${source.label}”?`,
       actionLabel: 'Dismiss',
       busyLabel: 'Dismissing…',
       action: () => ex.deleteSource(source),
@@ -139,7 +140,7 @@ function askDeleteSource(source: ExplorerSource) {
   } else if (source.queued) {
     confirmState.value = {
       title: 'Cancel crawl',
-      message: `Cancel the queued crawl of “${source.name}”?`,
+      message: `Cancel the queued crawl of “${source.label}”?`,
       actionLabel: 'Cancel crawl',
       busyLabel: 'Cancelling…',
       action: () => ex.deleteSource(source),
@@ -149,7 +150,7 @@ function askDeleteSource(source: ExplorerSource) {
     // it in the organization's knowledge — it does not delete the source.
     confirmState.value = {
       title: 'Remove from agent',
-      message: `Remove “${source.name}” from this agent? It stays in your organization’s knowledge.`,
+      message: `Remove “${source.label}” from this agent? It stays in your organization’s knowledge.`,
       actionLabel: 'Remove',
       busyLabel: 'Removing…',
       action: () => ex.unlinkSource(source.id),
@@ -157,7 +158,7 @@ function askDeleteSource(source: ExplorerSource) {
   } else {
     confirmState.value = {
       title: 'Delete source',
-      message: `Delete “${source.name}” and all of its pages? This cannot be undone.`,
+      message: `Delete “${source.label}” and all of its pages? This cannot be undone.`,
       actionLabel: 'Delete',
       busyLabel: 'Deleting…',
       action: () => ex.deleteSource(source),
@@ -223,7 +224,7 @@ onUnmounted(() => {
       v-if="showPlanMeters"
       class="explorer__meters"
       :source-count="ex.sources.value.length"
-      :largest-source-name="largestSource?.name ?? null"
+      :largest-source-name="largestSource?.label ?? null"
       :largest-subpage-count="largestSubpageCount"
     />
 
@@ -282,7 +283,7 @@ onUnmounted(() => {
         <KnowledgePageDetail
           v-else-if="ex.selectedPage.value && ex.selectedSource.value"
           :page="ex.selectedPage.value"
-          :source-name="ex.selectedSource.value.name"
+          :source-name="ex.selectedSource.value.label"
           :source-type="ex.selectedSource.value.type"
           :agents="ex.selectedSource.value.agents"
           :status="ex.sourceStatus(ex.selectedSource.value)"

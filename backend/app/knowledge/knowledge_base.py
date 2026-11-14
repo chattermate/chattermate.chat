@@ -23,14 +23,16 @@ from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE
 from app.knowledge.enhanced_website_kb import EnhancedWebsiteKnowledgeBase
 from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
 from app.knowledge.sitemap_reader import SitemapReader
-from app.knowledge.chunking import PageChunking
+from app.knowledge.chunking import PageChunking, chunk_page
+from app.knowledge.deadline import Deadline, SourceTimedOut
 from app.knowledge.enhanced_pdf_kb import EnhancedPDFKnowledgeBase
-from app.knowledge.page_sink import SourceRemoved
+from app.knowledge.page_sink import PageSink, SourceRemoved
+from app.knowledge import source_readers
 from app.knowledge.source_learning import SourceLearning
 from app.core.s3 import delete_file_from_s3, owned_s3_key
 from app.knowledge.pdf_download import download_pdf
 from app.knowledge.pdf_limits import PdfRefused, check_page_count
-from app.knowledge.failure_advice import SourceUnreadable
+from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause, SourceUnreadable
 from app.models.knowledge import Knowledge, SourceType
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.models.knowledge_queue import ProcessingStage, QueueStatus
@@ -356,11 +358,7 @@ class KnowledgeManager:
         skip_existing = not queue_repo.last_run_left_partial(
             self.org_id, queue_item.source, queue_item.id
         )
-        filters = {
-            "name": queue_item.source,
-            "agent_id": [str(self.agent_id)] if self.agent_id else [],
-            "org_id": str(self.org_id),
-        }
+        filters = self._source_filters(queue_item.source)
 
         # The crawl is synchronous: run it off the event loop
         logger.info(f"Starting website processing in background thread for {queue_item.source}")
@@ -379,6 +377,80 @@ class KnowledgeManager:
         await asyncio.to_thread(learning.ensure_source)
         if knowledge_base.stopped_at_time_limit:
             queue_repo.note_stopped_at_time_limit(queue_item.id)
+
+    def _source_filters(self, source: str) -> Dict:
+        """The filters every page of the source is stored with."""
+        return {
+            "name": source,
+            "agent_id": [str(self.agent_id)] if self.agent_id else [],
+            "org_id": str(self.org_id),
+        }
+
+    async def _learn_from_reader(
+        self,
+        queue_item,
+        queue_repo: KnowledgeQueueRepository,
+        registered: source_readers.RegisteredReader,
+    ) -> None:
+        """Store the pages an extension's reader yields, one at a time, the
+        way a website's pages are stored: searchable from the first page,
+        stopped by the time limit or by the source being deleted. The whole
+        source is read on every run, so a run that reads it to the end also
+        drops the pages it no longer has (see source_readers)."""
+        label = registered.label(queue_item.source)
+        learning = SourceLearning(
+            queue_item.id,
+            self.org_id,
+            self.agent_id,
+            queue_item.source,
+            self.vector_db.table_name,
+            self.vector_db.schema,
+            source_type=registered.knowledge_type,
+        )
+        if not self.vector_db.exists():
+            self.vector_db.create()
+        deadline = Deadline(settings.KB_SOURCE_TIME_LIMIT_SECONDS)
+        sink = PageSink(self.vector_db, self._source_filters(queue_item.source), deadline, learning)
+        queue_repo.update_progress(queue_item.id, ProcessingStage.CRAWLING, force_stage_update=True)
+
+        read_page_ids = set()
+        read_to_the_end = False
+        pages = registered.read(queue_item)
+        try:
+            async for page in pages:
+                read_page_ids.add(page.id)
+                # Chunking and embedding are blocking: keep them off the loop
+                await asyncio.to_thread(sink.store, chunk_page(page))
+                # Out of time, or the source was deleted (which also expires it)
+                if deadline.expired:
+                    break
+            else:
+                read_to_the_end = True
+        finally:
+            await pages.aclose()
+
+        if sink.removed:
+            await asyncio.to_thread(learning.discard)
+            raise SourceRemoved(f"{label} was removed while it was being read")
+        if not read_page_ids:
+            raise SourceUnreadable(f"Nothing could be learned from {label} yet.")
+        if not sink.stored_pages:
+            if deadline.expired:
+                raise SourceTimedOut(FAILURE_ADVICE[FailureCause.TOO_LONG].format(url=label))
+            # The source had pages; storing them failed on our side
+            raise RuntimeError(f"None of the {len(read_page_ids)} page(s) read from {label} could be stored")
+        await asyncio.to_thread(learning.ensure_source)
+        if read_to_the_end:
+            dropped = await asyncio.to_thread(
+                self.vector_db.delete_pages_except,
+                queue_item.source, source_readers.page_id_prefix(queue_item.source), read_page_ids,
+            )
+            if dropped:
+                logger.info(f"Dropped {dropped} row(s) {label} no longer has")
+        else:
+            queue_repo.note_stopped_at_time_limit(queue_item.id)
+        queue_repo.update_status(queue_item.id, QueueStatus.COMPLETED)
+        logger.info(f"Stored {sink.stored_pages} page(s), {sink.stored_documents} chunk(s) from {label}")
 
     async def process_knowledge(self, queue_item):
         """Process knowledge based on source type"""
@@ -516,8 +588,12 @@ class KnowledgeManager:
                     success = True
 
                 else:
-                    raise ValueError(f"Unsupported source type: {
-                                     queue_item.source_type}")
+                    registered = source_readers.reader_for(queue_item.source_type)
+                    if registered is None:
+                        raise ValueError(f"Unsupported source type: {
+                                         queue_item.source_type}")
+                    await self._learn_from_reader(queue_item, queue_repo, registered)
+                    success = True
 
                 _raise_unless(success)
 

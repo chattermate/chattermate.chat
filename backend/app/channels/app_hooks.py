@@ -151,8 +151,10 @@ async def emit_channel_event(event: ChannelEvent) -> None:
 
 def load_extensions() -> None:
     """Import the installed extension's hooks, once. Called at startup by the
-    API and by every worker that sends on channels — explicitly, so a process
-    that never calls it (a migration, a script) never loads an extension."""
+    API, by every worker that sends on channels, and before the knowledge
+    manager looks up a source reader (app.knowledge.source_readers) —
+    explicitly, so a process that never calls it (a migration, a script)
+    never loads an extension."""
     global _extensions_loaded
     if _extensions_loaded:
         return

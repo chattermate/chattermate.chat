@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import Modal from '@/components/common/Modal.vue'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 import type { GenerateEstimate, GenerationSource } from '@/types/faq'
 
 const props = defineProps<{
@@ -110,7 +111,7 @@ function submit() {
         >
           <input class="src__check" type="checkbox" :checked="selected.has(s.id)" @change="toggle(s.id)" />
           <span class="src__body">
-            <span class="src__name" :title="s.name">{{ s.name }}</span>
+            <span class="src__name" :title="sourceLabel(s.name)">{{ sourceLabel(s.name) }}</span>
             <span class="src__meta">
               <span class="src__type">{{ s.source_type }}</span>
               <template v-if="labelFor(s)"> · {{ labelFor(s) }}</template>

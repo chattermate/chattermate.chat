@@ -49,12 +49,7 @@ from app.services.shopify_session import require_shopify_session
 from app.services.shopify_shop_widget import shop_widget
 from app.services.shopify_urls import shopify_admin_url
 from app.services import shopify_tokens
-from app.repositories.knowledge import KnowledgeRepository
-from app.repositories.knowledge_queue import KnowledgeQueueRepository
-from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
-from app.models.knowledge import SourceType
-from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
-from app.models.knowledge_to_agent import KnowledgeToAgent
+from app.services import shopify_store_knowledge
 from uuid import UUID
 from app.core.cors import update_cors_middleware
 from app.core.application import app
@@ -751,52 +746,16 @@ async def save_agent_shopify_config(
             logger.info(f"Created Shopify config for agent {agent_id}")
             saved_config = new_config
 
-        # --- Link or Queue Knowledge Source --- 
-        if config.enabled and target_shop: 
+        # --- What the agent learns about the store ---
+        if config.enabled and target_shop:
             try:
-                org_uuid = UUID(org_id_str)
-                agent_uuid = UUID(agent_id)
-                shop_domain = target_shop.shop_domain
-
-                if shop_domain:
-                    knowledge_repo = KnowledgeRepository(db)
-                    # Check if knowledge source already exists for this shop domain and org
-                    existing_knowledge_list = knowledge_repo.get_by_sources(org_uuid, [shop_domain])
-                    existing_knowledge = existing_knowledge_list[0] if existing_knowledge_list else None
-
-                    if existing_knowledge is None:
-                        # Knowledge doesn't exist, queue it
-                        logger.info(f"Shop domain {shop_domain} not found in knowledge base for org {org_uuid}. Queuing...")
-                        queue_repo = KnowledgeQueueRepository(db)
-                        queue_item = KnowledgeQueue(
-                            organization_id=org_uuid,
-                            agent_id=agent_uuid, # Link to current agent
-                            user_id=user_id, # user_id from auth (JWT) or None (session token)
-                            source_type=SourceType.WEBSITE,
-                            source=shop_domain,
-                            status=QueueStatus.PENDING,
-                            queue_metadata={}
-                        )
-                        queue_repo.create(queue_item)
-                        logger.info(f"Shop domain {shop_domain} queued for knowledge processing for agent {agent_id}.")
-                    else:
-                        # Knowledge exists, check if linked to agent
-                        logger.info(f"Shop domain {shop_domain} found in knowledge base (ID: {existing_knowledge.id}). Checking agent link...")
-                        link_repo = KnowledgeToAgentRepository(db)
-                        existing_link = link_repo.get_by_ids(existing_knowledge.id, agent_uuid)
-                        if existing_link is None:
-                            # Link doesn't exist, create it
-                            logger.info(f"Linking knowledge source {existing_knowledge.id} to agent {agent_id}...")
-                            link = KnowledgeToAgent(knowledge_id=existing_knowledge.id, agent_id=agent_uuid)
-                            link_repo.create(link)
-                            # Optional: Could add vector DB filter update here later if needed
-                            logger.info(f"Successfully linked knowledge source {existing_knowledge.id} to agent {agent_id}.")
-                        else:
-                            logger.info(f"Knowledge source {existing_knowledge.id} already linked to agent {agent_id}.")
-
+                shopify_store_knowledge.learn_store(
+                    db, target_shop, UUID(org_id_str), UUID(agent_id), user_id
+                )
             except Exception as ke:
                 # Log the error but don't fail the main config saving operation
-                logger.error(f"Failed to link or queue knowledge for shop {target_shop.id if target_shop else 'N/A'} / agent {agent_id}: {str(ke)}", exc_info=True)
+                db.rollback()
+                logger.error(f"Failed to link or queue knowledge for shop {target_shop.id} / agent {agent_id}: {str(ke)}", exc_info=True)
 
         return saved_config # Return the saved/updated config
     except Exception as e:
