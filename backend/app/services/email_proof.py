@@ -17,9 +17,8 @@ Whether a conversation proved the visitor's email, asked by the code that acts
 on a proven email (order lookups, the visitor's other browsers' chats).
 
 The proof itself (a code sent to the address, or a store that vouches for its
-signed-in customer) belongs to the chat UI layer that draws the check; until the
-build installs one, the panel's built-in email check stands in. With no
-provider nothing is ever proven: order lookups need the typed email and order
+signed-in customer) belongs to the chat UI layer that draws the check. Without
+one nothing is ever proven: order lookups need the typed email and order
 number, and history shows this browser's chats only.
 """
 
@@ -45,15 +44,7 @@ def install(provider: Optional[EmailProof]) -> None:
 
 
 def _active() -> Optional[EmailProof]:
-    if _provider is not None:
-        return _provider
-    return _fallback_provider()
-
-
-def _fallback_provider() -> Optional[EmailProof]:
-    """Today's email check, until the chat UI layer ships it."""
-    from app.cards.builtin_layer import BUILTIN_EMAIL_PROOF
-    return BUILTIN_EMAIL_PROOF
+    return _provider
 
 
 def available() -> bool:

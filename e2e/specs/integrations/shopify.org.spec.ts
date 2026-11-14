@@ -1,4 +1,4 @@
-import { test, expect, Mailbox, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
+import { test, expect, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY } from '@e2e'
 
 // Linking a shop changes which sites may call the API, so this runs in the serial
 // `org` project and uninstalls afterwards.
@@ -45,51 +45,6 @@ test.describe('Shopify', () => {
     expect(toolResults).toMatch(/1ZE2E\d+/)
   })
 
-  test('the order shows as a card with where it is, the tracking number masked @integrations', async ({ agent, widget, llm }) => {
-    const email = widget.customer.email
-    await llm.script(agent, (s) => s
-      .when(/1042/).callTool('get_order_status', { order_number: '#1042', customer_email: email })
-      .thenReply('Order #1042 is on its way.')
-      .otherwise().reply('What is your order number and email?'))
-    await widget.embed()
-    await widget.open()
-    await widget.send(`Where is order 1042? ${email}`)
-
-    const card = widget.statusCard('Order #1042')
-    await expect(card).toContainText('In transit', AI_REPLY)
-    await expect(card).toContainText('UPS ••••')
-    await expect(card).not.toContainText('1 Test Street')
-    await expect(card.getByRole('link', { name: /Track with carrier/ })).toHaveAttribute('href', /^https:\/\/tracking\.e2e\.test\//)
-  })
-
-  test('a customer confirms their email with a code and opens one of their orders @integrations @redis', async ({ agent, widget, llm, request }) => {
-    const email = widget.customer.email
-    await llm.script(agent, (s) => s
-      .when(/confirmed my email/).callTool('list_my_orders', {}).thenReply('Here are your recent orders.')
-      .when(/order #1001/).callTool('get_order_status', { order_number: '#1001' }).thenReply('Order #1001 is on its way.')
-      .otherwise().callTool('confirm_email', {}).thenReply('Please confirm your email below.'))
-    await widget.embed()
-    await widget.open()
-    await widget.send('Can you show me my orders?')
-
-    await expect(widget.emailCheck).toBeVisible(AI_REPLY)
-    const since = new Date()
-    await widget.askForEmailCode(email)
-    const code = await new Mailbox(request).verificationCode(email, { since })
-    // The real code with its last digit changed: always wrong
-    const wrong = `${code.slice(0, 5)}${(Number(code[5]) + 1) % 10}`
-    await widget.enterEmailCode(wrong)
-    await expect(widget.emailCheck.getByRole('alert')).toHaveText("That code isn't right. 4 tries left.")
-    await widget.enterEmailCode(code)
-    await expect(widget.emailCheck.getByRole('status')).toContainText('Email confirmed')
-
-    // Confirming tells the agent, which lists the customer's own orders
-    const orders = widget.statusCard('Your recent orders')
-    await expect(orders).toBeVisible(AI_REPLY)
-    await orders.getByRole('button', { name: 'Order #1001' }).click()
-    await expect(widget.statusCard('Order #1001')).toContainText('In transit', AI_REPLY)
-  })
-
   test('an email alone lists no orders @integrations', async ({ agent, widget, llm, request }) => {
     const email = widget.customer.email
     await llm.script(agent, (s) => s
@@ -116,89 +71,6 @@ test.describe('Shopify', () => {
   })
 
   // Product cards are filled in from the Redis product cache, so these run in the
-  // nightly Redis run (@redis); the PR stack leaves Redis off.
-  test.describe('add to cart', () => {
-    const offerProducts = (s: Script) =>
-      s.otherwise().callTool('search_products', { query: 'gift' }).thenReply('Here are some options for you.')
-
-    test('a customer adds a product from the chat and finds it in the store\'s cart @integrations @redis', async ({ agent, widget, llm }) => {
-      await llm.script(agent, offerProducts)
-      await widget.embed({ shopifyStore: shop })
-      await widget.open()
-      await widget.send('Any gift ideas?')
-
-      await widget.addToCart('E2E Mug')
-      await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
-      await widget.viewCart('E2E Mug')
-      await expect(widget.itemsInCart).toHaveText('1')
-    })
-
-    test('a product that sold out says so, and the customer can still buy another @integrations @redis', async ({ agent, widget, llm }) => {
-      await llm.script(agent, offerProducts)
-      await widget.embed({ shopifyStore: shop })
-      await widget.open()
-      await widget.send('Any gift ideas?')
-
-      await widget.addToCart('E2E Cap')
-      await expect(widget.productCard('E2E Cap').getByRole('alert')).toHaveText('The product \'E2E Cap\' is already sold out.', AI_REPLY)
-      await expect(widget.productCard('E2E Cap').getByRole('button', { name: 'Add to cart' })).toBeEnabled()
-
-      await widget.addToCart('E2E Mug')
-      await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
-    })
-
-    test('a product with sizes, not on sale, or off the Online Store goes to its product page @integrations @redis', async ({ agent, widget, llm }) => {
-      await llm.script(agent, offerProducts)
-      await widget.embed({ shopifyStore: shop })
-      await widget.open()
-      await widget.send('Any gift ideas?')
-
-      await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toBeVisible(AI_REPLY)
-      for (const title of ['E2E Shirt', 'E2E Poster', 'E2E Draft']) {
-        await expect(widget.viewProduct(title)).toBeVisible()
-        await expect(widget.productCard(title).getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
-      }
-    })
-
-    test('a customer picks a size in the product sheet and sees it in the cart bar @integrations @redis', async ({ agent, widget, llm }) => {
-      await llm.script(agent, offerProducts)
-      await widget.embed({ shopifyStore: shop })
-      await widget.open()
-      await widget.send('Any gift ideas?')
-
-      await widget.chooseOptions('E2E Shirt', ['M'])
-      const sheet = widget.productSheet('E2E Shirt')
-      // S is sold out in the store: it says so, and M is the one picked.
-      await expect(sheet.getByRole('button', { name: 'S (sold out)' })).toBeVisible()
-      await expect(sheet.getByRole('button', { name: 'M', exact: true })).toHaveAttribute('aria-pressed', 'true')
-      await sheet.getByRole('button', { name: 'Add to cart' }).click()
-      await expect(sheet.getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
-      await sheet.getByRole('button', { name: 'Close' }).click()
-      await expect(sheet).toHaveCount(0)
-
-      await expect(widget.cartBar).toContainText('1 item', AI_REPLY)
-      await widget.cartBar.getByRole('button', { name: 'View cart' }).click()
-      await expect(widget.itemsInCart).toHaveText('1')
-    })
-
-    test.describe('elsewhere', () => {
-      for (const [where, embed] of [
-        ['another store', () => ({ shopifyStore: 'someone-else.myshopify.com' })],
-        ['a site that is not a store', () => ({})],
-      ] as const) {
-        test(`no cart button on ${where} @integrations @redis`, async ({ agent, widget, llm }) => {
-          await llm.script(agent, offerProducts)
-          await widget.embed(embed())
-          await widget.open()
-          await widget.send('Any gift ideas?')
-
-          await expect(widget.viewProduct('E2E Mug')).toBeVisible(AI_REPLY)
-          await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
-        })
-      }
-    })
-  })
-
   test('an order lookup without the customer\'s email never reaches the shop @integrations', async ({ agent, widget, llm, request }) => {
     await llm.script(agent, (s) => s
       .otherwise().callTool('get_order_status', { order_number: '1042', customer_email: '' })

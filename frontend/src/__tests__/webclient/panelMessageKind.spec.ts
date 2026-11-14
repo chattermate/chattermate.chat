@@ -16,8 +16,6 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import { isJoinedNote, messageKind } from '@/webclient/panel/message-kind'
-import { BUILTIN_LAYER } from '@/webclient/ui-layer/builtin'
-import ProductMessage from '@/webclient/panel/messages/ProductMessage.vue'
 import { agentFace, initialsOf } from '@/webclient/panel/agent-face'
 import type { WidgetMessage } from '@/types/widget'
 
@@ -38,14 +36,6 @@ describe('which component draws a message', () => {
         ['something_new', 'fallback'],
     ])('%s → %s', (type, kind) => {
         expect(messageKind(message({ message_type: type }))).toBe(kind)
-    })
-
-    it('leaves a reply carrying products to the built-in layer, whatever its type', () => {
-        const kindOf = (fields: Partial<WidgetMessage>) => BUILTIN_LAYER.messageKind?.(message(fields))
-        expect(kindOf({ message_type: 'bot', shopify_output: { products: [] } })).toBe('product')
-        expect(kindOf({ message_type: 'agent', shopify_output: { products: [] } })).toBe('product')
-        expect(kindOf({ message_type: 'bot' })).toBeUndefined()
-        expect(BUILTIN_LAYER.messageComponents?.product).toBe(ProductMessage)
     })
 
     it('tells the takeover note from other system notes', () => {

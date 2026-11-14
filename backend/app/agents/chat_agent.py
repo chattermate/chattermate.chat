@@ -425,10 +425,10 @@ class ChatAgent(ChatAgentMCPMixin):
             # Check if Shopify is enabled for this agent while we have the db session
             shopify_config = None
             # "My orders" after an email check, and Add to cart on product cards, are a
-            # Growth plan's (widget_plan.py)
+            # Growth plan's (widget_plan.py), drawn by the chat UI layer (reply_ui.py)
             plan = widget_plan.features(db, org_id, (MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE)) if org_id else {}
             self.offers_my_orders = plan.get(MY_ORDERS_FEATURE, False)
-            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False)
+            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False) and self._shows_product_cards()
             if agent_id and org_id and session_id:
                 try:
                     shopify_config_repo = AgentShopifyConfigRepository(db)
@@ -1144,11 +1144,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # Enrich Shopify response with full product data from Redis
             response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
-            # If shopify_output has products, remove URLs from message
-            # (URLs should only be removed when products are being displayed separately)
-            if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
-                response_content.message = remove_urls_from_message(response_content.message)
-                logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
+            self._products_for_surface(response_content)
 
             # Don't handle end chat or transfer here - let workflow handle it
             # Don't store any messages - let workflow handle storage
@@ -1405,6 +1401,21 @@ Keep your responses concise and focused. Provide clear, actionable information i
             transfer_group_id=transfer_group_id
         )
 
+    def _shows_product_cards(self) -> bool:
+        """The widget with a chat UI layer draws a reply's products as cards;
+        everywhere else they are written out in the reply (reply_ui.py)."""
+        return is_widget_channel(self.channel) and reply_ui.installed()
+
+    def _products_for_surface(self, response_content: ChatResponse) -> None:
+        """A reply's products as this surface shows them: cards carry the links, so
+        the text loses its URLs; without cards the products are listed in the text."""
+        products = getattr(response_content.shopify_output, 'products', None)
+        if not products:
+            return
+        response_content.message = remove_urls_from_message(response_content.message)
+        if not self._shows_product_cards():
+            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+
     def _widget_extras(self, response_content: ChatResponse) -> dict:
         """What the redesigned widget restores from history: follow-up
         choices, the handover card and what the chat UI layer drew for this
@@ -1589,14 +1600,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         # Enrich Shopify response with full product data from Redis
         response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
-        # If shopify_output has products, remove URLs from message
-        # (URLs should only be removed when products are being displayed separately)
-        if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
-            response_content.message = remove_urls_from_message(response_content.message)
-            logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
-
-        if not is_widget_channel(self.channel):
-            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+        self._products_for_surface(response_content)
 
         # Handle end chat and rating request
         if response_content.end_chat:

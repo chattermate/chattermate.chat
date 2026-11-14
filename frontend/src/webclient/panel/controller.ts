@@ -25,7 +25,6 @@ import type { ConnectionStatus } from '../../composables/useWidgetSocket'
 import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
-import type { EmailCheckPurpose, EmailCheckState } from '../../composables/useEmailCheck'
 import type { HistoryState } from '../../composables/useConversationHistory'
 import type { PageSuggestions } from '../../composables/usePageSuggestions'
 import type { VisitorFeedback } from './answer-extras'
@@ -141,8 +140,6 @@ export interface WidgetConversation {
     skipReveal: () => void
     /** Thumb an AI reply up or down, or take the thumb back (null). */
     sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
-    /** Ask the shop for a product's options, for the product sheet (product-sheet.ts). */
-    requestProductOptions: (productId: string) => void
     /** "Suggested for this page" for the start state (usePageSuggestions). */
     pageSuggestions: Shown<PageSuggestions>
     /** "Your conversations": the visitor's own past chats (useConversationHistory). */
@@ -158,11 +155,6 @@ export interface WidgetConversation {
     closeConversation: () => void
     loadOlderMessages: () => void
     continueConversation: (id: string) => Promise<void>
-    /** The email check: the visitor proves an email is theirs with a code (useEmailCheck). */
-    emailCheck: Shown<EmailCheckState>
-    startEmailCheck: (email: string, purpose?: EmailCheckPurpose) => void
-    verifyEmailCode: (code: string) => void
-    restartEmailCheck: () => void
     hoverRating: Shown<number>
     isSubmittingRating: Shown<boolean>
     handleStarHover: (rating: number) => void

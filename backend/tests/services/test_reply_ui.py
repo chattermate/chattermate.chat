@@ -25,10 +25,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.cards.builtin_layer import BUILTIN_EMAIL_PROOF, BUILTIN_LAYER
 from app.services import email_proof, reply_ui
 from app.services.reply_ui import (
-    EMAIL_CHECK_EVENT, ORDER_EVENT, RECENT_ORDERS_EVENT, TICKET_EVENT, TurnEvents,
+    EMAIL_CHECK_EVENT, TICKET_EVENT, TurnEvents,
 )
 from app.services.visitor_language import MAX_PREFERENCES, preferred_languages
 from app.services.widget_reply import reply_payload
@@ -118,6 +117,13 @@ class TestInstalledLayer:
     def test_no_events_means_nothing_to_draw(self):
         assert reply_ui.reply_extras(None) == {}
 
+    def test_without_a_layer_a_reply_is_its_text(self):
+        events = TurnEvents()
+        events.add(TICKET_EVENT, {"number": "TKT-1", "status": "open"})
+        assert reply_ui.installed() is False
+        assert reply_ui.reply_extras(events) == {} and reply_ui.payload_keys() == frozenset()
+        reply_ui.add_shopify_tools(MagicMock())  # nothing to add, does not raise
+
     def test_load_without_a_layer_module_is_quiet(self, monkeypatch):
         monkeypatch.setattr(reply_ui, "LAYER_MODULE", "app.no_such_package.chat_ui")
         error = MagicMock()
@@ -141,7 +147,7 @@ class TestInstalledLayer:
         monkeypatch.setitem(sys.modules, "cm_test_chat_ui", module)
         monkeypatch.setattr(reply_ui, "LAYER_MODULE", "cm_test_chat_ui")
         assert reply_ui.load() is True
-        assert reply_ui._active() is layer
+        assert reply_ui.installed() and reply_ui._active() is layer
 
     def test_a_layer_that_fails_to_register_is_not_installed(self, monkeypatch):
         module = types.ModuleType("cm_test_broken_ui")
@@ -160,51 +166,6 @@ class TestInstalledLayer:
         error.assert_called_once()
 
 
-class TestBuiltinLayer:
-    def test_draws_status_cards_in_the_visitors_language(self):
-        events = TurnEvents(["xx-YY", "de-AT"])
-        events.add(ORDER_EVENT, {"order": _order()})
-        events.add(TICKET_EVENT, {"number": "TKT-7", "status": "open"})
-        extras = reply_ui.reply_extras(events)
-        assert [card["kind"] for card in extras["cards"]] == ["order", "ticket"]
-        assert {card["lang"] for card in extras["cards"]} == {"de"}
-        assert "email_check" not in extras
-
-    def test_the_same_order_twice_is_one_card(self):
-        events = TurnEvents()
-        events.add(ORDER_EVENT, {"order": _order()})
-        events.add(ORDER_EVENT, {"order": _order()})
-        assert len(BUILTIN_LAYER.reply_extras(events)["cards"]) == 1
-
-    def test_recent_orders_become_one_card_with_a_question_per_order(self):
-        events = TurnEvents()
-        events.add(RECENT_ORDERS_EVENT, {"orders": [
-            {"order_number": "#1001", "created_at": "2026-11-03T10:00:00Z",
-             "financial_status": "PAID", "fulfillment_status": "FULFILLED"}]})
-        [card] = BUILTIN_LAYER.reply_extras(events)["cards"]
-        assert card["title"] == "Your recent orders"
-        assert card["actions"][0]["value"] == "Where is my order #1001?"
-
-    def test_an_event_that_cannot_be_drawn_loses_only_itself(self):
-        events = TurnEvents()
-        events.add(ORDER_EVENT, {"order": None})
-        events.add(TICKET_EVENT, {"number": "TKT-7", "status": "open"})
-        assert [card["kind"] for card in BUILTIN_LAYER.reply_extras(events)["cards"]] == ["ticket"]
-
-    def test_the_email_check_is_asked_for(self):
-        events = TurnEvents()
-        events.add(EMAIL_CHECK_EVENT)
-        assert BUILTIN_LAYER.reply_extras(events) == {"email_check": True}
-
-    def test_a_turn_with_nothing_to_draw(self):
-        assert BUILTIN_LAYER.reply_extras(TurnEvents()) == {}
-
-    def test_it_offers_the_own_orders_tools(self):
-        toolkit = MagicMock()
-        reply_ui.add_shopify_tools(toolkit)
-        toolkit.offer_email_check.assert_called_once_with()
-
-
 class TestEmailProof:
     def test_an_installed_provider_answers(self):
         provider = MagicMock()
@@ -215,23 +176,7 @@ class TestEmailProof:
         provider.verified_email.assert_called_once_with("s1", "c1")
         assert email_proof.available() is True
 
-    def test_the_builtin_check_stands_in_until_one_is_installed(self, monkeypatch):
-        monkeypatch.setattr("app.services.email_check.verified_email", lambda s, c=None: "j@acme.com")
-        assert email_proof._active() is BUILTIN_EMAIL_PROOF
-        assert email_proof.verified_email("s1") == "j@acme.com"
-        assert email_proof.mask("jane@acme.com") == "j•••@acme.com"
-
-    def test_the_builtin_check_forgets_and_takes_store_sign_ins(self, monkeypatch):
-        forget, accept = MagicMock(), MagicMock(return_value=True)
-        monkeypatch.setattr("app.services.email_check.forget", forget)
-        monkeypatch.setattr("app.api.widget_email_check.accept_store_sign_in", accept)
-        email_proof.forget("s1")
-        forget.assert_called_once_with("s1")
-        assert email_proof.accept_store_sign_in({"session_id": "s1"}, {"t": 1}) is True
-        accept.assert_called_once_with({"session_id": "s1"}, {"t": 1})
-
-    def test_without_any_provider_nothing_is_proven(self, monkeypatch):
-        monkeypatch.setattr(email_proof, "_fallback_provider", lambda: None)
+    def test_without_any_provider_nothing_is_proven(self):
         assert email_proof.verified_email("s1") is None
         assert email_proof.available() is False
         assert email_proof.offer("s1") is False

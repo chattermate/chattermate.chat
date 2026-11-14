@@ -19,9 +19,8 @@ Tools record what happened in a turn as neutral events (an order was looked up,
 the visitor was asked to confirm their email). A chat UI layer turns them into
 what the widget shows next to the reply, under payload keys it declares; the
 same keys are stored with the reply and restored with it (visitor_payload.py).
-Until the build installs a layer, the panel's built-in cards stand in
-(app/cards/builtin_layer.py). A tool's own answer must still say what matters in
-words: a channel or a client without the layer gets only the text.
+Without one (a self-hosted build), the reply's text is the whole answer, so a
+tool's own answer must always say what matters in words.
 
 Nothing here may break a reply: a layer that fails is logged and the reply goes
 out as text.
@@ -101,15 +100,12 @@ def install(layer: Optional[UILayer]) -> None:
 
 
 def _active() -> Optional[UILayer]:
-    if _layer is not None:
-        return _layer
-    return _fallback_layer()
+    return _layer
 
 
-def _fallback_layer() -> Optional[UILayer]:
-    """Today's status cards and email check, until the chat UI layer ships them."""
-    from app.cards.builtin_layer import BUILTIN_LAYER
-    return BUILTIN_LAYER
+def installed() -> bool:
+    """Whether replies can show more than text (cards, the product carousel)."""
+    return _layer is not None
 
 
 def payload_keys() -> frozenset:
