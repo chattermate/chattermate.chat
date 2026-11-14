@@ -23,7 +23,7 @@ limitations under the License.
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { WIDGET_CTX } from '../controller'
 import ConversationRow from './ConversationRow.vue'
-import EmailCheckCard from '../messages/EmailCheckCard.vue'
+import { uiLayer } from '../../ui-layer'
 import { groupConversations } from '../history-groups'
 import { PANEL_COPY } from '../../copy'
 
@@ -36,6 +36,8 @@ const SEARCH_FROM = 8
 const query = ref('')
 /** The email check that finds chats from the visitor's other browsers is open. */
 const findingOthers = ref(false)
+// Finding chats from other browsers proves an email: the chat UI layer's to draw
+const findOthers = uiLayer.historyOthers
 const offerOthers = computed(() => history.value.otherBrowsers.offer && !history.value.otherBrowsers.email && !searching.value)
 const sentinel = ref<HTMLElement | null>(null)
 const searching = computed(() => history.value.query.length >= 2)
@@ -81,8 +83,8 @@ const askInNewChat = () => {
             {{ PANEL_COPY.newChatFromHistory }}
         </button>
         <p v-if="history.otherBrowsers.email" class="cm-history__note">{{ PANEL_COPY.otherDevicesShown(history.otherBrowsers.email) }}</p>
-        <template v-else-if="offerOthers">
-            <EmailCheckCard v-if="findingOthers" class="cm-history__others" purpose="history" />
+        <template v-else-if="offerOthers && findOthers">
+            <component :is="findOthers" v-if="findingOthers" class="cm-history__others" purpose="history" />
             <button v-else type="button" class="cm-history__others-link" @click="findingOthers = true">{{ PANEL_COPY.otherDevices }}</button>
         </template>
         <label v-if="history.total > SEARCH_FROM" class="cm-history__search">

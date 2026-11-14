@@ -10,6 +10,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import { VitePWA } from 'vite-plugin-pwa'
 import { THEME_COLORS } from './src/config/themeColors'
 import { ICON_VERSION, versionedIcon } from './src/config/appIcons'
+import { widgetExtensionPlugin } from './scripts/widget-ext'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -60,6 +61,8 @@ export default defineConfig(({ command, mode }) => {
 
   return {
   plugins: [
+    // The widget preview draws with the build's chat UI layer too
+    widgetExtensionPlugin(),
     vue({
       template: {
         compilerOptions: {

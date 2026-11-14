@@ -13,9 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-The status cards one turn's tools produced, in order. Given to the toolkits by
-the chat agent (the widget panel only) and read once the reply
-is ready, as ShopifyTools.has_cached_products is.
+The status cards of one reply, in order, built from the turn's events
+(app/cards/builtin_layer.py).
 """
 
 from typing import List
@@ -30,20 +29,14 @@ MAX_CARDS = 4
 class TurnCards:
     def __init__(self, labels: CardLabels = ENGLISH) -> None:
         self._cards: List[StatusCard] = []
-        # The visitor's language: the toolkits build their cards in it
+        # The visitor's language: the cards are built in it
         self.labels = labels
-        # The reply asks the visitor to prove their email (the email check card)
-        self.email_check = False
 
     def add(self, card: StatusCard) -> None:
         """Keep a card; the same card again (an order looked up twice) replaces the first."""
         self._cards = [c for c in self._cards if c.id != card.id]
         if len(self._cards) < MAX_CARDS:
             self._cards.append(card)
-
-    def reset(self) -> None:
-        self._cards = []
-        self.email_check = False
 
     def payload(self) -> List[dict]:
         return [card.model_dump(exclude_none=True) for card in self._cards]

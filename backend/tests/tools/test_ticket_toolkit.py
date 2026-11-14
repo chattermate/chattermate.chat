@@ -31,6 +31,7 @@ import pytest
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.models.ticket import Ticket
+from app.services.reply_ui import TICKET_EVENT, TurnEvents
 from app.tools.ticket_toolkit import TicketTools, _clean_email, _clean_name
 
 
@@ -172,20 +173,20 @@ class TestTicketCards:
         return session
 
     def _tools(self, org_id, agent_id, session):
-        from app.cards.turn_cards import TurnCards
         tools = TicketTools(str(agent_id), str(org_id), str(session.session_id))
-        tools.turn_cards = TurnCards()
+        tools.turn_events = TurnEvents()
         return tools
 
-    def test_creating_a_ticket_shows_its_card(self, ticket_tools_db, test_organization_id, test_agent):
+    def test_creating_a_ticket_records_it(self, ticket_tools_db, test_organization_id, test_agent):
         session = self._session(ticket_tools_db, test_organization_id, test_agent.id)
         tools = self._tools(test_organization_id, test_agent.id, session)
         tools.create_ticket(summary="Login fails", description="Every attempt errors.")
-        [card] = tools.turn_cards.payload()
-        assert card["kind"] == "ticket" and card["status"]["label"] in ("Received", "Looking into it")
-        assert "Login fails" not in repr(card)
+        [event] = tools.turn_events.of(TICKET_EVENT)
+        assert event["number"].startswith("TKT-") and event["status"]
+        # The ticket's words stay out of what the chat UI draws
+        assert "Login fails" not in repr(event)
 
-    def test_another_conversations_ticket_shows_no_card(self, ticket_tools_db, test_organization_id, test_agent):
+    def test_another_conversations_ticket_is_not_recorded(self, ticket_tools_db, test_organization_id, test_agent):
         db = ticket_tools_db
         theirs = self._session(db, test_organization_id, test_agent.id)
         mine = self._session(db, test_organization_id, test_agent.id)
@@ -195,12 +196,12 @@ class TestTicketCards:
         number = TicketRepository(db).get_by_session(theirs.session_id).display_number
         tools = self._tools(test_organization_id, test_agent.id, mine)
         result = json.loads(tools.get_ticket_status(number))
-        assert result["exists"] is True and tools.turn_cards.payload() == []
+        assert result["exists"] is True and tools.turn_events.all() == []
 
-    def test_asking_after_its_own_ticket_shows_the_card(self, ticket_tools_db, test_organization_id, test_agent):
+    def test_asking_after_its_own_ticket_records_it(self, ticket_tools_db, test_organization_id, test_agent):
         session = self._session(ticket_tools_db, test_organization_id, test_agent.id)
         TicketTools(str(test_agent.id), str(test_organization_id), str(session.session_id)).create_ticket(
             summary="Login fails", description="Every attempt errors.")
         tools = self._tools(test_organization_id, test_agent.id, session)
         tools.get_ticket_status()
-        assert [c["kind"] for c in tools.turn_cards.payload()] == ["ticket"]
+        assert [kind for kind, _ in tools.turn_events.all()] == [TICKET_EVENT]

@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y \
 
 
 
+# An image build bundles the chat UI layer when the enterprise module is present
+# (frontend/scripts/widget-ext.ts); the committed public bundles never do.
+ENV CHATTERMATE_IMAGE_BUILD=1
+
 # Copy package files first
 COPY frontend/package*.json ./
 
