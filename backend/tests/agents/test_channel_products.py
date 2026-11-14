@@ -84,3 +84,15 @@ def test_sold_out_reaches_the_widget_through_the_reply_schema():
     would drop it on the way."""
     sent = output(product(sold_out=True)).model_dump()
     assert sent["products"][0]["sold_out"] is True
+
+
+def test_the_store_link_wins_when_the_product_has_one():
+    text = with_product_list("x", output(product(url="https://shop.test/product/board/"), shop_domain="shop.test"))
+    assert "https://shop.test/product/board/" in text
+    assert "/products/board" not in text
+
+
+def test_only_a_web_link_is_written():
+    text = with_product_list("x", output(product(url="javascript:alert(1)")))
+    assert "javascript" not in text
+    assert "https://demo.myshopify.com/products/board" in text

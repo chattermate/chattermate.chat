@@ -21,6 +21,7 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
+from app.agents import agent_extensions
 from app.services import reply_ui
 from app.services.reply_ui import TurnEvents
 from app.services.handover_payload import handover_payload
@@ -585,6 +586,15 @@ class ChatAgent(ChatAgentMCPMixin):
                 and self.offers_my_orders:
             reply_ui.add_shopify_tools(self.shopify_tools)
 
+        # Toolkits an installed extension adds for this agent (agent_extensions.py)
+        self.extra_toolkits = agent_extensions.extra_toolkits(agent_extensions.ToolContext(
+            agent_id=self.agent_id, org_id=self.org_id, session_id=self.session_id,
+            channel=self.channel, turn_events=self.turn_events,
+            cards_add_to_cart=bool(getattr(self, 'cards_add_to_cart', False)),
+        )) if has_session else []
+        for extra in self.extra_toolkits:
+            self.tools.append(extra.toolkit)
+
         # Add MCP tools if provided
         if self.mcp_tools:
             self.tools.extend(self.mcp_tools)
@@ -929,6 +939,15 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 cart_places = "the product card or the store" if self.cards_add_to_cart else "the store"
                 system_message += "\n\n" + shopify_instructions.replace("CART_PLACES", cart_places)
                 self.shopify_instructions_added = True
+
+            # What an extension's toolkits are for (agent_extensions.py)
+            for extra in getattr(self, 'extra_toolkits', []):
+                if extra.instructions:
+                    cart_places = "the product card or the store" if self.cards_add_to_cart else "the store"
+                    system_message += "\n\n" + extra.instructions.replace("CART_PLACES", cart_places)
+                if extra.products:
+                    # Product replies need the longer answer budget the Shopify tools get
+                    self.shopify_instructions_added = True
 
             # Add MCP tools instructions if MCP tools are available
             if self.mcp_tools:
@@ -1370,7 +1389,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         tools = getattr(self, 'shopify_tools', None)
         if tools and getattr(tools, 'has_cached_products', False):
             return tools.product_cache_key
-        return None
+        return agent_extensions.cached_products_key(getattr(self, 'extra_toolkits', []))
 
     async def handle_workflow_transfer(self, session_id: str, org_id: str, agent_id: str, customer_id: str, transfer_group_id: str, db, chat_repo: ChatRepository, llm_response: ChatResponse = None) -> ChatResponse:
         """

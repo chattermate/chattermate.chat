@@ -39,6 +39,8 @@ export interface WidgetProduct {
   has_choices?: boolean | null
   /** None of it can be bought right now: the store sells it, but it's out of stock. */
   sold_out?: boolean | null
+  /** The product's own page, for a store whose links aren't /products/<handle>. */
+  url?: string | null
 }
 
 /** A product's options and variants, read by the product sheet (product_options). */

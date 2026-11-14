@@ -39,9 +39,20 @@ def _product_text(product: Any, shop_domain: Optional[str]) -> str:
     text = f"• {product.title} - {price}" if price else f"• {product.title}"
     if getattr(product, 'sold_out', None):
         text += f" ({SOLD_OUT})"
-    if product.handle and shop_domain:
-        text += f"\n  https://{shop_domain}/products/{product.handle}"
+    link = _link(product, shop_domain)
+    if link:
+        text += f"\n  {link}"
     return text
+
+
+def _link(product: Any, shop_domain: Optional[str]) -> Optional[str]:
+    """The product's page: the store's own link when it gives one, else Shopify's."""
+    url = getattr(product, 'url', None)
+    if isinstance(url, str) and url.startswith(('https://', 'http://')):
+        return url
+    if product.handle and shop_domain:
+        return f"https://{shop_domain}/products/{product.handle}"
+    return None
 
 
 def with_product_list(message: str, shopify_output: Any) -> str:
