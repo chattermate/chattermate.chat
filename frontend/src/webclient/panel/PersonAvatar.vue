@@ -15,9 +15,9 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// A person who joined the conversation: their photo, else their initials.
+// A person who joined the conversation: their photo, else (or when it won't load) their initials.
 // Decorative: their name is always written next to it.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { initialsOf } from './agent-face'
 
 const props = withDefaults(defineProps<{
@@ -28,11 +28,13 @@ const props = withDefaults(defineProps<{
 }>(), { photoUrl: '', size: 'md' })
 
 const initials = computed(() => initialsOf(props.name))
+const failedUrl = ref('')
+const showPhoto = computed(() => !!props.photoUrl && failedUrl.value !== props.photoUrl)
 </script>
 
 <template>
     <span class="cm-person" :class="`cm-person--${size}`" aria-hidden="true">
-        <img v-if="photoUrl" :src="photoUrl" alt="" class="cm-person__photo">
+        <img v-if="showPhoto" :src="photoUrl" alt="" class="cm-person__photo" @error="failedUrl = photoUrl">
         <template v-else>{{ initials }}</template>
     </span>
 </template>

@@ -19,11 +19,13 @@ limitations under the License.
  * The agent's mark: two dots on the accent, the left one for the AI and the right
  * one for a person. The AI dot pulses while a reply is being worked on; the person's
  * dot stays faint until someone has joined. The agent's photo or the orb (see
- * agent-face.ts) replace the dots. Decorative: the name beside it says who it is.
+ * agent-face.ts) replace the dots; a photo that won't load falls back to them.
+ * Decorative: the name beside it says who it is.
  */
+import { computed, ref } from 'vue'
 import type { AgentFace } from './agent-face'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
     face?: AgentFace
     /** 'lg' on the start state (44px), 'md' in the header (34px), 'sm' on an answer's label row (20px). */
     size?: 'lg' | 'md' | 'sm'
@@ -34,12 +36,17 @@ withDefaults(defineProps<{
     /** A person has joined the conversation. */
     humanJoined?: boolean
 }>(), { face: 'mark', size: 'md', photoUrl: '', orbStyle: () => ({}), working: false, humanJoined: false })
+
+// A photo that fails to load (gone, blocked) shows the dots instead of a broken image
+const failedUrl = ref('')
+const shown = computed<AgentFace>(() =>
+    props.face === 'photo' && (!props.photoUrl || failedUrl.value === props.photoUrl) ? 'mark' : props.face)
 </script>
 
 <template>
-    <span class="cm-mark" :class="[`cm-mark--${size}`, { 'cm-mark--plain': face !== 'mark' }]" aria-hidden="true">
-        <img v-if="face === 'photo' && photoUrl" :src="photoUrl" alt="" class="cm-mark__photo">
-        <span v-else-if="face === 'orb'" class="cm-mark__orb" :style="orbStyle"></span>
+    <span class="cm-mark" :class="[`cm-mark--${size}`, { 'cm-mark--plain': shown !== 'mark' }]" aria-hidden="true">
+        <img v-if="shown === 'photo'" :src="photoUrl" alt="" class="cm-mark__photo" @error="failedUrl = photoUrl">
+        <span v-else-if="shown === 'orb'" class="cm-mark__orb" :style="orbStyle"></span>
         <template v-else>
             <span class="cm-mark__dot" :class="{ 'cm-pulse': working }" data-dot="ai"></span>
             <span class="cm-mark__dot cm-mark__dot--human" :class="{ 'is-joined': humanJoined }" data-dot="human"></span>

@@ -19,13 +19,22 @@ details out of the reply because cards show them, so without cards the reply
 alone would announce products and show none.
 """
 
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 MAX_PRODUCTS_IN_TEXT = 5
 
 
+def _amount(price: Any) -> str:
+    """A price as money is written: "600.0" from the store reads "600.00"."""
+    try:
+        return f"{Decimal(str(price)):.2f}"
+    except (InvalidOperation, ValueError):
+        return str(price)
+
+
 def _product_text(product: Any, shop_domain: Optional[str]) -> str:
-    price = product.price_formatted or (f"{product.currency} {product.price}" if product.price else None)
+    price = product.price_formatted or (f"{product.currency} {_amount(product.price)}" if product.price else None)
     text = f"• {product.title} - {price}" if price else f"• {product.title}"
     if product.handle and shop_domain:
         text += f"\n  https://{shop_domain}/products/{product.handle}"

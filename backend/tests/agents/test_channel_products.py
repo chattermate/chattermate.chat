@@ -34,6 +34,11 @@ def test_lists_title_price_and_link():
     )
 
 
+@pytest.mark.parametrize("raw,shown", [("600.0", "600.00"), ("699.95", "699.95"), ("1200", "1200.00"), ("free", "free")])
+def test_the_price_reads_as_money(raw, shown):
+    assert f"• Board - INR {shown}\n" in with_product_list("x", output(product(price=raw, currency="INR")))
+
+
 def test_a_formatted_price_wins():
     assert "• Board - $99" in with_product_list("x", output(product(price_formatted="$99")))
 
