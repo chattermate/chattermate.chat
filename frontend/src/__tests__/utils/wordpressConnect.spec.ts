@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, expect, it } from 'vitest'
-import { allowsHost, buildReturnUrl, parseConnectRequest, parseReturnUrl } from '@/utils/wordpressConnect'
+import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite, parseReturnUrl } from '@/utils/wordpressConnect'
 
 const RETURN = 'https://shop.example.com/wp-admin/admin-post.php?action=chattermate_connect'
 
@@ -100,6 +100,16 @@ describe('buildReturnUrl', () => {
     const url = new URL(buildReturnUrl(request, { error: 'cancelled' }))
     expect(url.searchParams.get('error')).toBe('cancelled')
     expect(url.searchParams.has('widget_id')).toBe(false)
+  })
+})
+
+describe('returnsToTheSite', () => {
+  it('is true for the same host or its www twin, false for another host or no site', () => {
+    const at = (site_url?: string) => parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url })!
+    expect(returnsToTheSite(at('https://shop.example.com/'))).toBe(true)
+    expect(returnsToTheSite(at('https://www.shop.example.com/'))).toBe(true)
+    expect(returnsToTheSite(at('https://evil.example/'))).toBe(false)
+    expect(returnsToTheSite(at())).toBe(false)
   })
 })
 

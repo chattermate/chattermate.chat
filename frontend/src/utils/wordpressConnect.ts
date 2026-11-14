@@ -78,6 +78,17 @@ export function parseConnectRequest(query: Record<string, unknown>): ConnectRequ
   }
 }
 
+/**
+ * Whether the WordPress admin we return to is on the site's own host (a www twin
+ * counts). Only then may the return carry a connect token: a crafted link could
+ * otherwise show one site and send the token to another.
+ */
+export function returnsToTheSite(request: ConnectRequest): boolean {
+  if (!request.siteUrl) return false
+  const bare = (host: string) => host.toLowerCase().replace(/^www\./, '')
+  return bare(new URL(request.siteUrl).host) === bare(request.returnUrl.host)
+}
+
 /** The site's public address, or null when it isn't an http(s) URL. */
 function publicUrl(raw: unknown): URL | null {
   if (typeof raw !== 'string' || !raw) return null

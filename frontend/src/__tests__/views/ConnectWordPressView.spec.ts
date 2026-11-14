@@ -207,18 +207,18 @@ describe('ConnectWordPressView', () => {
   describe('teaching the agent the site (hosted)', () => {
     beforeEach(() => {
       enterprise.connectToken = vi.fn().mockResolvedValue('tok-123')
-      Object.assign(query, { site_url: 'https://shop.example/', store: '1' })
+      Object.assign(query, { site_url: 'https://shop.example.com/', store: '1' })
     })
 
     it('is ticked by default and sends the token back with the widget', async () => {
       const wrapper = mountView()
       await flushPromises()
-      expect(wrapper.find('.learn-option').text()).toContain('store shop.example')
+      expect(wrapper.find('.learn-option').text()).toContain('store shop.example.com')
 
       await wrapper.find('.connect-actions button').trigger('click')
       await flushPromises()
 
-      expect(enterprise.connectToken).toHaveBeenCalledWith('w-sales-0001', 'https://shop.example/')
+      expect(enterprise.connectToken).toHaveBeenCalledWith('w-sales-0001', 'https://shop.example.com/', RETURN)
       expect(returned().searchParams.get('connect_token')).toBe('tok-123')
       expect(returned().searchParams.get('widget_id')).toBe('w-sales-0001')
     })
@@ -242,9 +242,21 @@ describe('ConnectWordPressView', () => {
       await flushPromises()
 
       expect(assign).not.toHaveBeenCalled()
-      expect(wrapper.find('.connect-error').text()).toContain("couldn't set up learning for shop.example")
+      expect(wrapper.find('.connect-error').text()).toContain("couldn't set up learning for shop.example.com")
       expect(wrapper.find('.connect-actions button').attributes('disabled')).toBeUndefined()
     })
+  })
+
+  it('never offers learning when the admin it returns to is another host than the site', async () => {
+    enterprise.connectToken = vi.fn().mockResolvedValue('tok-123')
+    Object.assign(query, { site_url: 'https://victim-shop.example/', store: '1' })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('.learn-option').exists()).toBe(false)
+    await wrapper.find('.connect-actions button').trigger('click')
+    await flushPromises()
+    expect(enterprise.connectToken).not.toHaveBeenCalled()
+    expect(returned().searchParams.has('connect_token')).toBe(false)
   })
 
   it('offers no learning and sends no token in the open-source build', async () => {

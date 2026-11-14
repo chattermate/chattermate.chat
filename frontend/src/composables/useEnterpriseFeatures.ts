@@ -69,7 +69,7 @@ type EnterpriseModule = {
   getSessionToken?: (app: any) => Promise<string>
   useShopifyIntegration?: (agentId: string) => any
   setupService?: { getProgress: () => Promise<{ step: string; agent_id: string | null; widget_id: string | null }> }
-  wordpressSites?: { connectToken: (widgetId: string, siteUrl: string) => Promise<string> }
+  wordpressSites?: { connectToken: (widgetId: string, siteUrl: string, returnUrl: string) => Promise<string> }
 }
 
 // Create a mapping of module paths to their direct imports

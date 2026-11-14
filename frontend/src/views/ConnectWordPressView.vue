@@ -19,7 +19,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { allowsHost, buildReturnUrl, parseConnectRequest } from '@/utils/wordpressConnect'
+import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
 
 /** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
 interface WidgetWithAgent {
@@ -86,10 +86,10 @@ watch(selectedId, async (id) => {
 
 /** The token the plugin claims to teach the agent the site; null when not wanted or not offered. */
 async function learnToken(widgetId: string): Promise<string | null> {
-  const siteUrl = request.value?.siteUrl
-  if (!learn.value || !siteUrl) return null
+  const req = request.value
+  if (!learn.value || !req?.siteUrl || !returnsToTheSite(req)) return null
   const sites = (await loadModule(moduleImports.wordpressSites))?.wordpressSites
-  return sites ? sites.connectToken(widgetId, siteUrl) : null
+  return sites ? sites.connectToken(widgetId, req.siteUrl, req.returnUrl.toString()) : null
 }
 
 async function connect() {
@@ -176,7 +176,7 @@ onMounted(() => {
 
           <component
             :is="LearnOption"
-            v-if="request.siteUrl"
+            v-if="returnsToTheSite(request)"
             v-model="learn"
             :site-host="siteHost"
             :store="request.store"
