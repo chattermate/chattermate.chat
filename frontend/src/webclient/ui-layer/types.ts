@@ -30,6 +30,8 @@ export interface WidgetUiLayer {
     messageKind?(message: WidgetMessage): string | undefined
     /** The components for those kinds. Each gets `message` and `index` like the panel's own. */
     messageComponents?: Record<string, Component>
+    /** A live reply's keys to keep on the message, as a restored one has them in its attributes. */
+    replyKeys?: string[]
     /** Drawn under an AI answer's text, in order. Each gets `message` and `index`. */
     answerParts?: Component[]
     /** Drawn above the message box while the composer shows. */

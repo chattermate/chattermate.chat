@@ -93,14 +93,9 @@ describe('your conversations', () => {
         expect(wrapper!.text()).toContain('No conversations yet.')
     })
 
-    it('offers to find chats from another device with the email check', async () => {
+    it('offers no way to find chats from another device without a chat UI layer', () => {
         show({ items: [], total: 0, otherBrowsers: { email: null, offer: true } })
-        expect(wrapper!.find('.cm-email-check').exists()).toBe(false)
-        await wrapper!.get('.cm-history__others-link').trigger('click')
-        const card = wrapper!.get('section[aria-label="Find your other chats"]')
-        await card.get('input[type="email"]').setValue('jane@acme.com')
-        await card.get('form').trigger('submit')
-        expect(ctrl.startEmailCheck).toHaveBeenCalledWith('jane@acme.com', 'history')
+        expect(wrapper!.find('.cm-history__others-link').exists()).toBe(false)
     })
 
     it('says whose chats it includes once the email is confirmed', () => {

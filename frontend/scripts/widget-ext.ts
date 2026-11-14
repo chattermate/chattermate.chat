@@ -53,22 +53,22 @@ export function withoutLayerUnlessImageBuild(): void {
   if (process.env.CHATTERMATE_IMAGE_BUILD !== '1') process.env.NO_ENTERPRISE = '1'
 }
 
-/** The file a virtual extension id resolves to in this build. */
-export function extensionFile(id: ExtensionId): string {
+/** The file a virtual extension id resolves to in this build (`layer` false: none). */
+export function extensionFile(id: ExtensionId, layer = true): string {
   const { enterprise, none } = EXTENSIONS[id]
   const own = resolve(frontendDir, enterprise)
-  return enterpriseAllowed() && existsSync(own) ? own : resolve(frontendDir, none)
+  return layer && enterpriseAllowed() && existsSync(own) ? own : resolve(frontendDir, none)
 }
 
 const isExtension = (id: string): id is ExtensionId => id in EXTENSIONS
 
-/** For Vite and Vitest configs. */
-export function widgetExtensionPlugin(): VitePlugin {
+/** For Vite and Vitest configs. `layer: false` always resolves to none (the OSS tests). */
+export function widgetExtensionPlugin({ layer = true }: { layer?: boolean } = {}): VitePlugin {
   return {
     name: 'chattermate-widget-extensions',
     enforce: 'pre',
     resolveId(id) {
-      return isExtension(id) ? extensionFile(id) : null
+      return isExtension(id) ? extensionFile(id, layer) : null
     },
   }
 }

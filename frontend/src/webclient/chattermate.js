@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { createHostActions } from './loader/hostActions.js'
 import { createPushLayout, sheetCss } from './loader/pushLayout.js'
-import { createShopifyCart } from './loader/shopifyCart.js'
 import createLoaderExtension from 'virtual:cm-loader-ext'
 import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
@@ -326,10 +325,9 @@ import {
     postToFrame(message)
     return true
   }, (function () { try { return window.sessionStorage } catch (e) { return null } })())
-  // The chat UI layer's side on the page ("Add to cart" on a Shopify storefront):
-  // the build's (scripts/widget-ext.ts), else today's cart bridge. Sent only once
-  // the widget is listening.
-  const pageExtension = (createLoaderExtension || createShopifyCart)(window, postToFrame)
+  // The chat UI layer's side on the page ("Add to cart" on a Shopify storefront),
+  // when the build has one (scripts/widget-ext.ts). Sent only once the widget is listening.
+  const pageExtension = createLoaderExtension ? createLoaderExtension(window, postToFrame) : null
   const pushLayout = createPushLayout(window)
   // Only the widget frame may talk to the loader: the right window, and the right
   // origin - which is only known once it says hello, so until then hello is all it
@@ -1603,7 +1601,7 @@ import {
       panel.destroy()
       panelHost = null
       // The storefront's cart events would still read cart.js for a widget that is gone.
-      pageExtension.destroy()
+      if (pageExtension) pageExtension.destroy()
       ;[button, backdrop, container, mobileCloseButton, mobileTopbar].forEach(removeNode)
       removeNode(document.getElementById('chattermate-styles'))
       document.body.classList.remove('ask-anything-mobile')
@@ -1943,12 +1941,12 @@ import {
       if (event.data.type === 'WIDGET_READY') {
         onWidgetReady()
         hostActions.announce()
-        pageExtension.announce()
+        if (pageExtension) pageExtension.announce()
         announceCapabilities()
         return
       }
       if (hostActions.handleFrameMessage(event.data)) return
-      if (pageExtension.handleFrameMessage(event.data)) return
+      if (pageExtension && pageExtension.handleFrameMessage(event.data)) return
       if (event.data.type === 'WIDGET_OPEN_REQUEST') {
         // A journey step that opens the chat by itself (once per step).
         if (!isOpen) toggleChat()

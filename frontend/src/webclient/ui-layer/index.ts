@@ -17,19 +17,19 @@ limitations under the License.
 /// <reference path="./virtual-modules.d.ts" />
 
 /**
- * The panel's chat UI layer. The build decides which (scripts/widget-ext.ts
- * resolves `virtual:cm-widget-ext`); until a build supplies one, the cards and
- * commerce the panel has today stand in (builtin.ts).
+ * The panel's chat UI layer, when the build has one (scripts/widget-ext.ts
+ * resolves `virtual:cm-widget-ext`). Without one every reply is its text.
  */
 
 import installed from 'virtual:cm-widget-ext'
-import { BUILTIN_LAYER } from './builtin'
 import type { WidgetUiLayer, WidgetUiLayerHost } from './types'
 import type { WidgetMessage } from '../../types/widget'
 
 export type { WidgetUiLayer, WidgetUiLayerHost } from './types'
 
-export const uiLayer: WidgetUiLayer = installed ?? BUILTIN_LAYER
+const NO_LAYER: WidgetUiLayer = {}
+
+export const uiLayer: WidgetUiLayer = installed ?? NO_LAYER
 
 /** The layer's component for a message it draws whole, or undefined. */
 export function layerComponentFor(message: WidgetMessage) {
