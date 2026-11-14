@@ -79,7 +79,7 @@ def _written_in(value: str, text: str, part_of_a_word: str) -> bool:
 def missing_from_chat(customer_email: str, order_number: str, customer_messages: Iterable[str],
                       verified_email: Optional[str] = None) -> Optional[str]:
     """What the customer has not written themselves, or None when they gave both.
-    An email the conversation proved with a code (email_check.py) counts as given.
+    An email the conversation proved (email_proof.py) counts as given.
     Inputs must already pass order_lookup_problem."""
     written = "\n".join(customer_messages).lower()
     proven = bool(verified_email) and normalise_email(verified_email) == normalise_email(customer_email)

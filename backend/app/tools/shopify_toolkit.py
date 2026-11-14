@@ -46,9 +46,8 @@ from app.tools.shopify_order_access import (
     order_number_matches,
 )
 
-from app.cards.order_card import order_card, recent_orders_card
-from app.services import email_check
-from app.cards.turn_cards import TurnCards
+from app.services import email_proof
+from app.services.reply_ui import EMAIL_CHECK_EVENT, ORDER_EVENT, RECENT_ORDERS_EVENT, TurnEvents
 logger = get_logger(__name__)
 
 # A slow store must not hold the chat turn open.
@@ -232,8 +231,8 @@ class ShopifyTools(Toolkit):
         # even if the LLM forgets to echo the key in its structured shopify_output.
         # Per-request instance, so this cannot leak across turns.
         self.has_cached_products: bool = False
-        # The reply's status cards (app/cards), set by the chat agent for the redesign.
-        self.turn_cards: Optional[TurnCards] = None
+        # What this turn's tools did, for a chat that shows more than text (reply_ui.py)
+        self.turn_events: Optional[TurnEvents] = None
 
         # Register the functions
         self.register(self.list_products)
@@ -647,12 +646,12 @@ class ShopifyTools(Toolkit):
         """What to ask the customer before this lookup can run, or None when it can."""
         return (order_lookup_problem(customer_email, order_number)
                 or missing_from_chat(customer_email, order_number, self._customer_messages(),
-                                     verified_email=email_check.verified_email(self.session_id)))
+                                     verified_email=email_proof.verified_email(self.session_id)))
 
     def offer_email_check(self) -> None:
         """Offer the email check and the visitor's own orders: the redesigned
-        widget only, and only where codes can be kept (Redis)."""
-        if email_check.available():
+        widget only, and only where an email can be proven (email_proof.py)."""
+        if email_proof.available():
             self.register(self.confirm_email)
             self.register(self.list_my_orders)
 
@@ -665,13 +664,13 @@ class ShopifyTools(Toolkit):
         Returns:
             str: JSON saying whether their email is already confirmed.
         """
-        proven = email_check.verified_email(self.session_id)
+        proven = email_proof.verified_email(self.session_id)
         if proven:
             return json.dumps({"confirmed": True, "message": "Their email is confirmed. Call list_my_orders."})
         # Only a conversation that was offered the check may send a code.
-        if self.turn_cards is None or not email_check.offer(str(self.session_id)):
+        if self.turn_events is None or not email_proof.offer(str(self.session_id)):
             return json.dumps({"confirmed": False, "message": "Ask the customer for their order number and email."})
-        self.turn_cards.email_check = True
+        self.turn_events.add(EMAIL_CHECK_EVENT)
         return json.dumps({"confirmed": False, "message": (
             "The chat now shows the customer a box to confirm their email with a code. "
             "Tell them to enter their email there. Do not ask them to type it in the chat.")})
@@ -691,7 +690,7 @@ class ShopifyTools(Toolkit):
             return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
 
     def _list_my_orders(self) -> str:
-        email = email_check.verified_email(self.session_id)
+        email = email_proof.verified_email(self.session_id)
         if not email:
             return json.dumps({"success": False, "message": "Their email is not confirmed yet. Call confirm_email."})
         # Only an address inert in Shopify's search syntax goes into the query
@@ -703,8 +702,8 @@ class ShopifyTools(Toolkit):
         orders = self._recent_orders(shop, email)
         if orders is None:
             return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
-        if self.turn_cards is not None and orders:
-            self.turn_cards.add(recent_orders_card(orders, self.turn_cards.labels))
+        if self.turn_events is not None and orders:
+            self.turn_events.add(RECENT_ORDERS_EVENT, {'orders': orders})
         return json.dumps({"success": True, "orders": orders,
                            "message": "No orders for this email." if not orders else
                            "Ask which order they mean, or answer about the latest one."})
@@ -857,7 +856,7 @@ class ShopifyTools(Toolkit):
         """
         try:
             # The email the customer proved with a code (confirm_email), when none was given
-            customer_email = customer_email or email_check.verified_email(self.session_id) or ""
+            customer_email = customer_email or email_proof.verified_email(self.session_id) or ""
             problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
@@ -885,8 +884,8 @@ class ShopifyTools(Toolkit):
             # The full record is fetched separately, so check ownership on it too.
             if not order_belongs_to(order, customer_email):
                 return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
-            if self.turn_cards is not None:
-                self.turn_cards.add(order_card(order, self.turn_cards.labels))
+            if self.turn_events is not None:
+                self.turn_events.add(ORDER_EVENT, {'order': order})
 
             # Filter out cancelled fulfillments - only include active ones
             active_fulfillments = [

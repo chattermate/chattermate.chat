@@ -172,10 +172,8 @@ class TestTurnCards:
         assert [c["id"] for c in payload] == ["order-55", "ticket-TKT-1"]
         assert payload[1]["status"]["label"] == "Looking into it"
 
-    def test_caps_and_resets(self):
+    def test_caps(self):
         cards = TurnCards()
         for i in range(MAX_CARDS + 2):
             cards.add(ticket_card(f"TKT-{i}", "open"))
         assert len(cards.payload()) == MAX_CARDS
-        cards.reset()
-        assert cards.payload() == []

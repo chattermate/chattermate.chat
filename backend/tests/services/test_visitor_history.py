@@ -223,7 +223,7 @@ class TestOtherBrowsers:
         monkeypatch.setattr(history, "KEYS_INTRODUCED", START - timedelta(days=1))
 
     def _prove(self, monkeypatch, email=EMAIL):
-        monkeypatch.setattr(history.email_check, "verified_email", lambda session_id, customer_id=None: email)
+        monkeypatch.setattr(history.email_proof, "verified_email", lambda session_id, customer_id=None: email)
 
     def _phone(self, db, widget, email=EMAIL, text="Chat from my phone"):
         """A chat in another browser (another customer row, another token scope)."""
@@ -258,8 +258,8 @@ class TestOtherBrowsers:
 
     def test_without_the_proof_they_stay_hidden(self, db, test_widget, test_customer, monkeypatch):
         self._phone(db, test_widget)
-        monkeypatch.setattr(history.email_check, "verified_email", lambda *a, **k: None)
-        monkeypatch.setattr(history.email_check, "available", lambda: True)
+        monkeypatch.setattr(history.email_proof, "verified_email", lambda *a, **k: None)
+        monkeypatch.setattr(history.email_proof, "available", lambda: True)
         page = history.list_conversations(db, _socket(test_widget, test_customer))
         assert page["items"] == [] and page["other_browsers"] == {"email": None, "offer": True}
 
@@ -300,7 +300,7 @@ class TestOtherBrowsers:
         assert history.link_proven_email(db, socket, "first@acme.com") == 1
         assert history.link_proven_email(db, socket, "second@acme.com") == 0
         rows = {r.session_id: r.verified_email_key for r in db.query(SessionToAgent)}
-        assert rows[current] == history.email_check.email_key("first@acme.com", test_widget.organization_id)
+        assert rows[current] == history.email_proof.email_key("first@acme.com", test_widget.organization_id)
         assert rows[earlier] is None
 
     def test_another_visitors_chat_is_never_linked(self, db, test_widget, test_customer):
@@ -321,9 +321,9 @@ class TestOtherBrowsers:
 
     def test_the_stored_key_is_not_the_email_and_differs_by_organization(self, db, test_widget, test_customer):
         org = test_widget.organization_id
-        key = history.email_check.email_key(" Jane@Acme.com ", org)
-        assert key == history.email_check.email_key("jane@acme.com", org)
-        assert key != history.email_check.email_key("jane@acme.com", uuid4())
+        key = history.email_proof.email_key(" Jane@Acme.com ", org)
+        assert key == history.email_proof.email_key("jane@acme.com", org)
+        assert key != history.email_proof.email_key("jane@acme.com", uuid4())
         assert "jane" not in key and len(key) == 64
 
     def test_once_the_proof_is_gone_so_are_they(self, db, test_widget, test_customer, monkeypatch):
@@ -331,7 +331,7 @@ class TestOtherBrowsers:
         self._prove(monkeypatch)
         socket = _socket(test_widget, test_customer)
         assert [i["id"] for i in history.list_conversations(db, socket)["items"]] == [str(phone)]
-        monkeypatch.setattr(history.email_check, "verified_email", lambda *a, **k: None)
+        monkeypatch.setattr(history.email_proof, "verified_email", lambda *a, **k: None)
         assert history.list_conversations(db, socket)["items"] == []
         assert history.get_conversation(db, socket, str(phone)) is None
 
@@ -342,7 +342,7 @@ class TestOtherBrowsers:
             asked["args"] = (session_id, customer_id)
             return None
 
-        monkeypatch.setattr(history.email_check, "verified_email", verified_email)
+        monkeypatch.setattr(history.email_proof, "verified_email", verified_email)
         history.list_conversations(db, _socket(test_widget, test_customer, current="c-1"))
         assert asked["args"] == ("c-1", str(test_customer.id))
 

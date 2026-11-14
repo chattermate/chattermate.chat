@@ -23,13 +23,13 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatAgent
-from app.cards.turn_cards import TurnCards
+from app.services.reply_ui import TurnEvents
 from app.models.schemas.chat import ChatResponse, ShopifyOutputData, ShopifyProduct, TransferReasonType
 
 
 def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
                 mcp_tools=None, transfer_override=None, channel=None,
-                broken_tool=None, groups=("support",), host_actions=None, turn_cards=None,
+                broken_tool=None, groups=("support",), host_actions=None, turn_events=None,
                 plan=lambda feature: True) -> ChatAgent:
     """A ChatAgent with everything external stubbed, to read what it was given."""
     agent_data = Mock()
@@ -74,7 +74,7 @@ def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
             mcp_tools=mcp_tools,
             channel=channel,
             host_action_functions=host_actions,
-            turn_cards=turn_cards,
+            turn_events=turn_events,
         )
 
 
@@ -344,8 +344,8 @@ class TestMyOrders:
     """The email check and the customer's own orders are a Growth plan's."""
 
     def _functions(self, **plan):
-        with patch('app.tools.shopify_toolkit.email_check.available', return_value=True):
-            agent = build_agent(shopify=True, turn_cards=TurnCards(), **plan)
+        with patch('app.tools.shopify_toolkit.email_proof.available', return_value=True):
+            agent = build_agent(shopify=True, turn_events=TurnEvents(), **plan)
         return set(agent.shopify_tools.functions)
 
     def test_offered_on_a_plan_with_it(self):

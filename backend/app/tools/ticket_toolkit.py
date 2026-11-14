@@ -21,8 +21,7 @@ from uuid import UUID
 
 from agno.tools import Toolkit
 
-from app.cards.ticket_card import ticket_card
-from app.cards.turn_cards import TurnCards
+from app.services.reply_ui import TICKET_EVENT, TurnEvents
 from app.core.logger import get_logger
 from app.database import SessionLocal
 from app.models.session_to_agent import SessionToAgent
@@ -65,8 +64,8 @@ class TicketTools(Toolkit):
         self.agent_id = agent_id
         self.org_id = org_id
         self.session_id = session_id
-        # The reply's status cards (app/cards), set by the chat agent for the redesign.
-        self.turn_cards: Optional[TurnCards] = None
+        # What this turn's tools did, for a chat that shows more than text (reply_ui.py)
+        self.turn_events: Optional[TurnEvents] = None
 
         self.register(self.create_ticket)
         self.register(self.get_ticket_status)
@@ -211,8 +210,8 @@ class TicketTools(Toolkit):
             )
 
     def _show_ticket(self, number: str, status: str) -> None:
-        if self.turn_cards is not None:
-            self.turn_cards.add(ticket_card(number, status, self.turn_cards.labels))
+        if self.turn_events is not None:
+            self.turn_events.add(TICKET_EVENT, {'number': number, 'status': status})
 
     def get_ticket_status(self, ticket_number: Optional[str] = None) -> str:
         """
@@ -241,7 +240,7 @@ class TicketTools(Toolkit):
                     return json.dumps({"exists": False, "message": "No ticket found."})
                 # A card only for this conversation's own ticket: a number alone
                 # proves nothing about whose ticket it is.
-                if self.turn_cards is not None:
+                if self.turn_events is not None:
                     own = ticket if not ticket_number else repo.get_by_session(UUID(str(self.session_id)))
                     if own is not None and own.id == ticket.id:
                         self._show_ticket(ticket.display_number, str(ticket.status))
