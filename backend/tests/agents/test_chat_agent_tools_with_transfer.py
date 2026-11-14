@@ -23,13 +23,14 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatAgent
-from app.cards.turn_cards import TurnCards
+from app.services import reply_ui
+from app.services.reply_ui import TurnEvents
 from app.models.schemas.chat import ChatResponse, ShopifyOutputData, ShopifyProduct, TransferReasonType
 
 
 def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
                 mcp_tools=None, transfer_override=None, channel=None,
-                broken_tool=None, groups=("support",), host_actions=None, turn_cards=None,
+                broken_tool=None, groups=("support",), host_actions=None, turn_events=None,
                 plan=lambda feature: True) -> ChatAgent:
     """A ChatAgent with everything external stubbed, to read what it was given."""
     agent_data = Mock()
@@ -74,7 +75,7 @@ def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
             mcp_tools=mcp_tools,
             channel=channel,
             host_action_functions=host_actions,
-            turn_cards=turn_cards,
+            turn_events=turn_events,
         )
 
 
@@ -276,6 +277,27 @@ def with_products(reply: ChatResponse) -> ChatResponse:
     return reply
 
 
+class _FakeLayer:
+    """A chat UI layer that draws nothing and adds one Shopify tool."""
+    payload_keys = frozenset()
+
+    def reply_extras(self, events):
+        return {}
+
+    def add_shopify_tools(self, toolkit):
+        def layer_tool() -> str:
+            """A tool the layer adds."""
+            return ""
+        toolkit.register(layer_tool)
+
+
+@pytest.fixture
+def ui_layer():
+    reply_ui.install(_FakeLayer())
+    yield
+    reply_ui.install(None)
+
+
 class TestProductsOnEachSurface:
     """The prompt keeps product details out of the reply because the widget shows
     them as cards. A channel has no cards, so without this the customer would get
@@ -292,12 +314,20 @@ class TestProductsOnEachSurface:
         assert "https://demo.myshopify.com/products/board" in reply.message
 
     @pytest.mark.parametrize("channel", [None, "web", "shopify"])
-    def test_the_widget_keeps_its_cards(self, channel):
+    def test_the_widget_keeps_its_cards(self, channel, ui_layer):
         agent = build_agent(transfer=False, shopify=True, channel=channel)
         with patch('app.agents.chat_agent.enrich_shopify_response', side_effect=lambda r, *a, **k: with_products(r)):
             reply = finished_turn(agent, model_reply())
         assert reply.message == "Here are some options for you."
         assert reply.shopify_output.products[0].title == "Board"
+
+    @pytest.mark.parametrize("channel", [None, "web"])
+    def test_a_widget_without_a_chat_ui_layer_gets_the_products_as_text(self, channel):
+        agent = build_agent(transfer=False, shopify=True, channel=channel)
+        with patch('app.agents.chat_agent.enrich_shopify_response', side_effect=lambda r, *a, **k: with_products(r)):
+            reply = finished_turn(agent, model_reply())
+        assert reply.message.startswith("Here are some options for you.")
+        assert "https://demo.myshopify.com/products/board" in reply.message
 
     def test_the_stored_row_says_what_the_customer_got(self):
         agent = build_agent(transfer=False, shopify=True, channel="telegram")
@@ -341,19 +371,18 @@ class TestHandoverStillWorksWithToolsAttached:
 
 
 class TestMyOrders:
-    """The email check and the customer's own orders are a Growth plan's."""
+    """The customer's own orders are a Growth plan's, and the chat UI layer's to add."""
 
     def _functions(self, **plan):
-        with patch('app.tools.shopify_toolkit.email_check.available', return_value=True):
-            agent = build_agent(shopify=True, turn_cards=TurnCards(), **plan)
+        agent = build_agent(shopify=True, turn_events=TurnEvents(), **plan)
         return set(agent.shopify_tools.functions)
 
-    def test_offered_on_a_plan_with_it(self):
-        assert {"confirm_email", "list_my_orders"} <= self._functions()
+    def test_the_layer_adds_its_tools_on_a_plan_with_it(self, ui_layer):
+        assert "layer_tool" in self._functions()
 
-    def test_not_offered_below_growth(self):
+    def test_not_offered_below_growth(self, ui_layer):
         functions = self._functions(plan=lambda feature: feature != "my_orders")
-        assert not {"confirm_email", "list_my_orders"} & functions
+        assert "layer_tool" not in functions
         # An order looked up by its number stays on every plan
         assert "get_order_status" in functions
 
@@ -361,8 +390,16 @@ class TestMyOrders:
 class TestCartWording:
     """The AI only points at an Add button the plan's product cards have."""
 
-    def test_a_plan_with_shopping_in_the_chat(self):
+    def test_a_plan_with_shopping_in_the_chat(self, ui_layer):
         assert "from the product card or the store" in prompt_of(build_agent(shopify=True))
+
+    def test_a_channel_has_no_card_to_add_from(self, ui_layer):
+        prompt = prompt_of(build_agent(shopify=True, channel="telegram"))
+        assert "Customers add products themselves, from the store." in prompt
+
+    def test_without_a_chat_ui_layer_there_is_no_card_to_add_from(self):
+        prompt = prompt_of(build_agent(shopify=True))
+        assert "Customers add products themselves, from the store." in prompt
 
     def test_a_plan_without_it_sends_them_to_the_store(self):
         prompt = prompt_of(build_agent(shopify=True, plan=lambda feature: feature != "shop_in_chat"))

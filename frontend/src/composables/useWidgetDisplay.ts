@@ -16,6 +16,7 @@ limitations under the License.
 
 import { computed, ref, watch, type Ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
+import { uiLayer } from '../webclient/ui-layer'
 
 /** The display geometry the embed loader reports with WIDGET_DISPLAY. */
 export interface WidgetDisplay {
@@ -56,9 +57,9 @@ export const CLASSIC_DISPLAY = { mode: 'floating', width: 400, height: 560 }
 // than silently dropping them, the whole conversation falls back to the chat panel.
 export const CHAT_ONLY_MESSAGE_TYPES = ['form', 'user_input', 'rating', 'product', 'shopify_output']
 
-// Reply extras the palette doesn't draw either (plan 6.1): status cards, the handover
-// card and the email check all need the panel's interactive UI.
-export const CHAT_ONLY_ATTRIBUTES = ['cards', 'handover', 'email_check']
+// Reply extras the palette doesn't draw either (plan 6.1): the handover card and
+// whatever the chat UI layer draws (status cards, the email check) need the panel.
+export const CHAT_ONLY_ATTRIBUTES = ['handover', ...(uiLayer.replyKeys ?? [])]
 
 const needsChatPanel = (attributes: unknown): boolean =>
     !!attributes && typeof attributes === 'object'

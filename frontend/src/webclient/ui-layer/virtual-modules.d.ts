@@ -1,4 +1,4 @@
-"""
+/*
 Copyright 2024-2026 ChatterMate
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,16 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+*/
 
-Builders for the redesigned widget's status cards (app/models/schemas/cards.py).
-"""
+// The build's chat UI layer, or null (scripts/widget-ext.ts resolves these ids).
+declare module 'virtual:cm-widget-ext' {
+    const layer: import('./types').WidgetUiLayerModule
+    export default layer
+}
+
+declare module 'virtual:cm-loader-ext' {
+    const createLoaderExtension: null | ((win: Window, postToFrame: (message: unknown) => void) =>
+        import('./types').LoaderExtension)
+    export default createLoaderExtension
+}

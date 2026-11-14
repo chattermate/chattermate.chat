@@ -20,6 +20,7 @@ import { build } from 'esbuild'
 import { JSDOM } from 'jsdom'
 import { compactLoaderSource, compactTemplateText } from '../../../scripts/loader-css'
 import { loaderBuildOptions } from '../../../scripts/loader-build'
+import { loaderExtensionPlugin } from '../../../scripts/widget-ext'
 
 /**
  * The build step that takes the comments and indentation out of the loader's
@@ -62,7 +63,7 @@ describe('the compacted loader bundle', () => {
     beforeAll(async () => {
         const options = loaderBuildOptions({ outfile: 'chattermate.min.js', apiUrl: 'https://api.example.com/api/v1', nodeEnv: 'production', minify: true })
         const compact = await build({ ...options, write: false })
-        const plain = await build({ ...options, plugins: [], write: false })
+        const plain = await build({ ...options, plugins: [loaderExtensionPlugin], write: false })
         bundles.compact = compact.outputFiles[0].text
         bundles.plain = plain.outputFiles[0].text
     }, 30000)

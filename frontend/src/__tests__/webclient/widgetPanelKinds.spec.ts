@@ -19,12 +19,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * Every message kind in the redesigned panel, end to end through the real widget
  * controller with the fake socket: the rating, forms, questions, workflow screens,
- * products and files reach the same socket calls as the classic widget's.
+ * and files reach the same socket calls as the classic widget's.
  */
 
 vi.mock('@/composables/useWidgetSocket', async () => (await import('./widgetHarness')).socketModule())
 
-import { mountWidget, postFromParent, resetSocket, settle, socket, socketCalls } from './widgetHarness'
+import { mountWidget, resetSocket, settle, socket, socketCalls } from './widgetHarness'
 
 const V2 = { customization_metadata: { widget_ui: { version: 2 } } }
 
@@ -179,22 +179,6 @@ describe('workflow screens', () => {
         await form.trigger('submit')
         await settle(wrapper, 6)
         expect(socketCalls.submitForm).toHaveBeenCalledWith({ email: 'ada@example.com' })
-    })
-})
-
-describe('product cards', () => {
-    const SHOP = 'acme.myshopify.com'
-    const MUG = { id: 'p1', title: 'Blue Mug', price: '12.5', price_formatted: '$12.50', cart_variant_id: 'gid-mug' }
-
-    it('adds to the store\'s cart through the page once the page announced its cart', async () => {
-        await mountPanel()
-        const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
-        await postFromParent(wrapper, { type: 'CART_AVAILABLE', shop: SHOP })
-        await show({ message_type: 'product', message: 'One pick.', shopify_output: { shop_domain: SHOP, products: [MUG] } })
-        const card = wrapper.find('[role="group"][aria-label="Blue Mug"]')
-        expect(wrapper.find('.message.agent-message.product-message').exists()).toBe(true)
-        await card.findAll('button').find((b: any) => b.text() === 'Add to cart').trigger('click')
-        expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'ADD_TO_CART', variantId: 'gid-mug' }), expect.anything())
     })
 })
 

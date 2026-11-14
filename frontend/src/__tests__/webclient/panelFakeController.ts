@@ -38,7 +38,6 @@ import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
 import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
-import type { EmailCheckState } from '@/composables/useEmailCheck'
 import { emptyHistory, type HistoryState } from '@/composables/useConversationHistory'
 import type { PageSuggestions } from '@/composables/usePageSuggestions'
 import type { VisitorFeedback } from '@/webclient/panel/answer-extras'
@@ -93,11 +92,6 @@ const baseController = () => ({
     isRevealing: ref(false),
     skipReveal: vi.fn(),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
-    requestProductOptions: vi.fn((_productId: string) => {}),
-    emailCheck: ref<EmailCheckState>({ stage: 'email', purpose: 'chat', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
-    startEmailCheck: vi.fn((_email: string) => {}),
-    verifyEmailCode: vi.fn((_code: string) => {}),
-    restartEmailCheck: vi.fn(),
     history: ref<HistoryState>(emptyHistory()),
     pageSuggestions: ref<PageSuggestions>({ loaded: false, heading: 'popular', pill: null, items: [] }),
     openHistory: vi.fn(),

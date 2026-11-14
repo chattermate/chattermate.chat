@@ -17,10 +17,3 @@
 .chat-container.cm-surface.cm-ui-2 .cm-reply {
     border-color: var(--cm-control-line);
 }
-.chat-container.cm-surface.cm-ui-2 .cm-cart-button {
-    min-height: 32px;
-    border-radius: var(--cm-radius-control);
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-}

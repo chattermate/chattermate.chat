@@ -21,7 +21,8 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
-from app.cards.turn_cards import TurnCards
+from app.services import reply_ui
+from app.services.reply_ui import TurnEvents
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import widget_choices
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
@@ -367,7 +368,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, turn_cards: Optional[TurnCards] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, turn_events: Optional[TurnEvents] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -377,10 +378,10 @@ class ChatAgent(ChatAgentMCPMixin):
         self.last_bot_message_id = None
         # The handover card state stored on this turn's reply (handover_payload.py)
         self.last_handover = None
-        # Status cards the tools produce this turn (app/cards), and the reply's
-        self.turn_cards = turn_cards
-        self.last_cards = None
-        self.last_email_check = False
+        # What this turn's tools did (reply_ui.py), and what the chat UI layer
+        # drew from it for the reply
+        self.turn_events = turn_events
+        self.last_ui_extras = {}
         # Channels that can show tappable choices get a reply schema that
         # offers them (ChannelChatResponse); everyone else's is unchanged.
         self._response_model = ChannelChatResponse if choice_limits is not None else ChatResponse
@@ -424,10 +425,10 @@ class ChatAgent(ChatAgentMCPMixin):
             # Check if Shopify is enabled for this agent while we have the db session
             shopify_config = None
             # "My orders" after an email check, and Add to cart on product cards, are a
-            # Growth plan's (widget_plan.py)
+            # Growth plan's (widget_plan.py), drawn by the chat UI layer (reply_ui.py)
             plan = widget_plan.features(db, org_id, (MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE)) if org_id else {}
             self.offers_my_orders = plan.get(MY_ORDERS_FEATURE, False)
-            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False)
+            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False) and self._shows_product_cards()
             if agent_id and org_id and session_id:
                 try:
                     shopify_config_repo = AgentShopifyConfigRepository(db)
@@ -579,10 +580,10 @@ class ChatAgent(ChatAgentMCPMixin):
 
         for toolkit in (getattr(self, 'ticket_tools', None), getattr(self, 'shopify_tools', None)):
             if toolkit is not None:
-                toolkit.turn_cards = self.turn_cards
-        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None \
+                toolkit.turn_events = self.turn_events
+        if self.turn_events is not None and getattr(self, 'shopify_tools', None) is not None \
                 and self.offers_my_orders:
-            self.shopify_tools.offer_email_check()
+            reply_ui.add_shopify_tools(self.shopify_tools)
 
         # Add MCP tools if provided
         if self.mcp_tools:
@@ -1049,8 +1050,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
         searchable again, and its cards are not this turn's."""
         if getattr(self, "knowledge_tool", None) is not None:
             self.knowledge_tool.reset_turn()
-        if getattr(self, "turn_cards", None) is not None:
-            self.turn_cards.reset()
+        if getattr(self, "turn_events", None) is not None:
+            self.turn_events.reset()
 
     async def _arun(self, message: str, session_id: str):
         """One agent run under AGENT_RUN_TIMEOUT, with the context-overflow
@@ -1143,11 +1144,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # Enrich Shopify response with full product data from Redis
             response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
-            # If shopify_output has products, remove URLs from message
-            # (URLs should only be removed when products are being displayed separately)
-            if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
-                response_content.message = remove_urls_from_message(response_content.message)
-                logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
+            self._products_for_surface(response_content)
 
             # Don't handle end chat or transfer here - let workflow handle it
             # Don't store any messages - let workflow handle storage
@@ -1404,9 +1401,25 @@ Keep your responses concise and focused. Provide clear, actionable information i
             transfer_group_id=transfer_group_id
         )
 
+    def _shows_product_cards(self) -> bool:
+        """The widget with a chat UI layer draws a reply's products as cards;
+        everywhere else they are written out in the reply (reply_ui.py)."""
+        return is_widget_channel(self.channel) and reply_ui.installed()
+
+    def _products_for_surface(self, response_content: ChatResponse) -> None:
+        """A reply's products as this surface shows them: cards carry the links, so
+        the text loses its URLs; without cards the products are listed in the text."""
+        products = getattr(response_content.shopify_output, 'products', None)
+        if not products:
+            return
+        response_content.message = remove_urls_from_message(response_content.message)
+        if not self._shows_product_cards():
+            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+
     def _widget_extras(self, response_content: ChatResponse) -> dict:
         """What the redesigned widget restores from history: follow-up
-        choices, the handover card and this turn's status cards."""
+        choices, the handover card and what the chat UI layer drew for this
+        turn (reply_ui.py)."""
         extras = {}
         choices = widget_choices(response_content) if is_widget_channel(self.channel) else []
         if choices:
@@ -1414,12 +1427,9 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_handover = handover_payload(response_content)
         if self.last_handover:
             extras["handover"] = self.last_handover
-        self.last_cards = (self.turn_cards.payload() or None) if self.turn_cards else None
-        if self.last_cards:
-            extras["cards"] = self.last_cards
-        self.last_email_check = bool(self.turn_cards and self.turn_cards.email_check)
-        if self.last_email_check:
-            extras["email_check"] = True
+        # Only the layer's own keys (reply_ui.payload_keys): never the reply's
+        self.last_ui_extras = reply_ui.reply_extras(self.turn_events)
+        extras.update(self.last_ui_extras)
         return extras
 
     def _store_bot_message(self, chat_repo: ChatRepository, message_data: dict) -> None:
@@ -1437,8 +1447,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         """
         self.last_bot_message_id = None
         self.last_handover = None
-        self.last_cards = None
-        self.last_email_check = False
+        self.last_ui_extras = {}
         try:
             # Update session and IDs if provided
             if session_id:
@@ -1591,14 +1600,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         # Enrich Shopify response with full product data from Redis
         response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
-        # If shopify_output has products, remove URLs from message
-        # (URLs should only be removed when products are being displayed separately)
-        if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
-            response_content.message = remove_urls_from_message(response_content.message)
-            logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
-
-        if not is_widget_channel(self.channel):
-            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+        self._products_for_surface(response_content)
 
         # Handle end chat and rating request
         if response_content.end_chat:

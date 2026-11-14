@@ -35,8 +35,6 @@ export type MessageKind =
     | 'joined'
     /** Any other system note ("Thank you for your feedback!"). */
     | 'system'
-    /** A reply carrying product cards (Shopify). */
-    | 'product'
     /** The end-of-chat rating request. */
     | 'rating'
     /** A form the workflow put in the chat. */
@@ -57,15 +55,13 @@ const KIND_FOR_TYPE: Record<string, MessageKind> = {
     rating: 'rating',
     form: 'form',
     user_input: 'userInput',
-    product: 'product',
+    // A reply of products the chat UI layer does not draw: its text
+    product: 'answer',
 }
-
-const hasProducts = (message: WidgetMessage) => !!message.shopify_output
 
 /** The component kind for one message. Unknown types fall back to text, never dropped. */
 export function messageKind(message: WidgetMessage): MessageKind {
     const type = message.message_type
-    if (hasProducts(message)) return 'product'
     if (AI_TYPES.has(type)) return handoverOf(message) ? 'handover' : 'answer'
     if (type === 'system') return isJoinedNote(message) ? 'joined' : 'system'
     return KIND_FOR_TYPE[type] || 'fallback'
