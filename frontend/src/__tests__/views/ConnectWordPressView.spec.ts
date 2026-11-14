@@ -31,6 +31,21 @@ vi.mock('@/services/widget', () => ({
   },
 }))
 
+// The hosted build's learn option and token service; an empty object is the open-source build
+const enterprise: { connectToken?: ReturnType<typeof vi.fn> } = {}
+const LearnOption = {
+  props: ['modelValue', 'siteHost', 'store'],
+  emits: ['update:modelValue'],
+  template: '<label class="learn-option"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />{{ store ? "store" : "site" }} {{ siteHost }}</label>',
+}
+vi.mock('@/composables/useEnterpriseFeatures', () => ({
+  useEnterpriseFeatures: () => ({
+    moduleImports: { wordpressLearnOption: 'learn-option', wordpressSites: 'sites' },
+    enterpriseComponent: () => (enterprise.connectToken ? LearnOption : { render: () => null }),
+    loadModule: async () => (enterprise.connectToken ? { wordpressSites: { connectToken: enterprise.connectToken } } : null),
+  }),
+}))
+
 import ConnectWordPressView from '@/views/ConnectWordPressView.vue'
 
 const RETURN = 'https://shop.example.com/wp-admin/admin-post.php?action=chattermate_connect'
@@ -61,6 +76,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  delete enterprise.connectToken
 })
 
 describe('ConnectWordPressView', () => {
@@ -186,5 +202,58 @@ describe('ConnectWordPressView', () => {
 
     expect(wrapper.find('h1').text()).toBe("This link isn't complete")
     expect(getWidgets).not.toHaveBeenCalled()
+  })
+
+  describe('teaching the agent the site (hosted)', () => {
+    beforeEach(() => {
+      enterprise.connectToken = vi.fn().mockResolvedValue('tok-123')
+      Object.assign(query, { site_url: 'https://shop.example/', store: '1' })
+    })
+
+    it('is ticked by default and sends the token back with the widget', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.find('.learn-option').text()).toContain('store shop.example')
+
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(enterprise.connectToken).toHaveBeenCalledWith('w-sales-0001', 'https://shop.example/')
+      expect(returned().searchParams.get('connect_token')).toBe('tok-123')
+      expect(returned().searchParams.get('widget_id')).toBe('w-sales-0001')
+    })
+
+    it('connects without learning when unticked', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.learn-option input').setValue(false)
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(enterprise.connectToken).not.toHaveBeenCalled()
+      expect(returned().searchParams.has('connect_token')).toBe(false)
+    })
+
+    it('stays on the page and says why when learning cannot be set up', async () => {
+      enterprise.connectToken!.mockRejectedValue(new Error('403'))
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(assign).not.toHaveBeenCalled()
+      expect(wrapper.find('.connect-error').text()).toContain("couldn't set up learning for shop.example")
+      expect(wrapper.find('.connect-actions button').attributes('disabled')).toBeUndefined()
+    })
+  })
+
+  it('offers no learning and sends no token in the open-source build', async () => {
+    query.site_url = 'https://shop.example/'
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('.learn-option').exists()).toBe(false)
+    await wrapper.find('.connect-actions button').trigger('click')
+    await flushPromises()
+    expect(returned().searchParams.has('connect_token')).toBe(false)
   })
 })

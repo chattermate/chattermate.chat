@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { allowsHost, buildReturnUrl, parseConnectRequest } from '@/utils/wordpressConnect'
 
 /** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
@@ -28,6 +29,11 @@ interface WidgetWithAgent {
 
 const route = useRoute()
 const request = computed(() => parseConnectRequest(route.query as Record<string, unknown>))
+
+// Teaching the agent the site (hosted builds): the option renders nothing in open source
+const { enterpriseComponent, loadModule, moduleImports } = useEnterpriseFeatures()
+const LearnOption = enterpriseComponent(moduleImports.wordpressLearnOption)
+const learn = ref(true)
 
 const widgets = ref<WidgetWithAgent[]>([])
 const selectedId = ref('')
@@ -78,6 +84,14 @@ watch(selectedId, async (id) => {
   }
 })
 
+/** The token the plugin claims to teach the agent the site; null when not wanted or not offered. */
+async function learnToken(widgetId: string): Promise<string | null> {
+  const siteUrl = request.value?.siteUrl
+  if (!learn.value || !siteUrl) return null
+  const sites = (await loadModule(moduleImports.wordpressSites))?.wordpressSites
+  return sites ? sites.connectToken(widgetId, siteUrl) : null
+}
+
 async function connect() {
   if (!request.value || !selectedId.value) return
   connecting.value = true
@@ -86,11 +100,20 @@ async function connect() {
     if (needsDomain.value && addDomain.value && allowedDomains.value) {
       await widgetService.setAllowedDomains(selectedId.value, [...allowedDomains.value, siteHost.value])
     }
-    window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value }))
   } catch {
     connecting.value = false
     connectError.value = `We couldn't add ${siteHost.value} to this widget's sites. Add it on the agent's Widget tab, or connect without it.`
+    return
   }
+  let connectToken: string | null
+  try {
+    connectToken = await learnToken(selectedId.value)
+  } catch {
+    connecting.value = false
+    connectError.value = `We couldn't set up learning for ${siteHost.value}. Try again, or untick it to connect without it.`
+    return
+  }
+  window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
 }
 
 function cancel() {
@@ -151,6 +174,13 @@ onMounted(() => {
             </span>
           </label>
 
+          <component
+            :is="LearnOption"
+            v-if="request.siteUrl"
+            v-model="learn"
+            :site-host="siteHost"
+            :store="request.store"
+          />
           <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
 
           <div class="connect-actions">

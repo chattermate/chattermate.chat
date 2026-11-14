@@ -69,6 +69,7 @@ type EnterpriseModule = {
   getSessionToken?: (app: any) => Promise<string>
   useShopifyIntegration?: (agentId: string) => any
   setupService?: { getProgress: () => Promise<{ step: string; agent_id: string | null; widget_id: string | null }> }
+  wordpressSites?: { connectToken: (widgetId: string, siteUrl: string) => Promise<string> }
 }
 
 // Create a mapping of module paths to their direct imports
@@ -119,6 +120,9 @@ const moduleImports = {
   setupService: '/src/modules/enterprise/utils/setupService.ts',
   // The setup assistant docked beside the onboarding wizard (nothing in open source)
   setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
+  // WordPress connect: teach the agent the site through the plugin (nothing in open source)
+  wordpressLearnOption: '/src/modules/enterprise/components/wordpress/WordPressLearnOption.vue',
+  wordpressSites: '/src/modules/enterprise/utils/wordpressSites.ts',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */

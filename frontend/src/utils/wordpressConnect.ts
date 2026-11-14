@@ -21,6 +21,8 @@ limitations under the License.
  * (its admin-post.php "chattermate_connect" action) and a random, single-use
  * `state`. The admin picks an agent here and is sent back with its widget ID.
  * The plugin checks the state, so a forged or replayed return does nothing.
+ * Where the build can teach the agent the site (hosted), the return also carries
+ * a one-time connect_token, which the plugin claims from its own server.
  */
 
 /** The plugin's admin-post action, the only place a return may go. */
@@ -32,6 +34,10 @@ export interface ConnectRequest {
   siteName: string
   /** The public site's host (home_url), where the chat runs; may differ from wp-admin's. */
   siteHost: string
+  /** The public site's address (home_url), when the plugin sent it. */
+  siteUrl: string | null
+  /** Whether the site is a WooCommerce store. */
+  store: boolean
 }
 
 /**
@@ -60,34 +66,44 @@ export function parseConnectRequest(query: Record<string, unknown>): ConnectRequ
   const state = firstValue(query.state)
   if (!returnUrl || typeof state !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(state)) return null
   const siteName = firstValue(query.site_name)
-  const siteHost = publicHost(firstValue(query.site_url)) ?? returnUrl.host
+  const siteUrl = publicUrl(firstValue(query.site_url))
+  const siteHost = siteUrl?.host ?? returnUrl.host
   return {
     returnUrl,
     state,
     siteName: typeof siteName === 'string' && siteName.trim() ? siteName.trim().slice(0, 120) : siteHost,
     siteHost,
+    siteUrl: siteUrl?.toString() ?? null,
+    store: firstValue(query.store) === '1',
   }
 }
 
-/** The host of the site's public address, or null when it isn't an http(s) URL. */
-function publicHost(raw: unknown): string | null {
+/** The site's public address, or null when it isn't an http(s) URL. */
+function publicUrl(raw: unknown): URL | null {
   if (typeof raw !== 'string' || !raw) return null
   try {
     const url = new URL(raw)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.host : null
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null
   } catch {
     return null
   }
 }
 
 /** Where to send the admin back to: with the chosen widget, or with why not. */
-export function buildReturnUrl(request: ConnectRequest, result: { widgetId: string } | { error: 'cancelled' }): string {
+export function buildReturnUrl(
+  request: ConnectRequest,
+  result: { widgetId: string; connectToken?: string | null } | { error: 'cancelled' },
+): string {
   const url = new URL(request.returnUrl.toString())
   // Only what this page decided goes back, never values smuggled into return_url.
-  for (const key of ['state', 'widget_id', 'error']) url.searchParams.delete(key)
+  for (const key of ['state', 'widget_id', 'error', 'connect_token']) url.searchParams.delete(key)
   url.searchParams.set('state', request.state)
-  if ('widgetId' in result) url.searchParams.set('widget_id', result.widgetId)
-  else url.searchParams.set('error', result.error)
+  if ('widgetId' in result) {
+    url.searchParams.set('widget_id', result.widgetId)
+    if (result.connectToken) url.searchParams.set('connect_token', result.connectToken)
+  } else {
+    url.searchParams.set('error', result.error)
+  }
   return url.toString()
 }
 

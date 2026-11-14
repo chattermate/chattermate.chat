@@ -55,6 +55,15 @@ describe('parseConnectRequest', () => {
     expect(parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url: 'javascript:x' })?.siteHost).toBe('shop.example.com')
   })
 
+  it('keeps the site address and whether it is a store', () => {
+    const request = parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url: 'https://shop.example/', store: '1' })
+    expect(request?.siteUrl).toBe('https://shop.example/')
+    expect(request?.store).toBe(true)
+    const plain = parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url: 'javascript:x' })
+    expect(plain?.siteUrl).toBeNull()
+    expect(plain?.store).toBe(false)
+  })
+
   it('refuses a request without a WordPress nonce', () => {
     expect(parseConnectRequest({ return_url: RETURN })).toBeNull()
     expect(parseConnectRequest({ return_url: RETURN, state: '"><script>' })).toBeNull()
@@ -78,6 +87,13 @@ describe('buildReturnUrl', () => {
     expect(url.searchParams.getAll('widget_id')).toEqual(['w-1'])
     expect(url.searchParams.getAll('state')).toEqual(['abc123xyz'])
     expect(url.searchParams.has('error')).toBe(false)
+  })
+
+  it('sends a connect token only when this page made one', () => {
+    const smuggled = parseConnectRequest({ return_url: RETURN + '&connect_token=evil', state: 'abc123xyz' })!
+    expect(new URL(buildReturnUrl(smuggled, { widgetId: 'w-1' })).searchParams.has('connect_token')).toBe(false)
+    const url = new URL(buildReturnUrl(smuggled, { widgetId: 'w-1', connectToken: 'tok-1' }))
+    expect(url.searchParams.getAll('connect_token')).toEqual(['tok-1'])
   })
 
   it('says so when the admin cancels', () => {
