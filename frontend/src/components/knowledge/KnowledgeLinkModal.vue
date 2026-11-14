@@ -16,6 +16,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { KnowledgeItem } from '@/types/knowledge'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 
 const props = defineProps<{
   sources: KnowledgeItem[]
@@ -37,7 +38,7 @@ const filteredSources = computed(() => {
   const q = query.value.trim().toLowerCase()
   if (!q) return props.sources
   return props.sources.filter(
-    (s) => s.name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q),
+    (s) => sourceLabel(s.name).toLowerCase().includes(q) || s.type.toLowerCase().includes(q),
   )
 })
 </script>
@@ -69,7 +70,7 @@ const filteredSources = computed(() => {
         <ul v-else class="list">
           <li v-for="item in filteredSources" :key="item.id" class="row">
             <div class="row__main">
-              <span class="row__name">{{ item.name }}</span>
+              <span class="row__name">{{ sourceLabel(item.name) }}</span>
               <span class="row__type">{{ item.type }}</span>
             </div>
             <button

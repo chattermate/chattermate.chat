@@ -36,7 +36,8 @@ from app.services import knowledge_vector_links
 
 
 class SourceLearning:
-    """Implements page_sink.SourceLearningHooks for one queued website."""
+    """Implements page_sink.SourceLearningHooks for one queued source: a
+    website, or a source an extension reads (see source_readers)."""
 
     def __init__(
         self,
@@ -46,6 +47,7 @@ class SourceLearning:
         source: str,
         table_name: str,
         schema: str,
+        source_type: SourceType = SourceType.WEBSITE,
     ):
         self._queue_id = queue_id
         self._organization_id = organization_id
@@ -54,6 +56,7 @@ class SourceLearning:
         self._source = source
         self._table_name = table_name
         self._schema = schema
+        self._source_type = source_type
         self._knowledge_id: Optional[int] = None
 
     def first_page(self) -> List[str]:
@@ -68,7 +71,7 @@ class SourceLearning:
             knowledge = KnowledgeRepository(db).get_or_create_source(
                 self._organization_id,
                 self._source,
-                SourceType.WEBSITE,
+                self._source_type,
                 self._table_name,
                 self._schema,
                 self._agent_id,

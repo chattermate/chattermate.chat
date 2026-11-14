@@ -266,3 +266,45 @@ class TestUpsertPage:
         db, session = store
         db.upsert_page([], {})
         db.Session.assert_not_called()
+
+
+class TestDeletePagesExcept:
+    """A source read whole drops the pages it no longer has, and only its own."""
+
+    SOURCE = "shopify:shop.example"
+
+    def _store(self, row_ids):
+        with patch('sqlalchemy.engine.create_engine'):
+            db = OptimizedPgVector(
+                table_name="d_org",
+                db_url="postgresql+psycopg://user:pass@localhost/testdb",
+                embedder=MagicMock(dimensions=3),
+            )
+        session = MagicMock()
+        session.__enter__.return_value = session
+        session.execute.return_value.scalars.return_value.all.return_value = row_ids
+        db.Session = MagicMock(return_value=session)
+        return db, session
+
+    def test_pages_not_kept_are_deleted_with_their_chunks(self):
+        prefix = f"{self.SOURCE}:"
+        db, session = self._store([
+            f"{prefix}basics", f"{prefix}page:about", f"{prefix}page:old::1", f"{prefix}page:old::2",
+        ])
+
+        dropped = db.delete_pages_except(self.SOURCE, prefix, {f"{prefix}basics", f"{prefix}page:about"})
+
+        assert dropped == 2
+        select_stmt, delete_stmt = [c.args[0] for c in session.execute.call_args_list]
+        select_sql, select_params = TestUpsertPage.sql(select_stmt)
+        assert prefix in select_params.values() and self.SOURCE in select_params.values()
+        delete_sql, delete_params = TestUpsertPage.sql(delete_stmt)
+        assert delete_sql.startswith("DELETE FROM")
+        assert [f"{prefix}page:old::1", f"{prefix}page:old::2"] in delete_params.values()
+
+    def test_nothing_gone_deletes_nothing(self):
+        prefix = f"{self.SOURCE}:"
+        db, session = self._store([f"{prefix}basics"])
+
+        assert db.delete_pages_except(self.SOURCE, prefix, {f"{prefix}basics"}) == 0
+        assert session.execute.call_count == 1  # the lookup only

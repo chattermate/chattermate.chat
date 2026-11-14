@@ -20,6 +20,7 @@ from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.repositories.knowledge import KnowledgeRepository
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.knowledge.failure_advice import SourceUnreadable
+from app.knowledge import source_readers
 from app.services import knowledge_vector_links
 from app.models.knowledge_queue import QueueStatus, ProcessingStage, STOPPED_AT_TIME_LIMIT
 from app.knowledge.page_sink import SourceRemoved
@@ -39,6 +40,9 @@ logger = get_logger(__name__)
 def get_user_friendly_filename(source: str, source_type: str) -> str:
     """Extract a user-friendly filename from the source URL or path"""
     try:
+        registered = source_readers.reader_for(source_type)
+        if registered:
+            return registered.label(source)
         if source_type in ('website', 'sitemap'):
             # For websites/sitemaps, just return the domain
             parsed = urlparse(source)
