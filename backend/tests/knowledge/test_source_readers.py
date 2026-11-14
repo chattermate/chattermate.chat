@@ -30,6 +30,7 @@ from app.knowledge.knowledge_base import KnowledgeManager
 from app.knowledge.page_sink import SourceRemoved
 from app.models.knowledge import SourceType
 from app.models.knowledge_queue import QueueStatus
+from app.workers.knowledge_processor import get_user_friendly_filename
 
 SOURCE = "shopify:shop.example"
 QUEUE_TYPE = "test_store"
@@ -120,6 +121,15 @@ class TestTheRegistry:
 
     def test_an_unknown_type_has_no_reader(self):
         assert source_readers.reader_for("website") is None
+
+    def test_notifications_name_the_source_by_its_label(self):
+        async def read(item):
+            yield _page(1)
+
+        _register(read)
+
+        assert get_user_friendly_filename(SOURCE, QUEUE_TYPE) == "your test store"
+        assert get_user_friendly_filename("https://shop.example/faq", "website") == "shop.example"
 
     def test_looking_one_up_loads_the_installed_extension(self, monkeypatch):
         loaded = MagicMock()

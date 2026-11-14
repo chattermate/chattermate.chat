@@ -337,14 +337,7 @@ class KnowledgeManager:
         SourceLearning). A site already learned is skipped and just linked,
         unless its last run stopped partway: then it is read again.
         """
-        learning = SourceLearning(
-            queue_item.id,
-            self.org_id,
-            self.agent_id,
-            queue_item.source,
-            self.vector_db.table_name,
-            self.vector_db.schema,
-        )
+        learning = self._source_learning(queue_item)
         knowledge_base = EnhancedWebsiteKnowledgeBase(
             urls=[queue_item.source],
             max_links=max_links,
@@ -378,6 +371,19 @@ class KnowledgeManager:
         if knowledge_base.stopped_at_time_limit:
             queue_repo.note_stopped_at_time_limit(queue_item.id)
 
+    def _source_learning(self, queue_item, source_type: SourceType = SourceType.WEBSITE) -> SourceLearning:
+        """What tells the rest of the app, as pages land, that the queued
+        source has content (see SourceLearning)."""
+        return SourceLearning(
+            queue_item.id,
+            self.org_id,
+            self.agent_id,
+            queue_item.source,
+            self.vector_db.table_name,
+            self.vector_db.schema,
+            source_type=source_type,
+        )
+
     def _source_filters(self, source: str) -> Dict:
         """The filters every page of the source is stored with."""
         return {
@@ -398,15 +404,7 @@ class KnowledgeManager:
         source is read on every run, so a run that reads it to the end also
         drops the pages it no longer has (see source_readers)."""
         label = registered.label(queue_item.source)
-        learning = SourceLearning(
-            queue_item.id,
-            self.org_id,
-            self.agent_id,
-            queue_item.source,
-            self.vector_db.table_name,
-            self.vector_db.schema,
-            source_type=registered.knowledge_type,
-        )
+        learning = self._source_learning(queue_item, registered.knowledge_type)
         if not self.vector_db.exists():
             self.vector_db.create()
         deadline = Deadline(settings.KB_SOURCE_TIME_LIMIT_SECONDS)

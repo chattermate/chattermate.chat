@@ -16,7 +16,6 @@ limitations under the License.
 What an agent learns about a Shopify store when it starts answering on it.
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest

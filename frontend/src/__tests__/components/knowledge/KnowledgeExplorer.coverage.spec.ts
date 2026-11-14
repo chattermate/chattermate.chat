@@ -300,3 +300,34 @@ describe('KnowledgeExplorer: a website still being read', () => {
     expect(label(await mountExplorer('agent'))).toBe('3 sub-pages')
   })
 })
+
+describe('KnowledgeExplorer: a source read through a Shopify store’s API', () => {
+  const STORE = { id: 500, name: 'shopify:teststore.myshopify.com', type: 'api', agents: [], pages: [] }
+  const LABEL = 'Your Shopify store (teststore.myshopify.com)'
+
+  it('is called by its store, not its internal key', async () => {
+    kb.getKnowledgeByOrganization.mockResolvedValue(page([STORE]))
+    const wrapper = await mountExplorer('org')
+    const name = wrapper.find('.src__name')
+    expect(name.text()).toBe(LABEL)
+    expect(wrapper.text()).not.toContain('shopify:teststore')
+  })
+
+  it('while queued, shows its label and is still matched to its queue item', async () => {
+    kb.getOrgQueueItems.mockResolvedValue({
+      queue_items: [{ id: 9, source: STORE.name, source_type: 'shopify_store', status: 'processing', created_at: '' }],
+    })
+    const wrapper = await mountExplorer('org')
+    expect(wrapper.find('.src__name').text()).toBe(LABEL)
+    expect(wrapper.text()).not.toContain('shopify:teststore')
+  })
+
+  it('is found by searching for its store', async () => {
+    kb.getKnowledgeByOrganization.mockResolvedValue(page([STORE, STAGING]))
+    const wrapper = await mountExplorer('org')
+    await wrapper.find('input[type="search"], .search input, input[placeholder*="Search"]').setValue('shopify store')
+    await flushPromises()
+    const names = wrapper.findAll('.src__name').map((n) => n.text())
+    expect(names).toEqual([LABEL])
+  })
+})

@@ -16,31 +16,23 @@ limitations under the License.
 
 import asyncio
 import traceback
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.utils.domain_check import InvalidWebsite, website_update
 from app.repositories.organization import OrganizationRepository
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.database import SessionLocal, get_db
-from app.models.schemas.shopify import ShopifyShopCreate, ShopifyShop, ShopifyShopUpdate
+from app.models.schemas.shopify import ShopifyShop, ShopifyShopUpdate
 from app.models.schemas.shopify import AgentShopifyConfigBase, AgentShopifyConfig, AgentShopifyConfigCreate, AgentShopifyConfigUpdate
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
-from typing import Optional
 import requests
-import hmac
-import hashlib
-import base64
 import json
-from urllib.parse import urlencode, quote
 from app.core.auth import get_current_user, require_permissions, get_current_organization, check_permissions
 from app.models.user import User
 from app.models.organization import Organization
-from app.services.shopify import ShopifyService
-from app.services.shopify_auth_service import ShopifyAuthService
 from app.services.shopify_helper_service import ShopifyHelperService
 from app.services import shopify_app_proxy, shopify_privacy
 from app.core.s3 import delete_file_from_s3
