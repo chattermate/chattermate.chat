@@ -37,6 +37,8 @@ export interface WidgetProduct {
   tracks_inventory?: boolean | null
   /** It has variants to choose between (Size, Colour): the product sheet reads them when opened. */
   has_choices?: boolean | null
+  /** None of it can be bought right now: the store sells it, but it's out of stock. */
+  sold_out?: boolean | null
 }
 
 /** A product's options and variants, read by the product sheet (product_options). */

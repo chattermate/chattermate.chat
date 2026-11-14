@@ -71,3 +71,16 @@ def test_a_long_list_is_cut_to_fit_a_chat_message():
 ])
 def test_nothing_to_list_leaves_the_reply_alone(nothing):
     assert with_product_list("Hello", nothing) == "Hello"
+
+
+def test_a_sold_out_product_says_so():
+    text = with_product_list("x", output(product(title="Gift Card", sold_out=True), product(sold_out=False)))
+    assert "• Gift Card - USD 99.00 (sold out)\n" in text
+    assert "• Board - USD 99.00\n" in text
+
+
+def test_sold_out_reaches_the_widget_through_the_reply_schema():
+    """The widget's card says "Sold out" from this field: a schema without it
+    would drop it on the way."""
+    sent = output(product(sold_out=True)).model_dump()
+    assert sent["products"][0]["sold_out"] is True

@@ -17,7 +17,7 @@ limitations under the License.
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, product_from_node
+from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, is_sold_out, product_from_node
 from agno.tools.function import Function, FunctionCall
 from app.tools.shopify_order_access import (
     EMAIL_REQUIRED,
@@ -25,11 +25,7 @@ from app.tools.shopify_order_access import (
     ORDER_NOT_FOUND,
     ORDER_NUMBER_REQUIRED,
 )
-from app.models.shopify import AgentShopifyConfig, ShopifyShop
-from app.models.organization import Organization
-from app.models.agent import Agent
-from uuid import UUID, uuid4
-import requests
+from uuid import UUID
 
 @pytest.fixture
 def mock_db():
@@ -831,8 +827,62 @@ def test_search_products_sends_the_widened_query(shopify_tools):
     with patch("requests.post", return_value=response) as post:
         shopify_tools.search_products("backpacks")
     assert post.call_args.kwargs["json"]["variables"]["searchTerm"] == (
-        "((backpacks OR backpack*)) AND status:active AND inventory_total:>0"
+        "((backpacks OR backpack*)) AND status:active"
     )
+
+
+@pytest.mark.parametrize("node,sold_out", [
+    # Seen on the test store: a gift card with no stock left, which search used to hide
+    ({"tracksInventory": True, "totalInventory": 0, "variants": {"edges": [_variant(available=False)]}}, True),
+    ({"tracksInventory": True, "totalInventory": -2, "variants": {"edges": []}}, True),
+    ({"tracksInventory": True, "totalInventory": 3, "variants": {"edges": [_variant()]}}, False),
+    # The store keeps selling at zero stock: still on sale
+    ({"tracksInventory": True, "totalInventory": 0, "variants": {"edges": [_variant()]}}, False),
+    # One size left of two
+    ({"tracksInventory": True, "totalInventory": 0,
+      "variants": {"edges": [_variant("1", available=False), _variant("2")]}}, False),
+    # Untracked stock (digital goods, services) never runs out
+    ({"tracksInventory": False, "totalInventory": 0, "variants": {"edges": [_variant(available=False)]}}, False),
+    ({}, False),
+], ids=["no-stock", "negative-stock", "in-stock", "sells-at-zero", "one-size-left", "untracked", "no-data"])
+def test_a_product_is_sold_out_only_when_nothing_of_it_can_be_bought(node, sold_out):
+    assert is_sold_out(node) is sold_out
+    assert product_from_node({"id": "gid://shopify/Product/5", **node})["sold_out"] is sold_out
+
+
+def test_search_returns_a_sold_out_product_and_tells_the_agent_it_is_sold_out(shopify_tools):
+    gift_card = {"id": "gid://shopify/Product/9", "title": "Gift Card", "publishedAt": PUBLISHED,
+                 "tracksInventory": True, "totalInventory": 0,
+                 "variants": {"edges": [_variant(available=False)]}}
+    board = {"id": "gid://shopify/Product/10", "title": "Board", "publishedAt": PUBLISHED,
+             "tracksInventory": True, "totalInventory": 4, "variants": {"edges": [_variant("222")]}}
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {
+        "edges": [{"node": gift_card}, {"node": board}], "pageInfo": {"hasNextPage": False}}}}
+
+    with patch("requests.post", return_value=response) as post, \
+         patch("app.tools.shopify_toolkit.get_redis") as get_redis:
+        result = json.loads(shopify_tools.search_products("gift card"))
+
+    assert "inventory_total" not in post.call_args.kwargs["json"]["variables"]["searchTerm"]
+    # What can be bought comes first
+    seen = [(p["title"], p["sold_out"]) for p in result["shopify_output"]["products"]]
+    assert seen == [("Board", False), ("Gift Card", True)]
+    cached = json.loads(get_redis.return_value.setex.call_args.args[2])["products"]
+    assert [(p["title"], p["sold_out"], p["cart_variant_id"]) for p in cached] == [
+        ("Board", False, "222"), ("Gift Card", True, None)]
+
+
+@pytest.mark.parametrize("call", [
+    lambda tools: tools.recommend_products(product_type="board"),
+    lambda tools: tools.recommend_products(),
+], ids=["recommend", "recent"])
+def test_recommendations_still_suggest_only_what_is_in_stock(shopify_tools, call):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {"edges": [], "pageInfo": {}}}}
+    with patch("requests.post", return_value=response) as post:
+        call(shopify_tools)
+    assert "inventory_total:>0" in json.dumps(post.call_args.kwargs["json"])
 
 
 @pytest.mark.parametrize("call", [

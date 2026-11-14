@@ -22,11 +22,8 @@ from app.services.shopify_urls import shopify_admin_url
 from app.services.shopify_tokens import admin_headers, call_admin_api
 from app.repositories.chat import ChatRepository
 from app.tools.shopify_search import catalog_filters, match_singulars
-from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
-from app.models.organization import Organization
-from app.models.agent import Agent
-from app.models.shopify import AgentShopifyConfig, ShopifyShop
+from app.models.shopify import ShopifyShop
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from uuid import UUID
@@ -38,7 +35,6 @@ from app.core.redis import get_redis
 from app.tools.shopify_order_access import (
     MAX_ORDER_RESULTS,
     missing_from_chat,
-    normalise_email,
     ORDER_NOT_FOUND,
     build_order_search,
     order_belongs_to,
@@ -147,6 +143,7 @@ def create_minimal_product(product: dict) -> dict:
         "vendor": product.get("vendor"),
         "product_type": product.get("product_type"),
         "total_inventory": product.get("total_inventory"),
+        "sold_out": product.get("sold_out", False),
         "tags": product.get("tags", [])
     }
 
@@ -163,6 +160,18 @@ def cart_variant_id(node: dict) -> Optional[str]:
     if not variant.get("id") or not variant.get("availableForSale"):
         return None
     return variant["id"].split("/")[-1]
+
+
+def is_sold_out(node: dict) -> bool:
+    """Nothing of the product can be bought: its stock is tracked and gone, and
+    none of the variants read is still on sale (a store that keeps selling at
+    zero stock keeps them on sale). Untracked stock never runs out. Only the
+    variants search reads (two) are checked: a product whose later variant sells
+    at zero stock while the first two can't is taken as sold out."""
+    if node.get("tracksInventory") is not True or (node.get("totalInventory") or 0) > 0:
+        return False
+    edges = (node.get("variants") or {}).get("edges") or []
+    return not any((edge.get("node") or {}).get("availableForSale") for edge in edges)
 
 
 def product_from_node(node: dict) -> dict:
@@ -192,6 +201,7 @@ def product_from_node(node: dict) -> dict:
         "published": bool(node.get("publishedAt")),
         "tracks_inventory": node.get("tracksInventory"),
         "has_choices": node.get("hasOnlyDefaultVariant") is False,
+        "sold_out": is_sold_out(node),
     }
 
 
@@ -402,6 +412,8 @@ class ShopifyTools(Toolkit):
         Search for products in the Shopify store using a query string with GraphQL.
         Supports Shopify's search syntax including field specifiers (e.g., 'title:snowboard', 'tag:beginner', 'product_type:skate'),
         operators ('AND', 'OR'), and suffix wildcards ('skate*'). Supports pagination using a cursor.
+        Sold-out products are included with "sold_out": true: tell the customer the store sells
+        it but it is sold out right now, and never offer it as available to buy.
 
         Args:
             query: The search query string using Shopify syntax.
@@ -473,10 +485,10 @@ class ShopifyTools(Toolkit):
             }
             """
             
-            # Add status:active filter to only return active products (exclude archived and draft)
-            # Add inventory_total:>0 to only return in-stock products
+            # Active products only (not archived or draft). Sold-out ones are kept,
+            # marked sold_out: "we don't sell that" is wrong when it's just out of stock
             filtered_query = " AND ".join([
-                f"({match_singulars(query)})", "status:active", "inventory_total:>0",
+                f"({match_singulars(query)})", "status:active",
                 *catalog_filters(min_price, max_price, vendor),
             ])
 
@@ -520,8 +532,10 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            products = [product_from_node(edge.get("node", {})) for edge in edges]
-            
+            # What can be bought first; sold-out ones after, in Shopify's order
+            products = sorted((product_from_node(edge.get("node", {})) for edge in edges),
+                              key=lambda product: product["sold_out"])
+
             # Check if search was successful
             if products:
                 # Try to cache products in Redis
@@ -1174,7 +1188,7 @@ class ShopifyTools(Toolkit):
                 elif tags and not product_id:
                     recommendation_header = f"Here are products tagged with {tags}."
                 elif product_id:
-                    recommendation_header = f"Based on the product you viewed, you might like these options."
+                    recommendation_header = "Based on the product you viewed, you might like these options."
 
                 return json.dumps({
                     "success": True,

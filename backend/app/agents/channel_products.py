@@ -23,6 +23,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 MAX_PRODUCTS_IN_TEXT = 5
+SOLD_OUT = "sold out"
 
 
 def _amount(price: Any) -> str:
@@ -36,6 +37,8 @@ def _amount(price: Any) -> str:
 def _product_text(product: Any, shop_domain: Optional[str]) -> str:
     price = product.price_formatted or (f"{product.currency} {_amount(product.price)}" if product.price else None)
     text = f"• {product.title} - {price}" if price else f"• {product.title}"
+    if getattr(product, 'sold_out', None):
+        text += f" ({SOLD_OUT})"
     if product.handle and shop_domain:
         text += f"\n  https://{shop_domain}/products/{product.handle}"
     return text
