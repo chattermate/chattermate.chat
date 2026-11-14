@@ -25,6 +25,7 @@ from app.services.shopify_session import require_shopify_or_jwt_auth
 from app.models.user import User
 from app.database import get_db
 from app.repositories.chat import ChatRepository
+from app.repositories.inbox_views import InboxSort, InboxView
 from app.models.session_to_agent import SessionStatus
 from app.core.params import MAX_DB_INT
 from app.core.logger import get_logger
@@ -45,6 +46,11 @@ async def get_chat_history():
 
 
 _STATUS_FILTERS = {s.value for s in SessionStatus}
+
+TODAY_START_HELP = (
+    "Where 'today' begins for resolved_by_ai, as the caller's local midnight; "
+    "UTC midnight if not given"
+)
 
 
 def _checked_status_filter(value: Optional[str]) -> Optional[str]:
@@ -80,16 +86,18 @@ def _inbox_scope(auth_info: dict) -> dict:
 
 @router.get("/counts", response_model=InboxCountsResponse)
 async def get_inbox_counts(
+    today_start: Optional[datetime] = Query(None, description=TODAY_START_HELP),
     auth_info: dict = Depends(get_unified_chat_auth),
     db: Session = Depends(get_db)
 ):
-    """Open, waiting-for-a-human and assigned-to-me conversation counts for
-    the navigation badges, in the same scope as /recent."""
+    """Each inbox view's size, in the same scope as /recent: the navigation
+    badges and the inbox's view list."""
     try:
         return await run_in_threadpool(
             ChatRepository(db).get_inbox_counts,
             organization_id=auth_info['organization_id'],
             current_user_id=auth_info.get('user_id'),
+            today_start=today_start,
             **_inbox_scope(auth_info),
         )
     except Exception as e:
@@ -109,13 +117,26 @@ async def get_recent_chats(
     customer_email: Optional[str] = Query(None, description="Filter by customer email"),
     date_from: Optional[datetime] = Query(None, description="Filter conversations from this date"),
     date_to: Optional[datetime] = Query(None, description="Filter conversations to this date"),
+    view: Optional[InboxView] = Query(None, description="An inbox view: mine, waiting, open, ai, resolved_by_ai, closed or negative"),
+    channel: Optional[str] = Query(None, max_length=32, description="Only this channel ('web', 'whatsapp', ...)"),
+    q: Optional[str] = Query(None, max_length=100, description="Customer name, email, phone or custom data (an order number) containing this"),
+    sort: Optional[InboxSort] = Query(None, description="newest, or waiting_longest; by default waiting chats come first"),
+    today_start: Optional[datetime] = Query(None, description=TODAY_START_HELP),
     auth_info: dict = Depends(get_unified_chat_auth),
     db: Session = Depends(get_db)
 ):
     """Get recent chats - supports both JWT and Shopify session token auth"""
     status = _checked_status_filter(status)
     try:
-        return ChatRepository(db).get_recent_chats(
+        # Off the event loop: a sync query here stalls every socket and request
+        return await run_in_threadpool(
+            ChatRepository(db).get_recent_chats,
+            view=view,
+            channel=channel,
+            search=q.strip() if q and q.strip() else None,
+            sort=sort,
+            current_user_id=auth_info.get('user_id'),
+            today_start=today_start,
             skip=skip,
             limit=limit,
             agent_id=agent_id,

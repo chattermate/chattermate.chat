@@ -30,8 +30,8 @@ export interface paths {
         };
         /**
          * Get Inbox Counts
-         * @description Open, waiting-for-a-human and assigned-to-me conversation counts for
-         *     the navigation badges, in the same scope as /recent.
+         * @description Each inbox view's size, in the same scope as /recent: the navigation
+         *     badges and the inbox's view list.
          */
         get: operations["get_inbox_counts_api_v1_chats_counts_get"];
         put?: never;
@@ -4263,6 +4263,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Chat To Ai
+         * @description Hand the chat back to the AI, from a person or the team's queue.
+         *
+         *     The person who took it over (or anyone who may manage it) is done, and the
+         *     AI answers the customer's next message. The customer is told in the thread,
+         *     on every channel including the widget.
+         */
+        post: operations["release_chat_to_ai_api_v1_sessions__session_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/reassign": {
         parameters: {
             query?: never;
@@ -6365,6 +6389,16 @@ export interface components {
             user_id: string | null;
             /** User Name */
             user_name: string | null;
+            /** Handed Over At */
+            handed_over_at?: string | null;
+            /** Transfer Reason */
+            transfer_reason?: string | null;
+            /** Transfer Description */
+            transfer_description?: string | null;
+            /** Sentiment Label */
+            sentiment_label?: string | null;
+            /** Title */
+            title?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -6401,6 +6435,12 @@ export interface components {
             user_id?: string | null;
             /** User Name */
             user_name?: string | null;
+            /** Handed Over At */
+            handed_over_at?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Sentiment Label */
+            sentiment_label?: string | null;
             /**
              * Session Id
              * Format: uuid
@@ -6531,6 +6571,8 @@ export interface components {
             meta_data?: {
                 [key: string]: unknown;
             } | null;
+            /** Phone */
+            phone?: string | null;
         };
         /** CustomizationCreate */
         CustomizationCreate: {
@@ -7425,7 +7467,8 @@ export interface components {
         };
         /**
          * InboxCountsResponse
-         * @description Open conversations in the caller's inbox scope, for the navigation badges.
+         * @description Each inbox view's size in the caller's scope (see inbox_views): the
+         *     navigation badges and the inbox's view list.
          */
         InboxCountsResponse: {
             /** Open */
@@ -7434,7 +7477,42 @@ export interface components {
             waiting_for_human: number;
             /** Assigned To Me */
             assigned_to_me: number;
+            /**
+             * Ai Handling
+             * @default 0
+             */
+            ai_handling: number;
+            /**
+             * Negative
+             * @default 0
+             */
+            negative: number;
+            /**
+             * Resolved By Ai Today
+             * @default 0
+             */
+            resolved_by_ai_today: number;
+            /**
+             * Channels
+             * @default {}
+             */
+            channels: {
+                [key: string]: number;
+            };
         };
+        /**
+         * InboxSort
+         * @enum {string}
+         */
+        InboxSort: "newest" | "waiting_longest";
+        /**
+         * InboxView
+         * @description The inbox's saved views. Each is one condition on a session (with its
+         *     agent joined), shared by the list and its counts so a view's count is
+         *     always the number of rows the view lists.
+         * @enum {string}
+         */
+        InboxView: "mine" | "waiting" | "open" | "ai" | "resolved_by_ai" | "closed" | "negative";
         /** InstagramConnectRequest */
         InstagramConnectRequest: {
             /** Ig Id */
@@ -8081,6 +8159,8 @@ export interface components {
             end_chat_description?: string | null;
             /** Agent Name */
             agent_name?: string | null;
+            /** User Id */
+            user_id?: string | null;
             /** User Name */
             user_name?: string | null;
             /** Attachments */
@@ -10493,7 +10573,10 @@ export interface operations {
     };
     get_inbox_counts_api_v1_chats_counts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Where 'today' begins for resolved_by_ai, as the caller's local midnight; UTC midnight if not given */
+                today_start?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10507,6 +10590,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxCountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10529,6 +10621,16 @@ export interface operations {
                 date_from?: string | null;
                 /** @description Filter conversations to this date */
                 date_to?: string | null;
+                /** @description An inbox view: mine, waiting, open, ai, resolved_by_ai, closed or negative */
+                view?: components["schemas"]["InboxView"] | null;
+                /** @description Only this channel ('web', 'whatsapp', ...) */
+                channel?: string | null;
+                /** @description Customer name, email, phone or custom data (an order number) containing this */
+                q?: string | null;
+                /** @description newest, or waiting_longest; by default waiting chats come first */
+                sort?: components["schemas"]["InboxSort"] | null;
+                /** @description Where 'today' begins for resolved_by_ai, as the caller's local midnight; UTC midnight if not given */
+                today_start?: string | null;
             };
             header?: never;
             path?: never;
@@ -10574,6 +10676,16 @@ export interface operations {
                 date_from?: string | null;
                 /** @description Filter conversations to this date */
                 date_to?: string | null;
+                /** @description An inbox view: mine, waiting, open, ai, resolved_by_ai, closed or negative */
+                view?: components["schemas"]["InboxView"] | null;
+                /** @description Only this channel ('web', 'whatsapp', ...) */
+                channel?: string | null;
+                /** @description Customer name, email, phone or custom data (an order number) containing this */
+                q?: string | null;
+                /** @description newest, or waiting_longest; by default waiting chats come first */
+                sort?: components["schemas"]["InboxSort"] | null;
+                /** @description Where 'today' begins for resolved_by_ai, as the caller's local midnight; UTC midnight if not given */
+                today_start?: string | null;
             };
             header?: never;
             path?: never;
@@ -18941,6 +19053,39 @@ export interface operations {
         };
     };
     route_chat_to_human_api_v1_sessions__session_id__route_to_human_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_chat_to_ai_api_v1_sessions__session_id__release_post: {
         parameters: {
             query?: never;
             header?: never;

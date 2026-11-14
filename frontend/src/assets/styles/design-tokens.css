@@ -47,6 +47,7 @@
   --c-online: #8FEDE3;    /* online label text */
   --c-pro: #C5BDFF;       /* PRO badge text */
   --on-danger: #0B0C10;   /* text on a --c-danger fill (white on #FF6B6B is 2.8:1) */
+  --on-warn: #0B0C10;     /* text on a --c-warn fill */
 
   /* Theme-aware tints (derived from base palette, auto-adjust per theme) */
   --accent-bg-06: color-mix(in srgb, var(--accent-ink) 6%, transparent);
@@ -75,6 +76,30 @@
   --bubble-ai-fg: var(--text2);
   --bubble-agent-bg: var(--accent-ink);
   --bubble-agent-fg: var(--on-accent);
+
+  /* Inbox thread (components/inbox): the AI in lime, you in coral, notes and
+     waiting in amber. Mixed from theme-aware colours, so both themes follow. */
+  --thread-ai-bg: color-mix(in srgb, var(--accent-ink) 10%, transparent);
+  --thread-ai-border: color-mix(in srgb, var(--accent-ink) 24%, transparent);
+  --thread-you-bg: color-mix(in srgb, var(--c-coral) 13%, transparent);
+  --thread-you-border: color-mix(in srgb, var(--c-coral) 28%, transparent);
+  --thread-customer-bg: var(--o06);
+  --waiting-bg: color-mix(in srgb, var(--c-warn) 10%, transparent);
+  --waiting-border: color-mix(in srgb, var(--c-warn) 35%, transparent);
+
+  /* Messaging channels' own colours, behind a white glyph (channelGlyphs.ts).
+     Brand colours, the same in both themes. */
+  --channel-web: #5B6472;
+  --channel-whatsapp: #1DA851;
+  --channel-messenger: #0A7CFF;
+  --channel-instagram: #D62976;
+  --channel-telegram: #1E88C7;
+  --channel-slack: #4A154B;
+  --channel-email: #5B6472;
+  --channel-sms: #5B6472;
+  --channel-line: #06A845;
+  --channel-shopify: #5E8E3E;
+  --channel-api: #5B6472;
 
   /* Brand gradients / avatars */
   --grad-purple-teal: linear-gradient(135deg, var(--c-purple), var(--c-teal));
@@ -326,6 +351,7 @@
   --c-online: #097171;
   --c-pro: #6454BF;
   --on-danger: #FFFFFF;
+  --on-warn: #FFFFFF;
 
   /* Generate gradient — darker end stop for light */
   --grad-generate: linear-gradient(135deg, var(--c-purple), #5B49C9);

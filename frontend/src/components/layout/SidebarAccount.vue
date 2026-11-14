@@ -15,11 +15,12 @@ limitations under the License.
 -->
 
 <script setup lang="ts" name="SidebarAccount">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { navIconSvg, type NavItem } from './navItems'
 import { useMyAvatar } from '@/composables/useMyAvatar'
 import userAvatar from '@/assets/user.svg'
 import type { User } from '@/types/user'
+import { useMenu } from '@/composables/useMenu'
 
 const props = defineProps<{
     user: User | null
@@ -37,7 +38,6 @@ const emit = defineEmits<{
     (e: 'navigate'): void
 }>()
 
-const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
@@ -51,76 +51,7 @@ const name = computed(() => props.user?.full_name || props.user?.email || '')
 const statusText = computed(() => (props.isOnline ? 'Online' : 'Offline'))
 const triggerLabel = computed(() => `Account menu: ${name.value}, ${statusText.value.toLowerCase()}`)
 
-// The usable items, in order, for the menu's keyboard model
-const menuItems = (): HTMLElement[] =>
-    Array.from(menu.value?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])') ?? [])
-
-const focusItem = (index: number) => {
-    const items = menuItems()
-    if (!items.length) return
-    items[(index + items.length) % items.length].focus()
-}
-
-const openMenu = async (focusLast = false) => {
-    open.value = true
-    await nextTick()
-    focusItem(focusLast ? -1 : 0)
-}
-
-/** Close; back to the trigger when the menu had focus (Escape, a pick). */
-const close = (returnFocus = false) => {
-    open.value = false
-    if (returnFocus) trigger.value?.focus()
-}
-
-const onTriggerKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        openMenu(event.key === 'ArrowUp')
-    }
-}
-
-// The WAI-ARIA menu pattern: arrows move, Home/End jump, Tab leaves
-const onMenuKeydown = (event: KeyboardEvent) => {
-    const items = menuItems()
-    const current = items.indexOf(document.activeElement as HTMLElement)
-    const moves: Record<string, number> = {
-        ArrowDown: current + 1,
-        ArrowUp: current - 1,
-        Home: 0,
-        End: items.length - 1,
-    }
-    if (event.key in moves) {
-        event.preventDefault()
-        focusItem(moves[event.key])
-    } else if (event.key === 'Tab') {
-        close()
-    }
-}
-
-const onPointerDown = (event: PointerEvent) => {
-    if (root.value && !root.value.contains(event.target as Node)) close()
-}
-
-const onKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close(true)
-}
-
-// Listen only while open: an idle menu costs nothing
-watch(open, (isOpen) => {
-    if (isOpen) {
-        document.addEventListener('pointerdown', onPointerDown)
-        document.addEventListener('keydown', onKeydown)
-    } else {
-        document.removeEventListener('pointerdown', onPointerDown)
-        document.removeEventListener('keydown', onKeydown)
-    }
-})
-
-onBeforeUnmount(() => {
-    document.removeEventListener('pointerdown', onPointerDown)
-    document.removeEventListener('keydown', onKeydown)
-})
+const { open, openMenu, close, onTriggerKeydown, onMenuKeydown } = useMenu(root, trigger, menu)
 
 const pick = (action: 'toggle-status' | 'logout' | 'navigate') => {
     close(action === 'toggle-status')

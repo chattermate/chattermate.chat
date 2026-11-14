@@ -17,6 +17,7 @@ limitations under the License.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { AxiosError } from 'axios'
 import { chatService } from '@/services/chat'
+import type { InboxCounts } from '@/types/chat'
 import { ticketService } from '@/services/tickets'
 import { canAccessPath } from '@/router/routePermissions'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
@@ -51,8 +52,17 @@ export function useNavCounts() {
   let ticketsEnabled = canAccessPath('/tickets') && !isEmbeddedShopify()
   let timer: ReturnType<typeof setInterval> | null = null
 
-  const refreshInbox = async () => {
+  // When the inbox (or anything) last fetched the counts: a poll that soon
+  // after would only ask again
+  let inboxCountsAt = 0
+  const onInboxCounts = (counts: InboxCounts) => {
+    inboxCountsAt = Date.now()
+    waitingForHuman.value = counts.waiting_for_human
+  }
+
+  const refreshInbox = async ({ ifStale = false } = {}) => {
     if (!inboxEnabled) return
+    if (ifStale && Date.now() - inboxCountsAt < NAV_COUNTS_POLL_MS / 2) return
     try {
       waitingForHuman.value = (await chatService.getInboxCounts()).waiting_for_human
     } catch (error) {
@@ -85,7 +95,9 @@ export function useNavCounts() {
 
   const startPolling = () => {
     stopPolling()
-    if (inboxEnabled || ticketsEnabled) timer = setInterval(refresh, NAV_COUNTS_POLL_MS)
+    if (inboxEnabled || ticketsEnabled) {
+      timer = setInterval(() => Promise.all([refreshInbox({ ifStale: true }), refreshTickets()]), NAV_COUNTS_POLL_MS)
+    }
   }
 
   const onVisibilityChange = () => {
@@ -102,12 +114,14 @@ export function useNavCounts() {
     startPolling()
     document.addEventListener('visibilitychange', onVisibilityChange)
     emitter.on('inbox-changed', refresh)
+    emitter.on('inbox-counts', onInboxCounts)
   })
 
   onBeforeUnmount(() => {
     stopPolling()
     document.removeEventListener('visibilitychange', onVisibilityChange)
     emitter.off('inbox-changed', refresh)
+    emitter.off('inbox-counts', onInboxCounts)
   })
 
   return { waitingForHuman, openTickets, refresh }

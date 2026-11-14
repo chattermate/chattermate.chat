@@ -260,6 +260,34 @@ def test_get_recent_chats_refuses_an_offset_past_the_database_range(client, test
     assert client.get("/api/chats/recent", params={"skip": 15412059487694436352}).status_code == 422
 
 
+@pytest.mark.parametrize("params", [
+    {"view": "everything"},
+    {"sort": "oldest"},
+    {"q": "x" * 101},
+])
+def test_get_recent_chats_refuses_an_unknown_view_sort_or_long_search(client, test_user, params):
+    assert client.get("/api/chats/recent", params=params).status_code == 422
+
+
+def test_get_recent_chats_lists_a_view_with_the_rows_inbox_fields(
+    client, db, test_user, test_chat_session, test_chat_messages
+):
+    """The caller's own chat is in "mine", with what the new list rows show."""
+    test_chat_session.sentiment_label = "negative"
+    db.commit()
+
+    response = client.get("/api/chats/recent", params={
+        "view": "mine", "sort": "newest", "today_start": "2026-11-13T00:00:00+05:30"})
+
+    assert response.status_code == 200
+    [row] = response.json()
+    assert row["session_id"] == str(test_chat_session.session_id)
+    assert row["sentiment_label"] == "negative"
+    assert row["handed_over_at"] is None
+    assert "phone" in row["customer"]
+    assert client.get("/api/chats/recent", params={"view": "waiting"}).json() == []
+
+
 @pytest.mark.parametrize("status", ["open", "open, transferred", "all"])
 def test_get_recent_chats_accepts_known_statuses(client, test_user, test_chat_session, status):
     assert client.get("/api/chats/recent", params={"status": status}).status_code == 200
@@ -686,6 +714,11 @@ def test_get_chat_detail_shopify_endpoint(client, db, test_user, test_chat_sessi
     chat = response.json()
     assert chat["session_id"] == str(test_chat_session.session_id) 
 
+def _badges(counts):
+    """The counts the navigation badges read."""
+    return {key: counts[key] for key in ("open", "waiting_for_human", "assigned_to_me")}
+
+
 def test_inbox_counts_for_a_view_all_user(
     client,
     db,
@@ -696,7 +729,11 @@ def test_inbox_counts_for_a_view_all_user(
     """The caller's own open chat is open and assigned to them, not waiting."""
     response = client.get("/api/chats/counts")
     assert response.status_code == 200
-    assert response.json() == {"open": 1, "waiting_for_human": 0, "assigned_to_me": 1}
+    assert response.json() == {
+        "open": 1, "waiting_for_human": 0, "assigned_to_me": 1,
+        "ai_handling": 0, "negative": 0, "resolved_by_ai_today": 0,
+        "channels": {"web": 1},
+    }
 
 
 def test_inbox_counts_a_handed_over_chat_as_waiting(
@@ -713,7 +750,7 @@ def test_inbox_counts_a_handed_over_chat_as_waiting(
 
     response = client.get("/api/chats/counts")
     assert response.status_code == 200
-    assert response.json() == {"open": 1, "waiting_for_human": 1, "assigned_to_me": 0}
+    assert _badges(response.json()) == {"open": 1, "waiting_for_human": 1, "assigned_to_me": 0}
 
 
 def test_inbox_counts_leave_out_closed_chats(
@@ -728,7 +765,9 @@ def test_inbox_counts_leave_out_closed_chats(
 
     response = client.get("/api/chats/counts")
     assert response.status_code == 200
-    assert response.json() == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
+    assert _badges(response.json()) == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
+    # Closed by its holder, so it is not one the AI resolved
+    assert response.json()["resolved_by_ai_today"] == 0
 
 
 def test_inbox_counts_need_a_chat_permission(

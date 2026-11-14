@@ -843,3 +843,165 @@ def test_route_to_human_tells_a_channel_customer_someone_is_coming(
     assert response.status_code == status.HTTP_200_OK
     assert mock_deliver.called
     assert mock_deliver.call_args.args[2]['message'] == QUEUED_FOR_HUMAN_NOTICE
+
+
+def _release(client, session):
+    return client.post(f"/api/v1/session-to-agent/{session.session_id}/release")
+
+
+def test_release_hands_a_taken_over_chat_back_to_the_ai(
+    client_with_error_mock, db, user_with_manage_chats_permission, create_chat_session
+):
+    """Nobody holds it afterwards, so the AI answers the next message, and the
+    visitor is told in the widget too (channels_only=False)."""
+    from unittest.mock import AsyncMock
+    from app.api.session_to_agent import BACK_TO_AI_NOTICE
+    from app.services.message_delivery import DeliveryResult
+
+    session = _assigned_session(db, create_chat_session, user_with_manage_chats_permission)
+
+    with patch('app.services.human_routing.deliver_to_customer',
+               new=AsyncMock(return_value=DeliveryResult(ok=True))) as mock_deliver:
+        response = _release(client_with_error_mock, session)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["user_id"] is None
+    db.refresh(session)
+    assert session.user_id is None
+    assert session.group_id is None
+    assert session.status == SessionStatus.OPEN
+    assert mock_deliver.call_args.args[2]['message'] == BACK_TO_AI_NOTICE
+    # Messages are encrypted at rest, so compare after reading them
+    thread = db.query(ChatHistory).filter(ChatHistory.session_id == session.session_id).all()
+    assert [m.message_type for m in thread if m.message == BACK_TO_AI_NOTICE] == ['bot']
+
+
+def test_release_takes_a_chat_out_of_the_queue(
+    client_with_error_mock, db, user_with_manage_chats_permission, create_chat_session
+):
+    """A chat waiting for the team can go back to the AI without anyone taking it."""
+    from unittest.mock import AsyncMock
+    from app.services.message_delivery import DeliveryResult
+
+    session = create_chat_session()
+    session.status = SessionStatus.TRANSFERRED
+    db.commit()
+
+    with patch('app.services.human_routing.deliver_to_customer',
+               new=AsyncMock(return_value=DeliveryResult(ok=True))):
+        response = _release(client_with_error_mock, session)
+
+    assert response.status_code == status.HTTP_200_OK
+    db.refresh(session)
+    assert session.status == SessionStatus.OPEN
+
+
+@pytest.mark.parametrize("state, detail", [
+    ("closed", "This chat is closed"),
+    ("ai", "The AI is already handling this chat"),
+    ("human_only_agent", "This agent doesn't answer with AI"),
+])
+def test_release_refuses_when_there_is_nothing_to_hand_back(
+    client_with_error_mock, db, user_with_manage_chats_permission, create_chat_session,
+    test_agent, state, detail
+):
+    session = _assigned_session(db, create_chat_session, user_with_manage_chats_permission)
+    if state == "closed":
+        session.status = SessionStatus.CLOSED
+    elif state == "ai":
+        session.user_id = None
+    else:
+        test_agent.ai_replies_enabled = False
+    db.commit()
+
+    response = _release(client_with_error_mock, session)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == detail
+
+
+def test_release_needs_the_permission_to_manage_chats(
+    client_with_error_mock, db, regular_user, user_with_manage_chats_permission, create_chat_session
+):
+    session = _assigned_session(db, create_chat_session, user_with_manage_chats_permission)
+
+    async def override_get_current_user():
+        return regular_user
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    try:
+        response = _release(client_with_error_mock, session)
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: user_with_manage_chats_permission
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    db.refresh(session)
+    assert session.user_id == user_with_manage_chats_permission.id
+
+
+def test_assigning_a_waiting_chat_gives_it_to_that_teammate(
+    client_with_error_mock, db, user_with_manage_chats_permission,
+    user_with_manage_assigned_chats, create_chat_session
+):
+    """"Assign to…" on a chat nobody holds: it becomes theirs, and the widget is
+    told a person joined, not that it was moved from someone."""
+    from unittest.mock import AsyncMock
+
+    session = create_chat_session()
+    session.status = SessionStatus.TRANSFERRED
+    db.commit()
+
+    with patch('app.api.session_to_agent.notify_chat_assigned', new=AsyncMock()), \
+         patch('app.api.session_to_agent.sio.emit', new=AsyncMock()) as mock_emit:
+        response = client_with_error_mock.post(
+            f"/api/v1/session-to-agent/{session.session_id}/reassign",
+            params={"to_user_id": str(user_with_manage_assigned_chats.id)}
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    db.refresh(session)
+    assert session.user_id == user_with_manage_assigned_chats.id
+    assert session.status == SessionStatus.OPEN
+    widget_events = [c.args[0] for c in mock_emit.call_args_list if c.kwargs.get('namespace') == '/widget']
+    assert widget_events == ['handle_taken_over']
+
+
+def test_a_closed_chat_cannot_be_assigned(
+    client_with_error_mock, db, user_with_manage_chats_permission,
+    user_with_manage_assigned_chats, create_chat_session
+):
+    session = create_chat_session()
+    session.status = SessionStatus.CLOSED
+    db.commit()
+
+    response = client_with_error_mock.post(
+        f"/api/v1/session-to-agent/{session.session_id}/reassign",
+        params={"to_user_id": str(user_with_manage_assigned_chats.id)}
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "This chat is closed"
+
+
+def test_assigning_stays_inside_what_the_callers_inbox_shows(
+    client_with_error_mock, db, user_with_manage_chats_permission,
+    user_with_manage_assigned_chats, create_chat_session
+):
+    """Someone who sees only their own chats, their group's and the AI queue
+    cannot take a chat a teammate holds by assigning it to themselves: it is
+    not in their inbox, and taking it over would be refused too."""
+    session = _assigned_session(db, create_chat_session, user_with_manage_chats_permission)
+
+    async def override_get_current_user():
+        return user_with_manage_assigned_chats
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    try:
+        response = client_with_error_mock.post(
+            f"/api/v1/session-to-agent/{session.session_id}/reassign",
+            params={"to_user_id": str(user_with_manage_assigned_chats.id)}
+        )
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: user_with_manage_chats_permission
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    db.refresh(session)
+    assert session.user_id == user_with_manage_chats_permission.id

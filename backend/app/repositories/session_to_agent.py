@@ -128,8 +128,8 @@ class SessionToAgentRepository:
             if not session:
                 return False
 
+            # closed_at is stamped by the model on the status change
             session.status = SessionStatus.CLOSED
-            session.closed_at = datetime.utcnow()
             if reason is not None:
                 session.end_chat_reason = reason
             if description is not None:
@@ -391,6 +391,24 @@ class SessionToAgentRepository:
             return True
         except Exception as e:
             logger.error(f"Error reassigning session: {str(e)}")
+            self.db.rollback()
+            return False
+
+    def release_to_ai(self, session_id: UUID | str) -> bool:
+        """Give the conversation back to the AI: nobody holds it, it is in no
+        group's queue, and it is open, the state every AI path answers in."""
+        try:
+            session = self.get_session(session_id)
+            if not session:
+                return False
+            session.user_id = None
+            session.group_id = None
+            session.status = SessionStatus.OPEN
+            session.updated_at = datetime.utcnow()
+            self.db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error releasing session to AI: {str(e)}")
             self.db.rollback()
             return False
 

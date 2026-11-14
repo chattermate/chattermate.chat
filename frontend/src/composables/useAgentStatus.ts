@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, type InjectionKey, type Ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { updateUserStatus } from '@/services/users'
 import { userService } from '@/services/user'
@@ -56,3 +56,12 @@ export function useAgentStatus(currentUser: Ref<User | null>) {
 
   return { isOnline, statusUpdating, setOnline, toggleOnline }
 }
+
+export type AgentStatus = ReturnType<typeof useAgentStatus>
+
+/**
+ * DashboardLayout provides its copy to the page inside it, so a page that
+ * shows the status too (the inbox's views pane) changes the same one the
+ * sidebar shows, instead of a second copy that drifts.
+ */
+export const AGENT_STATUS_KEY: InjectionKey<AgentStatus> = Symbol('agentStatus')

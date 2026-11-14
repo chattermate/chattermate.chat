@@ -16,26 +16,16 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { channelLabel } from '@/utils/channelGlyphs'
 
 const props = defineProps<{
   channel?: string | null
 }>()
 
-const CHANNEL_LABELS: Record<string, string> = {
-  shopify: 'Shopify',
-  telegram: 'Telegram',
-  whatsapp: 'WhatsApp',
-  messenger: 'Messenger',
-  instagram: 'Instagram',
-  slack: 'Slack',
-  email: 'Email',
-  sms: 'SMS',
-  line: 'LINE',
-  api: 'API',
-}
-
 // The widget ('web') is the default context — no badge needed for it.
-const label = computed(() => (props.channel ? CHANNEL_LABELS[props.channel] : null))
+const label = computed(() =>
+  props.channel && props.channel !== 'web' ? channelLabel(props.channel) : null
+)
 </script>
 
 <template>

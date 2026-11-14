@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON, Float
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON, Float, event
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.encryption import EncryptedText
@@ -64,6 +66,10 @@ class SessionToAgent(Base):
     assigned_at = Column(DateTime(timezone=True), server_default=func.now())
 
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Stamped by _stamp_status_change below on every move into that status:
+    # the inbox's waiting time and "resolved today" read them.
+    handed_over_at = Column(DateTime(timezone=True), nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
     transfer_reason = Column(String, nullable=True)
     # The free-text fields below are AI-written summaries of the conversation, so
     # they are encrypted at rest alongside the messages themselves.
@@ -105,6 +111,39 @@ class SessionToAgent(Base):
     ratings = relationship("Rating", back_populates="session_assignments")
     workflow = relationship("Workflow", back_populates="sessions")
     current_node = relationship("WorkflowNode")
+
+
+def _as_status(value) -> "SessionStatus | None":
+    """A status however it was assigned: the enum, its name ("TRANSFERRED") or
+    its value ("transferred"). Anything else (an unloaded attribute) is None."""
+    if isinstance(value, SessionStatus):
+        return value
+    if isinstance(value, str):
+        if value in SessionStatus.__members__:
+            return SessionStatus[value]
+        try:
+            return SessionStatus(value)
+        except ValueError:
+            return None
+    return None
+
+
+@event.listens_for(SessionToAgent.status, 'set', active_history=True)
+def _stamp_status_change(target, value, oldvalue, _initiator):
+    """Record when a conversation was handed to the team or closed.
+
+    On the model, not in each caller: handovers come from the AI, workflows,
+    the route-to-human button and channel relays, and closes from as many
+    places. Only a change counts, so re-saving a waiting chat keeps its wait.
+    Bulk query updates skip ORM events and leave these unset.
+    """
+    new, old = _as_status(value), _as_status(oldvalue)
+    if new is None or new == old:
+        return
+    if new == SessionStatus.TRANSFERRED:
+        target.handed_over_at = datetime.now(timezone.utc)
+    elif new == SessionStatus.CLOSED:
+        target.closed_at = datetime.now(timezone.utc)
 
 
 # Add back-reference in UserGroup model if not already present

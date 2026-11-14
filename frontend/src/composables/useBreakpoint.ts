@@ -21,6 +21,8 @@ import { ref, type Ref } from 'vue'
 // queries can't read JS constants, so changing the cutoff means updating both.
 export const MOBILE_BREAKPOINT = 768
 export const TABLET_BREAKPOINT = 1024
+/** Below this the inbox's details panel opens over the thread instead of beside it */
+export const WIDE_BREAKPOINT = 1440
 
 const track = (query: string): Ref<boolean> => {
   if (typeof window === 'undefined' || !window.matchMedia) {
@@ -37,7 +39,8 @@ const track = (query: string): Ref<boolean> => {
 
 const isMobile = track(`(max-width: ${MOBILE_BREAKPOINT}px)`)
 const isTablet = track(`(max-width: ${TABLET_BREAKPOINT}px)`)
+const isBelowWide = track(`(max-width: ${WIDE_BREAKPOINT - 1}px)`)
 
 export function useBreakpoint() {
-  return { isMobile, isTablet }
+  return { isMobile, isTablet, isBelowWide }
 }
