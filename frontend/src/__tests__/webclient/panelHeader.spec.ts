@@ -19,6 +19,7 @@ import { nextTick, ref } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import PanelHeader from '@/webclient/panel/PanelHeader.vue'
 import AgentMark from '@/webclient/panel/AgentMark.vue'
+import PersonAvatar from '@/webclient/panel/PersonAvatar.vue'
 import { PANEL_PRESENCE_TEXT } from '@/webclient/copy'
 import { fakeController, mountWithController, type FakeController } from './panelFakeController'
 
@@ -171,5 +172,24 @@ describe('the agent mark', () => {
         const mark = mount(AgentMark, { props: { face: 'photo', photoUrl: '' } })
         expect(mark.findAll('[data-dot]')).toHaveLength(2)
         mark.unmount()
+    })
+
+    it('falls back to the dots when the photo will not load, and tries a new photo again', async () => {
+        const mark = mount(AgentMark, { props: { face: 'photo', photoUrl: 'https://cdn.test/gone.png' } })
+        await mark.get('img.cm-mark__photo').trigger('error')
+        expect(mark.find('img').exists()).toBe(false)
+        expect(mark.findAll('[data-dot]')).toHaveLength(2)
+        expect(mark.classes()).not.toContain('cm-mark--plain')
+        await mark.setProps({ photoUrl: 'https://cdn.test/new.png' })
+        expect(mark.get('img.cm-mark__photo').attributes('src')).toBe('https://cdn.test/new.png')
+        mark.unmount()
+    })
+
+    it("shows a person's initials when their photo will not load", async () => {
+        const person = mount(PersonAvatar, { props: { name: 'Priya Shah', photoUrl: 'https://cdn.test/gone.png' } })
+        await person.get('img.cm-person__photo').trigger('error')
+        expect(person.find('img').exists()).toBe(false)
+        expect(person.text()).toBe('PS')
+        person.unmount()
     })
 })
