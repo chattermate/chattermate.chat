@@ -74,6 +74,10 @@ class ServerAction(Protocol):
         chat. Raise ActionFailed when it didn't work."""
         ...
 
+    # Optional: `async def announce(ctx, result)`, awaited on the event loop
+    # after a run that worked (to tell open dashboards, say). A failure there
+    # is logged and changes nothing.
+
 
 _actions: Dict[str, ServerAction] = {}
 

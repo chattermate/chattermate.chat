@@ -290,7 +290,8 @@ async def _run_server_action(sid: str, session: dict, call: AgentActionCall,
     # Only one worker gets past this, however many approvals arrive
     if not repo.claim(call, ActionCallStatus.RUNNING, confirmed=True):
         return
-    status, result, error = await asyncio.to_thread(_run, server, _server_context(session, call), _call_args(call))
+    ctx = _server_context(session, call)
+    status, result, error = await asyncio.to_thread(_run, server, ctx, _call_args(call))
     repo.finish(call, status, error_code='failed' if error else None,
                 result_ciphertext=encrypt_value(result_text(status, result, error)))
     await sio.emit('action_outcome', {
@@ -299,6 +300,12 @@ async def _run_server_action(sid: str, session: dict, call: AgentActionCall,
         'summary': _summary(result),
         'error': error,
     }, to=sid, namespace=WIDGET_NAMESPACE)
+    announce = getattr(server, 'announce', None)
+    if status == ActionCallStatus.OK and announce is not None:
+        try:
+            await announce(ctx, result)
+        except Exception as e:
+            logger.error(f"Server action {server.name} could not announce its result: {e}")
     await _after_outcome(sid, session, call, status, db)
 
 

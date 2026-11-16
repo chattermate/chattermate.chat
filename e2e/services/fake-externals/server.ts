@@ -40,7 +40,12 @@
 //                           fresh code and the state; the token is derived from the
 //                           code and accessible-resources gives a site derived from it
 //   Shopify orders          the customer's order with the number they searched for
-//                           (#1001 if none), shipped with a tracking number
+//                           (#1001 if none), shipped with a tracking number. In a
+//                           shop named *-actions.myshopify.com an email-only search
+//                           also finds #2001, not shipped yet, and orders take
+//                           cancel, refund, address and discount-code mutations,
+//                           which change them; a shop named *-noscope-* hasn't
+//                           granted the write scopes
 //
 // A call's `action` is the provider's method (Telegram, Slack) or else the last
 // non-empty path segment (`/Account/<id>/Message/` → `Message`).
@@ -385,14 +390,35 @@ function jira({ method, url, headers, body }: Call): Answer {
 
 // Shopify Admin API: /shopify/<shop>.myshopify.com/admin/...
 
-interface ShopifyOrder { id: string; number: string; email: string }
+interface ShopifyOrder {
+  id: string
+  number: string
+  email: string
+  /** What the order actions change (order numbers from 2000 haven't shipped) */
+  shipped?: boolean
+  cancelledAt?: string | null
+  refunded?: number
+  address?: Record<string, unknown>
+}
 const shopifyOrders = new Map<string, ShopifyOrder>()
+const ORDER_TOTAL = 45
 
 function money(amount: string) {
   return { shopMoney: { amount, currencyCode: 'USD' } }
 }
 
+function shopifyOrder(email: string, number: string): ShopifyOrder {
+  const id = String(parseInt(digest(`${email}#${number}`).slice(0, 8), 16))
+  const known = shopifyOrders.get(id)
+  if (known) return known
+  const order = { id, number, email, shipped: !number.startsWith('2'), cancelledAt: null, refunded: 0 }
+  remember(shopifyOrders, id, order)
+  return order
+}
+
 function shopifyOrderNode(order: ShopifyOrder) {
+  const shipped = order.shipped !== false
+  const refunded = order.refunded ?? 0
   return {
     id: `gid://shopify/Order/${order.id}`,
     name: `#${order.number}`,
@@ -401,17 +427,24 @@ function shopifyOrderNode(order: ShopifyOrder) {
     createdAt: '2026-10-01T10:00:00Z',
     processedAt: '2026-10-01T10:00:00Z',
     updatedAt: '2026-10-02T10:00:00Z',
-    cancelledAt: null,
+    cancelledAt: order.cancelledAt ?? null,
     cancelReason: null,
-    displayFinancialStatus: 'PAID',
-    displayFulfillmentStatus: 'FULFILLED',
+    displayFinancialStatus: refunded >= ORDER_TOTAL ? 'REFUNDED' : refunded > 0 ? 'PARTIALLY_REFUNDED' : 'PAID',
+    displayFulfillmentStatus: shipped ? 'FULFILLED' : 'UNFULFILLED',
     subtotalLineItemsQuantity: 1,
     currentSubtotalPriceSet: money('40.00'),
     currentTotalPriceSet: money('45.00'),
     originalTotalPriceSet: money('45.00'),
     customer: { id: `gid://shopify/Customer/${order.id}`, firstName: 'E2E', lastName: 'Customer', email: order.email, phone: null },
-    shippingAddress: { address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', phone: null, name: 'E2E Customer' },
-    fulfillments: [{
+    shippingAddress: { address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', countryCodeV2: 'US', phone: null, name: 'E2E Customer', ...(order.address ?? {}) },
+    currencyCode: 'USD',
+    presentmentCurrencyCode: 'USD',
+    totalRefundedSet: money(refunded.toFixed(2)),
+    transactions: refunded >= ORDER_TOTAL ? [] : [{
+      id: `gid://shopify/OrderTransaction/${order.id}`, kind: 'SALE', status: 'SUCCESS', gateway: 'shopify_payments',
+      maximumRefundableV2: { amount: (ORDER_TOTAL - refunded).toFixed(2), currencyCode: 'USD' },
+    }],
+    fulfillments: !shipped ? [] : [{
       status: 'SUCCESS', displayStatus: 'IN_TRANSIT', estimatedDeliveryAt: '2026-11-20T00:00:00Z',
       trackingInfo: [{ company: 'UPS', number: `1ZE2E${order.id}`, url: `https://tracking.e2e.test/1ZE2E${order.id}` }],
       fulfillmentLineItems: { edges: [{ node: { quantity: 1 } }] },
@@ -457,7 +490,71 @@ const shopifyProducts = [
   shopifyProduct(5, 'E2E Draft', [{ id: 555, onSale: true }], false),
 ]
 
-function shopify({ action, body }: Call): Answer {
+/** The test shop the call is for: /shopify/<shop>.myshopify.com/admin/... */
+function shopOf(url: URL): string {
+  return url.pathname.split('/').filter(Boolean)[1] ?? ''
+}
+
+const WRITE_SCOPES = ['read_orders', 'write_orders', 'write_discounts']
+
+/** Order actions (store_orders in the enterprise backend): what they ask, and how the order changes. */
+function shopifyOrderActions(query: string, variables: Record<string, unknown>, shop: string): Answer | null {
+  const byGid = (gid: unknown) => shopifyOrders.get(String(gid ?? '').split('/').at(-1) ?? '')
+  if (query.includes('query AppScopes')) {
+    const scopes = shop.includes('-noscope-') ? ['read_orders'] : WRITE_SCOPES
+    return ok({ data: { currentAppInstallation: { accessScopes: scopes.map((handle) => ({ handle })) } } })
+  }
+  if (query.includes('query OrderForActions')) {
+    const order = byGid(variables.id)
+    return ok({ data: { order: order ? shopifyOrderNode(order) : null } })
+  }
+  if (query.includes('query FindOrder')) {
+    const search = String(variables.query ?? '')
+    const email = /email:(\S+)/.exec(search)?.[1] ?? ''
+    const number = /name:(\S+)/.exec(search)?.[1] ?? ''
+    const edges = email && number ? [{ node: shopifyOrderNode(shopifyOrder(email, number)) }] : []
+    return ok({ data: { orders: { edges } } })
+  }
+  if (query.includes('query CustomerTotals')) {
+    const email = /email:(\S+)/.exec(String(variables.query ?? ''))?.[1] ?? ''
+    const node = { id: `gid://shopify/Customer/${digest(email).slice(0, 8)}`, email, createdAt: '2025-03-01T10:00:00Z',
+                   numberOfOrders: '2', amountSpent: { amount: '90.00', currencyCode: 'USD' } }
+    return ok({ data: { customers: { edges: email ? [{ node }] : [] } } })
+  }
+  const userErrors = (message: string) => [{ field: null, message, code: 'INVALID' }]
+  if (query.includes('mutation CancelOrder')) {
+    const order = byGid(variables.orderId)
+    if (!order) return ok({ data: { orderCancel: { job: null, orderCancelUserErrors: userErrors('Order not found') } } })
+    order.cancelledAt = new Date().toISOString()
+    order.refunded = ORDER_TOTAL
+    return ok({ data: { orderCancel: { job: { id: `gid://shopify/Job/${order.id}`, done: false }, orderCancelUserErrors: [] } } })
+  }
+  if (query.includes('mutation RefundOrder')) {
+    const input = (variables.input ?? {}) as { orderId?: string; transactions?: { amount: string }[] }
+    const order = byGid(input.orderId)
+    const amount = (input.transactions ?? []).reduce((sum, t) => sum + Number(t.amount), 0)
+    if (!order || amount <= 0 || (order.refunded ?? 0) + amount > ORDER_TOTAL + 0.001) {
+      return ok({ data: { refundCreate: { refund: null, userErrors: userErrors('Refund amount exceeds the refundable amount') } } })
+    }
+    order.refunded = (order.refunded ?? 0) + amount
+    return ok({ data: { refundCreate: { refund: { id: `gid://shopify/Refund/${order.id}${Math.round(order.refunded * 100)}`,
+      totalRefundedSet: money(amount.toFixed(2)) }, userErrors: [] } } })
+  }
+  if (query.includes('mutation UpdateShippingAddress')) {
+    const input = (variables.input ?? {}) as { id?: string; shippingAddress?: Record<string, string> }
+    const order = byGid(input.id)
+    if (!order) return ok({ data: { orderUpdate: { order: null, userErrors: userErrors('Order not found') } } })
+    const { countryCode, ...rest } = input.shippingAddress ?? {}
+    order.address = { ...rest, countryCodeV2: countryCode, country: countryCode }
+    return ok({ data: { orderUpdate: { order: { id: input.id, shippingAddress: order.address }, userErrors: [] } } })
+  }
+  if (query.includes('mutation CreateDiscountCode')) {
+    return ok({ data: { discountCodeBasicCreate: { codeDiscountNode: { id: `gid://shopify/DiscountCodeNode/${counter}` }, userErrors: [] } } })
+  }
+  return null
+}
+
+function shopify({ action, body, url }: Call): Answer {
   if (action === 'access_token') {
     // Code grant, session/legacy-token exchange, or refresh grant; `expiring=1`
     // asks for an expiring offline token (1h access, 90d rotating refresh).
@@ -472,11 +569,14 @@ function shopify({ action, body }: Call): Answer {
     // `email:<email>[ AND name:<number>]`, as the backend builds it.
     const search = String(variables.query ?? '')
     const email = /email:(\S+)/.exec(search)?.[1] ?? ''
-    const number = /name:(\S+)/.exec(search)?.[1] ?? '1001'
-    const order = { id: String(parseInt(digest(`${email}#${number}`).slice(0, 8), 16)), number, email }
-    remember(shopifyOrders, order.id, order)
-    return ok({ data: { orders: { edges: email ? [{ node: shopifyOrderNode(order) }] : [], pageInfo: { hasNextPage: false, endCursor: null } } } })
+    const named = /name:(\S+)/.exec(search)?.[1]
+    // An order-actions shop also has an order that hasn't shipped, newest first
+    const numbers = named ? [named] : shopOf(url).includes('-actions') ? ['2001', '1001'] : ['1001']
+    const edges = email ? numbers.map((number) => ({ node: shopifyOrderNode(shopifyOrder(email, number)) })) : []
+    return ok({ data: { orders: { edges, pageInfo: { hasNextPage: false, endCursor: null } } } })
   }
+  const orderAction = shopifyOrderActions(query, variables, shopOf(url))
+  if (orderAction) return orderAction
   if (query.includes('query ProductOptions')) {
     // The widget's product sheet, reading one product's options when it opens
     const product = shopifyProducts.find((p) => p.id === variables.id) ?? null
