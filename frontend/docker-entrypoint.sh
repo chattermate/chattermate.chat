@@ -39,5 +39,17 @@ self.APP_CONFIG = {
 };
 EOF
 
+# Point the /api/ proxy at the backend. Only these two variables are
+# substituted, so nginx's own $host, $uri, ... stay as they are. Rendering in
+# place is idempotent: a restarted container finds nothing left to replace.
+export BACKEND_HOST="${BACKEND_HOST:-backend}"
+export BACKEND_PORT="${BACKEND_PORT:-8000}"
+NGINX_CONF=/etc/nginx/conf.d/default.conf
+if [ -f "$NGINX_CONF" ]; then
+  envsubst '${BACKEND_HOST} ${BACKEND_PORT}' < "$NGINX_CONF" > "$NGINX_CONF.tmp" \
+    && cat "$NGINX_CONF.tmp" > "$NGINX_CONF"
+  rm -f "$NGINX_CONF.tmp"
+fi
+
 # Start nginx
 exec "$@" 
