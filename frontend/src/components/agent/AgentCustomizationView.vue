@@ -34,6 +34,7 @@ import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
 import { useFeatureLock } from '@/composables/useFeatureLock'
 import UpgradeCard from './UpgradeCard.vue'
+import { PANEL_COPY } from '@/webclient/copy'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -199,6 +200,12 @@ const displayModeOptions = [
 const ASK_AI_CHAT_STYLES = ['ASK_ANYTHING', 'AURORA']
 const isAskAiTheme = computed(() => ASK_AI_CHAT_STYLES.includes(customization.value.chat_style as string))
 const isModeAvailable = (option: { askAiOnly?: boolean }) => !option.askAiOnly || isAskAiTheme.value
+
+// What the widget shows when the welcome title / subtitle are left empty, per design
+// (the Ask AI panel and the chat panel have their own defaults).
+const welcomeTitleDefault = computed(() =>
+    isAskAiTheme.value ? `Ask ${props.agent.display_name || props.agent.name}` : PANEL_COPY.welcomeTitle)
+const welcomeSubtitleDefault = computed(() => (isAskAiTheme.value ? '' : PANEL_COPY.welcomeSubtitle))
 
 // Numeric bounds per field — must mirror WidgetDisplayConfig (backend schema),
 // which rejects values outside these ranges.
@@ -850,6 +857,32 @@ const loadDefaultQuickActions = () => {
                     </p>
 
                     <div class="form-group">
+                        <label for="welcome-title">Welcome title</label>
+                        <input
+                            id="welcome-title"
+                            type="text"
+                            v-model="customization.welcome_title"
+                            :placeholder="welcomeTitleDefault"
+                            class="text-input"
+                            maxlength="100"
+                        >
+                        <small class="input-hint">Leave empty to show "{{ welcomeTitleDefault }}".</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="welcome-subtitle">Welcome subtitle</label>
+                        <input
+                            id="welcome-subtitle"
+                            type="text"
+                            v-model="customization.welcome_subtitle"
+                            :placeholder="welcomeSubtitleDefault || 'e.g., How can we help?'"
+                            class="text-input"
+                            maxlength="250"
+                        >
+                        <small class="input-hint">{{ welcomeSubtitleDefault ? `Leave empty to show "${welcomeSubtitleDefault}".` : 'Leave empty to show no subtitle.' }}</small>
+                    </div>
+
+                    <div class="form-group">
                         <label for="welcome-message">Welcome message</label>
                         <textarea
                             id="welcome-message"
@@ -1066,43 +1099,6 @@ const loadDefaultQuickActions = () => {
                 </div>
 
 
-                <!-- Welcome Message Section (only for ASK_ANYTHING style) -->
-                <div v-if="customization.chat_style === 'ASK_ANYTHING'" class="subsection">
-                    <h4 class="subsection-heading">Ask anything welcome</h4>
-                    <p class="section-subtext">
-                        Customize the welcome message shown when users first open the chat.
-                    </p>
-
-                    <div class="form-group">
-                        <label for="welcome-title">Welcome Title</label>
-                        <input
-                            id="welcome-title"
-                            type="text"
-                            v-model="customization.welcome_title"
-                            placeholder="e.g., Welcome to our AI Assistant"
-                            class="text-input"
-                            maxlength="100"
-                        >
-                        <small class="input-hint">
-                            Leave empty to use default: "Welcome to {{ props.agent.display_name || props.agent.name }}"
-                        </small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="welcome-subtitle">Welcome Subtitle</label>
-                        <textarea
-                            id="welcome-subtitle"
-                            v-model="customization.welcome_subtitle"
-                            placeholder="e.g., I'm here to help you with anything you need. What can I assist you with today?"
-                            class="text-textarea"
-                            rows="3"
-                            maxlength="250"
-                        ></textarea>
-                        <small class="input-hint">
-                            Leave empty to use default message
-                        </small>
-                    </div>
-                </div>
             </CustomizationSection>
 
             <CustomizationSection id="behaviour" title="Behaviour" :summary="sectionSummaries.behaviour"
