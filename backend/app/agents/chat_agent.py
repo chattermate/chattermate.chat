@@ -50,7 +50,7 @@ from app.agents.structured_output import (
 )
 from app.agents.transfer_agent import get_agent_availability_response
 from app.agents.channel_products import with_product_list
-from app.agents.handover_prompt import TOOLS_OR_PERSON_RULES, ticket_criteria
+from app.agents.handover_prompt import ticket_criteria, tools_or_person_rules
 from app.agents.guardrail_policy import (
     GuardrailContext,
     apply_guardrail_policy,
@@ -962,7 +962,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
             # Settles the overlap between the lists above, so it comes after them
             if can_reach_a_person and (self.tools or host_action_functions):
-                system_message += "\n\n" + TOOLS_OR_PERSON_RULES
+                changes_orders = any(extra.changes_orders for extra in getattr(self, 'extra_toolkits', []))
+                system_message += "\n\n" + tools_or_person_rules(changes_orders)
         else:
             system_message = [
                 "You are a helpful customer service agent.",

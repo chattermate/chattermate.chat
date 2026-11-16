@@ -45,6 +45,8 @@ class ActionCallStatus(str, enum.Enum):
     """Lifecycle of one call the model asked the host page to make."""
 
     PENDING = "pending"
+    # A server-run action the visitor approved, while the server runs it
+    RUNNING = "running"
     OK = "ok"
     ERROR = "error"
     DECLINED = "declined"

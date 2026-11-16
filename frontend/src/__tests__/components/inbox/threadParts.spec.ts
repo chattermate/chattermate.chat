@@ -519,6 +519,13 @@ describe('ThreadNote', () => {
     expect(wrapper.find('b').exists()).toBe(false)
     expect(wrapper.find('.body').text()).toContain('<b>here</b>')
   })
+
+  it("names the AI agent that wrote it, and a teammate who left as a teammate", () => {
+    const byAgent = { ...note, user_id: null, user_name: null, agent_id: 'a1', agent_name: 'Shop bot', mentions: [] }
+    expect(mount(ThreadNote, { props: { note: byAgent, currentUserId: 'me' } }).find('.meta').text()).toMatch(/^Shop bot \(AI\) · /)
+    const gone = { ...note, user_id: null, user_name: null, mentions: [] }
+    expect(mount(ThreadNote, { props: { note: gone, currentUserId: 'me' } }).find('.meta').text()).toMatch(/^A teammate · /)
+  })
 })
 
 describe('useComposerDrafts', () => {

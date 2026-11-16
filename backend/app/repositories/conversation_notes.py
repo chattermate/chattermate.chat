@@ -17,8 +17,10 @@ limitations under the License.
 from typing import Iterable, List
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.agent import Agent
 from app.models.conversation_note import ConversationNote, ConversationNoteMention
 from app.models.role import Role
 from app.models.session_to_agent import SessionToAgent
@@ -68,11 +70,16 @@ class ConversationNoteRepository:
         ).order_by(ConversationNote.created_at, ConversationNote.id).all()
         people = {n.user_id for n in notes if n.user_id} | {m.user_id for n in notes for m in n.mentions}
         names = dict(self.db.query(User.id, User.full_name).filter(User.id.in_(people)).all()) if people else {}
+        agents = {n.agent_id for n in notes if n.agent_id}
+        agent_names = dict(self.db.query(Agent.id, func.coalesce(Agent.display_name, Agent.name))
+                           .filter(Agent.id.in_(agents)).all()) if agents else {}
         return [{
             'id': n.id,
             'body': n.body,
             'user_id': n.user_id,
             'user_name': names.get(n.user_id),
+            'agent_id': n.agent_id,
+            'agent_name': agent_names.get(n.agent_id),
             'mentions': [{'user_id': m.user_id, 'name': names.get(m.user_id)} for m in n.mentions],
             'created_at': n.created_at,
         } for n in notes]

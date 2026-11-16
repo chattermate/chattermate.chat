@@ -98,6 +98,9 @@ export interface ConversationNote {
   body: string
   user_id: string | null
   user_name?: string | null
+  /** A note the AI agent wrote about something it did */
+  agent_id?: string | null
+  agent_name?: string | null
   mentions: Array<{ user_id: string; name?: string | null }>
   created_at: string
 }

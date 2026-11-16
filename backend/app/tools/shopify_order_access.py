@@ -58,9 +58,13 @@ def normalise_order_number(order_number: Optional[str]) -> str:
     return (order_number or "").strip().lstrip("#").strip().lower()
 
 
+def is_email(email: Optional[str]) -> bool:
+    return bool(_EMAIL.match(normalise_email(email)))
+
+
 def order_lookup_problem(customer_email: Optional[str], order_number: Optional[str]) -> Optional[str]:
     """Why this lookup can't run, or None when it can."""
-    if not _EMAIL.match(normalise_email(customer_email)):
+    if not is_email(customer_email):
         return EMAIL_REQUIRED
     number = normalise_order_number(order_number)
     if not number:

@@ -142,6 +142,18 @@ class TestNotes:
         assert note["user_name"] == "Sam"
         assert note["mentions"] == [{"user_id": str(teammate.id), "name": "Asha"}]
 
+    def test_a_note_the_ai_agent_wrote_carries_its_name(self, db, chat):
+        from app.models.agent import Agent
+        from app.models.conversation_note import ConversationNote
+        from app.repositories.conversation_notes import ConversationNoteRepository
+        agent = db.get(Agent, chat.agent_id)
+        agent.display_name = "Shop bot"
+        db.add(ConversationNote(session_id=chat.session_id, organization_id=chat.organization_id,
+                                agent_id=agent.id, body="Refunded 5.00 USD on #1005. The customer approved it."))
+        db.commit()
+        [note] = ConversationNoteRepository(db).for_session(chat.session_id)
+        assert (note["user_id"], note["agent_id"], note["agent_name"]) == (None, agent.id, "Shop bot")
+
     def test_mentioned_teammates_are_notified_but_not_the_author(self, client, chat, me, teammate):
         with patch('app.api.session_notes.notify_user', new=AsyncMock()) as notify, \
              patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \

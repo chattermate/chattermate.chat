@@ -31,7 +31,9 @@ const props = defineProps<{
 
 const author = computed(() => {
   if (props.note.user_id && props.note.user_id === props.currentUserId) return 'You'
-  return props.note.user_name || 'A teammate'
+  if (props.note.user_name) return props.note.user_name
+  if (props.note.agent_id) return `${props.note.agent_name || 'AI agent'} (AI)`
+  return 'A teammate'
 })
 const parts = computed(() => mentionParts(props.note.body, props.note.mentions.map((m) => m.name).filter(Boolean) as string[]))
 const time = computed(() =>

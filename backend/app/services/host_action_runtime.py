@@ -21,8 +21,13 @@ the order the model made them. The page answers with action_result; once every
 call of the step has an outcome, the run resumes on whichever worker received
 the last answer. Nothing waits on a socket in between, so a reconnect or a
 second worker never loses a reply.
+
+An action an installed extension runs on the server (server_actions.py) takes
+the same path, except that the widget only asks the visitor: on a yes the
+server runs it, and the page never does.
 """
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -31,9 +36,17 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatResponse
-from app.agents.host_actions.turns import PausedTurn, args_hash, argument_problem, invalid_args_text, result_text
+from app.agents.guardrail_policy import visitor_data_block
+from app.agents.host_actions import server_actions
+from app.agents.host_actions.server_actions import (
+    ActionFailed, Approval, Refusal, ServerAction, ServerActionContext,
+)
+from app.agents.host_actions.turns import (
+    RESULT_LABEL, PausedTurn, args_hash, argument_problem, invalid_args_text, result_text,
+)
 from app.core.encryption import decrypt_value, encrypt_value
 from app.core.config import settings
+from app.channels.app_hooks import load_extensions
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.models.agent_action import ActionCallStatus, ActionConfirmPolicy, AgentAction, AgentActionCall
@@ -51,6 +64,8 @@ logger = get_logger(__name__)
 # Socket-session keys this module owns.
 OFFERED_KEY = 'host_action_names'
 PAUSES_KEY = 'host_action_pauses'
+# Turn events refused server actions asked the reply to show (Refusal.show)
+SHOW_KEY = 'host_action_show'
 
 # Statuses the page may report for a call.
 PAGE_OUTCOMES = {
@@ -65,6 +80,10 @@ ACTIONS_LIMIT_NOTE = (
     "with what you have."
 )
 UNFINISHED_REPLY = "I couldn't finish that in the app. Please try again."
+
+# A server-run action that couldn't be checked or run, for whatever reason
+SERVER_ACTION_UNAVAILABLE = "That couldn't be done just now."
+NOT_OFFERED_TEXT = "Not run, and the user was not asked: {reason}"
 
 
 def _uuid(value: Any) -> UUID:
@@ -128,7 +147,11 @@ def _request_payload(call: AgentActionCall, action: Optional[AgentAction]) -> di
     }
 
 
-async def _dispatch(sid: str, call: AgentActionCall, db: Session) -> None:
+async def _dispatch(sid: str, session: dict, call: AgentActionCall, db: Session) -> None:
+    server = _server_action(call)
+    if server is not None:
+        await _ask_for_server_action(sid, session, call, server, db)
+        return
     action = AgentActionRepository(db).get(call.agent_id, call.action_id) if call.action_id else None
     await sio.emit('action_request', _request_payload(call, action), to=sid, namespace=WIDGET_NAMESPACE)
 
@@ -136,6 +159,10 @@ async def _dispatch(sid: str, call: AgentActionCall, db: Session) -> None:
 async def _send(sid: str, session: dict, call: AgentActionCall, db: Session) -> None:
     """Send a call to the page, unless its arguments don't fit the action's
     schema: then the page never sees it and the model is told what to fix."""
+    server = _server_action(call)
+    if server is not None:
+        await _ask_for_server_action(sid, session, call, server, db)
+        return
     action = AgentActionRepository(db).get(call.agent_id, call.action_id) if call.action_id else None
     problem = argument_problem(action.parameters, _call_args(call)) if action else None
     if problem is None:
@@ -171,12 +198,134 @@ async def start_paused_turn(sid: str, session: dict, paused: PausedTurn,
     await _send(sid, session, rows[0], db)
 
 
-async def replay_open_call(sid: str, session_id: str, db: Session) -> None:
+async def replay_open_call(sid: str, session: dict, db: Session) -> None:
     """After a reconnect, send the call the reply is still waiting on again.
     The page caches results by call id, so a call it already ran is not run twice."""
-    call = AgentActionCallRepository(db).open_call(_uuid(session_id))
+    call = AgentActionCallRepository(db).open_call(_uuid(session['session_id']))
     if call is not None and not _expired(call, db):
-        await _dispatch(sid, call, db)
+        await _dispatch(sid, session, call, db)
+
+
+# --- Server-run actions --------------------------------------------------------
+
+def _server_action(call: AgentActionCall) -> Optional[ServerAction]:
+    """The extension's action a call names. A declared page action of the same
+    name wins: the business wrote that one."""
+    if call.action_id is not None:
+        return None
+    load_extensions()
+    return server_actions.get(call.action_name)
+
+
+def _server_context(session: dict, call: AgentActionCall) -> ServerActionContext:
+    customer_id = session.get('customer_id')
+    return ServerActionContext(
+        organization_id=str(call.organization_id),
+        agent_id=str(call.agent_id),
+        session_id=str(call.session_id),
+        customer_id=str(customer_id) if customer_id else None,
+        call_id=str(call.id),
+    )
+
+
+def _prepare(server: ServerAction, ctx: ServerActionContext, args: Dict[str, Any]):
+    """Blocking: run off the event loop. A check that breaks refuses."""
+    try:
+        return server.prepare(ctx, args)
+    except Exception as e:
+        logger.error(f"Server action {server.name} could not be checked: {e}")
+        return Refusal(SERVER_ACTION_UNAVAILABLE)
+
+
+def _server_payload(call: AgentActionCall, approval: Approval) -> dict:
+    return {
+        'call_id': str(call.id),
+        'name': call.action_name,
+        'label': approval.label,
+        'decline_label': approval.decline,
+        'details': [{'key': key, 'value': value} for key, value in approval.details],
+        # The widget only asks; the arguments stay on the server
+        'args': {},
+        'confirm': ActionConfirmPolicy.ALWAYS.value,
+        'timeout_s': settings.ACTION_TIMEOUT_DEFAULT_S,
+        'runs_on': 'server',
+    }
+
+
+async def _ask_for_server_action(sid: str, session: dict, call: AgentActionCall,
+                                 server: ServerAction, db: Session) -> None:
+    """Show the visitor the card for a server-run call, or tell the model why
+    it can't run (and the visitor is never asked)."""
+    prepared = await asyncio.to_thread(_prepare, server, _server_context(session, call), _call_args(call))
+    if isinstance(prepared, Approval):
+        await sio.emit('action_request', _server_payload(call, prepared), to=sid, namespace=WIDGET_NAMESPACE)
+        return
+    reason = prepared.reason if isinstance(prepared, Refusal) else SERVER_ACTION_UNAVAILABLE
+    logger.info(f"Server action {call.action_name} call {call.id} not offered: {reason}")
+    if isinstance(prepared, Refusal) and prepared.show:
+        session[SHOW_KEY] = sorted(set(session.get(SHOW_KEY) or []) | {prepared.show})
+        await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
+    text = visitor_data_block(RESULT_LABEL, NOT_OFFERED_TEXT.format(reason=reason),
+                              limit=settings.ACTION_RESULT_MAX_BYTES)
+    await _settle(sid, session, call, ActionCallStatus.ERROR, text,
+                  error_code='refused', confirmed=None, db=db)
+
+
+def _run(server: ServerAction, ctx: ServerActionContext, args: Dict[str, Any]):
+    """Blocking: run off the event loop. (status, result for the model, error to show)."""
+    try:
+        return ActionCallStatus.OK, server.run(ctx, args), None
+    except ActionFailed as e:
+        return ActionCallStatus.ERROR, None, str(e)[:200] or SERVER_ACTION_UNAVAILABLE
+    except Exception as e:
+        logger.error(f"Server action {server.name} failed: {e}")
+        return ActionCallStatus.ERROR, None, SERVER_ACTION_UNAVAILABLE
+
+
+def _summary(result: Any) -> Optional[str]:
+    summary = result.get('summary') if isinstance(result, dict) else None
+    return summary[:140] if isinstance(summary, str) and summary.strip() else None
+
+
+async def _run_server_action(sid: str, session: dict, call: AgentActionCall,
+                             server: ServerAction, db: Session) -> None:
+    """The visitor said yes: run it here, exactly once, then carry on as for
+    a page's answer."""
+    repo = AgentActionCallRepository(db)
+    # Only one worker gets past this, however many approvals arrive
+    if not repo.claim(call, ActionCallStatus.RUNNING, confirmed=True):
+        return
+    ctx = _server_context(session, call)
+    status, result, error = await asyncio.to_thread(_run, server, ctx, _call_args(call))
+    repo.finish(call, status, error_code='failed' if error else None,
+                result_ciphertext=encrypt_value(result_text(status, result, error)))
+    await sio.emit('action_outcome', {
+        'call_id': str(call.id),
+        'status': status.value,
+        'summary': _summary(result),
+        'error': error,
+    }, to=sid, namespace=WIDGET_NAMESPACE)
+    announce = getattr(server, 'announce', None)
+    if status == ActionCallStatus.OK and announce is not None:
+        try:
+            await announce(ctx, result)
+        except Exception as e:
+            logger.error(f"Server action {server.name} could not announce its result: {e}")
+    await _after_outcome(sid, session, call, status, db)
+
+
+async def _answer_server_action(sid: str, session: dict, call: AgentActionCall,
+                                server: ServerAction, answer: Any, db: Session) -> None:
+    """The visitor's answer to a server-run call's card. The page can't report
+    a result for it: only a yes (which runs it here), a no, or no answer."""
+    if answer == 'approved':
+        await _run_server_action(sid, session, call, server, db)
+    elif answer in ('declined', 'timeout'):
+        status = PAGE_OUTCOMES[answer]
+        await _settle(sid, session, call, status, result_text(status),
+                      error_code=None, confirmed=False if answer == 'declined' else None, db=db)
+    else:
+        logger.warning(f"Ignored a '{answer}' answer for server action call {call.id}")
 
 
 # --- Expiry ------------------------------------------------------------------
@@ -202,10 +351,15 @@ def _expired(call: AgentActionCall, db: Session) -> bool:
 
 
 def waiting_on_page(db: Session, session_id: str) -> bool:
-    """True while a reply is waiting for the page to answer an action. Stale
-    calls are given up on here, so a page that went away never blocks the chat."""
-    call = AgentActionCallRepository(db).open_call(_uuid(session_id))
-    return call is not None and not _expired(call, db)
+    """True while a reply is waiting for the page to answer an action, or for
+    the server to finish one the visitor approved. Stale calls are given up on
+    here, so a page that went away never blocks the chat."""
+    repo = AgentActionCallRepository(db)
+    call = repo.open_call(_uuid(session_id))
+    if call is not None and not _expired(call, db):
+        return True
+    running = repo.running_call(_uuid(session_id))
+    return running is not None and datetime.now(timezone.utc) < _deadline(running, None)
 
 
 # --- Results and resuming ----------------------------------------------------
@@ -228,8 +382,9 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
     """Take the page's answer for one call; send the next call, or resume the
     reply once the whole step has an outcome."""
     call_id = _parse_call_id(data.get('call_id'))
-    status = PAGE_OUTCOMES.get(data.get('status'))
-    if call_id is None or status is None:
+    answer = data.get('status')
+    status = PAGE_OUTCOMES.get(answer)
+    if call_id is None or (status is None and answer != 'approved'):
         await sio.emit('error', {'error': 'Invalid action result', 'type': 'validation_error'}, to=sid, namespace=WIDGET_NAMESPACE)
         return
 
@@ -238,6 +393,13 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
     # Only the call that was sent may be answered: an answer for a later one
     # (or two at once) would resume the reply early, or twice.
     if call is not None and _first_pending_id(repo, call.run_id) != call.id:
+        return
+    server = _server_action(call) if call is not None else None
+    if server is not None:
+        await _answer_server_action(sid, session, call, server, answer, db)
+        return
+    if status is None:
+        # "approved" is only an answer to a server-run call
         return
     error = data.get('error')[:200] if isinstance(data.get('error'), str) else None
     confirmed = data.get('confirmed') if isinstance(data.get('confirmed'), bool) else None
@@ -260,7 +422,14 @@ async def _settle(sid: str, session: dict, call: AgentActionCall, status: Action
     if not claimed:
         # Already answered, or given up on: a duplicate or late result.
         return
+    await _after_outcome(sid, session, call, status, db)
 
+
+async def _after_outcome(sid: str, session: dict, call: AgentActionCall, status: ActionCallStatus,
+                         db: Session) -> None:
+    """Once a call has its outcome: send the step's next call, or resume the
+    reply when every call has one."""
+    repo = AgentActionCallRepository(db)
     if status == ActionCallStatus.OK:
         # A step can be done by this action succeeding.
         await sync_journey(sid, session, db, actions=[call.action_name])
@@ -287,6 +456,13 @@ async def resume_reply(sid: str, session: dict, run_id: str, results: Dict[str, 
     await emit_bot_typing(session['session_id'])
     actions = _actions_for_resume(db, session, run_id)
     agent = await build_widget_agent(session, actions, step_actions_hint(db, session, actions))
+    shows = session.pop(SHOW_KEY, None)
+    if shows:
+        await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
+        events = getattr(agent, 'turn_events', None)
+        if events is not None:
+            for kind in shows:
+                events.add(kind)
     try:
         response = await agent.continue_response(
             run_id, results,

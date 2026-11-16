@@ -19,6 +19,7 @@ import { hostOrigin, postToHost } from '../webclient/host-bridge'
 import { isFramed } from '../webclient/frame-session'
 import {
   createHostActionsClient, type ActionOutcome, type ActionRequest, type HostPrompt, type PendingConfirm,
+  type ServerOutcome,
 } from '../webclient/actions/hostActionsClient'
 
 interface SocketHooks {
@@ -53,6 +54,8 @@ export function useHostActions(
   })
 
   socket.on('action_request', (request: ActionRequest) => client.handleRequest(request))
+  // An action the server ran after the visitor approved it
+  socket.on('action_outcome', (outcome: ServerOutcome) => client.handleServerOutcome(outcome))
   // A new connection has a new server session: tell it again what the page offers.
   socket.on('session_initialized', () => client.announce())
 
