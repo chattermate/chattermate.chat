@@ -907,7 +907,7 @@ const loadDefaultQuickActions = () => {
                     <!-- Locked like the greeting messages below; saved ones stay saved and come back on upgrade -->
                     <UpgradeCard v-if="isQuickActionsLocked" gate="quick-actions" lock data-testid="quick-actions-locked" @upgrade="handleUpgrade" />
                     <template v-else>
-                        <div class="init-add-row">
+                        <div class="init-add-row init-add-row--quick">
                             <input
                                 type="text"
                                 v-model="newQuickAction"
@@ -1915,6 +1915,7 @@ const loadDefaultQuickActions = () => {
 
 .init-input {
     flex: 1;
+    min-width: 0;
     padding: 13px 15px;
     background: var(--bg);
     border: 1px solid var(--o12);
@@ -2063,6 +2064,19 @@ const loadDefaultQuickActions = () => {
 }
 .init-input--match {
     max-width: 40%;
+    min-width: 0;
+}
+
+/* Quick action: label and + on one line, the page rule under them at full width,
+   so three fields never push the button past the panel edge. */
+.init-add-row--quick {
+    flex-wrap: wrap;
+}
+
+.init-add-row--quick .init-input--match {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
 }
 .init-match {
     flex: none;
