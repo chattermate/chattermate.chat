@@ -238,6 +238,31 @@ def test_update_agent(
     assert updated_agent["display_name"] == update_data["display_name"]
     assert updated_agent["instructions"] == update_data["instructions"]
 
+def test_update_agent_role_and_description(client, db, test_user, test_agent):
+    """The role line (`name`) and description are editable from the agent page."""
+    response = client.put(
+        f"/api/agents/{test_agent.id}",
+        json={"name": "  GlideShip Sales Guide ", "description": "Answers GlideShip questions."},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "GlideShip Sales Guide"
+    assert body["description"] == "Answers GlideShip questions."
+    db.refresh(test_agent)
+    assert test_agent.name == "GlideShip Sales Guide"
+
+
+@pytest.mark.parametrize("name", ["", "   ", None])
+def test_update_agent_refuses_a_blank_role(client, test_user, test_agent, name):
+    response = client.put(f"/api/agents/{test_agent.id}", json={"name": name})
+    assert response.status_code == 422
+
+
+def test_update_agent_refuses_an_overlong_description(client, test_user, test_agent):
+    response = client.put(f"/api/agents/{test_agent.id}", json={"description": "x" * 501})
+    assert response.status_code == 422
+
+
 def test_reply_buttons_are_off_by_default_and_turning_them_on_reregisters_telegram(
     client, db, test_user, test_agent
 ):

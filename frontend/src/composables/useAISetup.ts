@@ -34,6 +34,8 @@ export function useAISetup() {
   })
 
   const hasExistingConfig = ref(false)
+  /** The provider the saved config uses; the form's provider changes as the user types. */
+  const savedProvider = ref('')
 
   // Provider catalog is served by the backend (GET /ai/providers) — single source
   // of truth. Values are normalized to lowercase to match the save/load flow, which
@@ -62,6 +64,7 @@ export function useAISetup() {
         baseUrl: (config.settings?.base_url as string) || ''
       }
       hasExistingConfig.value = true
+      savedProvider.value = setupConfig.value.provider
     } catch (err: unknown) {
       const response = (err as { response?: { status?: number; data?: { detail?: { details?: string; error?: string } } } }).response;
       if (response?.status !== 404 && response?.data?.detail?.error !== 'AI configuration not found') {
@@ -89,6 +92,7 @@ export function useAISetup() {
         api_key: setupConfig.value.apiKey,
         base_url: setupConfig.value.baseUrl || undefined,
       })
+      savedProvider.value = setupConfig.value.provider
       return true
     } catch (err: unknown) {
       const apiError = (err as { response?: { data?: { detail?: { details?: string; error?: string } } } }).response?.data?.detail;
@@ -109,6 +113,7 @@ export function useAISetup() {
         api_key: setupConfig.value.apiKey,
         base_url: setupConfig.value.baseUrl || undefined,
       })
+      savedProvider.value = setupConfig.value.provider
       return true
     } catch (err: unknown) {
       const apiError = (err as { response?: { data?: { detail?: { details?: string; error?: string } } } }).response?.data?.detail;
@@ -133,6 +138,7 @@ export function useAISetup() {
     updateAISetup,
     loadProviders,
     loadExistingConfig,
-    hasExistingConfig
+    hasExistingConfig,
+    savedProvider
   }
 }

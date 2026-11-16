@@ -61,7 +61,10 @@ export type AgentResponse = Agent
 
 // Add AgentUpdate type for update operations
 export interface AgentUpdate {
+  /** The role line under the display name. */
+  name?: string
   display_name?: string | null
+  description?: string | null
   instructions?: string[]
   is_active?: boolean
   transfer_to_human?: boolean

@@ -39,6 +39,7 @@ from app.models.session_to_agent import SessionToAgent
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from app.core.cors import update_cors_middleware
+from app.services.org_rename import carry_org_rename
 from app.core.application import app  # Import the FastAPI app instance from the new location
 
 # Disposable-address rejection lives in the enterprise module: the hosted signup
@@ -316,8 +317,11 @@ async def update_organization(
             if website:
                 update_data['domain'] = website
 
+        old_name = org.name
         for field, value in update_data.items():
             setattr(org, field, value)
+        if 'name' in update_data:
+            carry_org_rename(db, org.id, old_name, org.name)
 
         db.commit()
         db.refresh(org)

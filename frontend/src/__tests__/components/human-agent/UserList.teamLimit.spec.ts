@@ -71,7 +71,7 @@ describe('UserList team limit', () => {
     const wrapper = await tryToInvite()
 
     expect(showCreateModal.value).toBe(false)
-    expect(wrapper.find('.upgrade-modal').text()).toContain('Your plan includes 1 team member. Upgrade to add more.')
+    expect(wrapper.find('[role="dialog"]').text()).toContain('Your plan includes 1 team member. Upgrade to add more.')
   })
 
   it('lets a paid plan with no team limit invite anyone', async () => {
@@ -81,7 +81,7 @@ describe('UserList team limit', () => {
     const wrapper = await tryToInvite()
 
     expect(showCreateModal.value).toBe(true)
-    expect(wrapper.find('.upgrade-modal').exists()).toBe(false)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
 
   it('counts only active members against the limit', async () => {
@@ -98,7 +98,7 @@ describe('UserList team limit', () => {
 
     const wrapper = await tryToInvite()
 
-    expect(wrapper.find('.upgrade-modal').text()).toContain('Upgrade your plan to add team members.')
+    expect(wrapper.find('[role="dialog"]').text()).toContain('Upgrade your plan to add team members.')
   })
 
   it('never limits the open-source build', async () => {

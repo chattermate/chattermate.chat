@@ -22,6 +22,9 @@ import type { Role } from '@/types/user'
 import { useRoles } from '@/composables/useRoles'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
+
+const { upgradeText: lockUpgradeText } = useUpgradePlan('role')
 
 const props = defineProps<{
   searchQuery?: string
@@ -159,7 +162,7 @@ onMounted(() => {
         <div class="upgrade-section">
           <button class="upgrade-button" @click="handleUpgrade">
             <font-awesome-icon icon="fa-solid fa-crown" class="upgrade-icon" />
-            <span>Upgrade to Unlock Roles</span>
+            <span>{{ lockUpgradeText }}</span>
             <font-awesome-icon icon="fa-solid fa-arrow-right" class="arrow-icon" />
           </button>
         </div>

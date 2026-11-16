@@ -20,6 +20,9 @@ import { computed, ref, watch, onMounted } from 'vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { planDisplayName, planShortName } from '@/utils/planDisplay'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
+
+const { upgradeText: lockUpgradeText } = useUpgradePlan('custom_models')
 
 const emit = defineEmits<{
   (e: 'ai-setup-complete'): void
@@ -68,7 +71,8 @@ const {
   setupConfig,
   saveAISetup,
   updateAISetup,
-  hasExistingConfig
+  hasExistingConfig,
+  savedProvider
 } = useAISetup()
 
 // Set initial tab based on enterprise availability
@@ -145,14 +149,13 @@ watch(
 // Plan computed properties
 const currentPlan = computed(() => currentSubscription.value?.plan)
 
+const repliesPerMonth = (maxMessages?: number | null) =>
+  maxMessages ? `${maxMessages.toLocaleString()} AI replies a month` : 'unlimited AI replies'
+
 // Dynamic message limits based on current plan
 const currentPlanMessageLimit = computed(() => {
   const plan = currentPlan.value
-  if (!plan || !plan.max_messages) {
-    return 'Unlimited AI replies'
-  }
-  
-  return `${plan.max_messages.toLocaleString()} AI replies a month`
+  return plan?.max_messages ? repliesPerMonth(plan.max_messages) : 'Unlimited AI replies'
 })
 
 const currentPlanName = computed(() => planDisplayName(currentPlan.value) || 'Current Plan')
@@ -256,8 +259,11 @@ const nextUpgradePlan = computed(() => {
 const rateLimitText = computed(() => {
   // Default rate limit - this could be made dynamic in the future
   const rateLimit = 100
-  return `Rate limit: ${rateLimit} messages/minute`
+  return `${rateLimit} messages a minute`
 })
+
+const nextPlanName = computed(() => planShortName(planDisplayName(nextUpgradePlan.value)))
+const nextPlanReplies = computed(() => repliesPerMonth(nextUpgradePlan.value?.max_messages))
 
 // Clear the model + custom-mode whenever the user switches provider, so a stale
 // model from the previous provider can't be carried over (and submitted). The very
@@ -350,8 +356,11 @@ const submitButtonText = computed(() => {
 })
 
 const chatterMateButtonText = computed(() => {
-  return hasExistingConfig.value ? 'Update to ChatterMate AI' : 'Proceed with ChatterMate AI'
+  return hasExistingConfig.value ? 'Switch to ChatterMate AI' : 'Use ChatterMate AI'
 })
+
+/** The saved setup already runs on ChatterMate AI: nothing to switch to. */
+const usingChatterMate = computed(() => savedProvider.value === 'chattermate')
 </script>
 
 <template>
@@ -424,7 +433,7 @@ const chatterMateButtonText = computed(() => {
           <div v-if="activeTab === 'chattermate' && hasEnterpriseModule" class="chattermate-content">
             <div class="provider-info">
               <div class="provider-header">
-                <span class="active-pill">
+                <span v-if="usingChatterMate" class="active-pill">
                   <span class="active-dot"></span>
                   <span class="active-text">ACTIVE</span>
                 </span>
@@ -444,25 +453,17 @@ const chatterMateButtonText = computed(() => {
                 </div>
               </div>
               
-              <!-- Upgrade prompt when not on highest plan (only shown when enterprise module exists) -->
-              <div v-if="hasEnterpriseModule && canUpgrade && nextUpgradePlan" class="upgrade-prompt">
-                <div class="upgrade-info">
-                  <div class="upgrade-icon">⚡</div>
-                  <div class="upgrade-text">
-                    <div class="upgrade-title">Want more AI replies?</div>
-                    <div class="upgrade-description">
-                      Upgrade to {{ planShortName(planDisplayName(nextUpgradePlan)) }} for
-                      {{ nextUpgradePlan.max_messages ? nextUpgradePlan.max_messages.toLocaleString() : 'unlimited' }}
-                      AI replies a month
-                    </div>
-                  </div>
-                </div>
-                <button class="upgrade-button" @click="handleUpgrade">
-                  Upgrade Plan
+              <!-- The next plan up, when there is one (hosted editions only) -->
+              <div v-if="hasEnterpriseModule && canUpgrade && nextUpgradePlan" class="more-replies">
+                <p class="more-replies-text">
+                  Need more? {{ nextPlanName }} gives you {{ nextPlanReplies }}.
+                </p>
+                <button type="button" class="btn btn-secondary" @click="handleUpgrade">
+                  Upgrade to {{ nextPlanName }}
                 </button>
               </div>
-              
-              <div class="action-area">
+
+              <div v-if="!usingChatterMate" class="action-area">
                 <button class="continue-button" @click="setupChatterMateAI">
                   {{ chatterMateButtonText }}
                 </button>
@@ -558,7 +559,7 @@ const chatterMateButtonText = computed(() => {
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upgrade-icon">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                     </svg>
-                    <span>Upgrade to Unlock Custom Models</span>
+                    <span>{{ lockUpgradeText }}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon">
                       <line x1="5" y1="12" x2="19" y2="12"></line>
                       <polyline points="12,5 19,12 12,19"></polyline>
@@ -1083,82 +1084,31 @@ const chatterMateButtonText = computed(() => {
   filter: brightness(1.05);
 }
 
-/* Upgrade Prompt Styles */
-.upgrade-prompt {
-  background: linear-gradient(135deg, var(--c-purple), var(--c-purple));
-  border-radius: var(--radius-input);
-  padding: var(--space-lg);
+.more-replies {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
   gap: var(--space-md);
-  color: var(--on-accent-solid);
-  margin-top: var(--space-md);
+  padding: 14px 20px;
+  border: 1px solid var(--o08);
+  border-radius: 14px;
+  background: var(--o03);
 }
 
-.upgrade-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  flex: 1;
+.more-replies-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text2);
 }
 
-.upgrade-icon {
-  font-size: 1.5rem;
-  opacity: 0.9;
-}
-
-.upgrade-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.upgrade-title {
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.upgrade-description {
-  font-size: 0.875rem;
-  opacity: 0.9;
-  line-height: 1.4;
-}
-
-.upgrade-button {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-lg);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
+.more-replies .btn {
   white-space: nowrap;
 }
 
-.upgrade-button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
-}
-
-/* Responsive upgrade prompt */
 @media (max-width: 768px) {
-  .upgrade-prompt {
+  .more-replies {
     flex-direction: column;
     align-items: stretch;
-    text-align: center;
-    gap: var(--space-md);
-  }
-  
-  .upgrade-info {
-    justify-content: center;
-    text-align: center;
-  }
-  
-  .upgrade-button {
-    width: 100%;
   }
 }
 

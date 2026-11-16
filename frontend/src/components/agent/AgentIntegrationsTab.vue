@@ -19,6 +19,7 @@ import { computed, ref, watch, onMounted } from 'vue'
 import { checkShopifyConnection } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { useUpgradePlan } from '@/composables/useUpgradePlan'
+import LockedNote from '@/components/common/LockedNote.vue'
 
 interface JiraProject {
   id: string;
@@ -319,9 +320,7 @@ onMounted(async () => {
             <span class="slider" :class="{ locked: ticketingLocked }"></span>
           </label>
         </div>
-        <p v-if="ticketingLocked" class="helper-text">
-          <router-link to="/settings/subscription" class="connect-link">{{ ticketingUpgradeText }}</router-link> to turn on AI ticketing.
-        </p>
+        <LockedNote v-if="ticketingLocked" feature="ai_ticketing" action="to turn on AI ticketing." />
         <p v-else class="helper-text">
           When on, this agent creates tickets during chats; Jira auto-ticketing below takes
           precedence when enabled.
