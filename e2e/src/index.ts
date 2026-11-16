@@ -1,8 +1,8 @@
 // The harness public API. Specs (and the enterprise suite, via the `@e2e` alias)
 // import from here only — never from '@playwright/test' directly, so there is one
 // Playwright instance and one place to change shared behaviour.
-export { test, expect, NO_COOKIES, type AgentSettings, type HandoverTeam, type Member, type MemberOptions, type TestAgent } from './fixtures'
-export { ApiClient } from './api/client'
+export { test, expect, type AgentSettings, type HandoverTeam, type Member, type MemberOptions, type TestAgent } from './fixtures'
+export { ApiClient, NO_COOKIES } from './api/client'
 export { createGroup, createUser, roleId } from './api/team'
 export { orgDomain, setAlwaysClosed, setAlwaysOpen, setOrgDomain } from './api/organizations'
 export { chatMessages, chatsWithAgent, reassignChat, type ChatMessage, type ChatOverview } from './api/chats'

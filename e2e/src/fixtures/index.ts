@@ -1,6 +1,7 @@
 import { test as base, expect, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page, type TestInfo } from '@playwright/test'
 import { ApiClient } from '../api/client'
 import { signedInClient } from '../api/auth'
+import { NO_COOKIES } from '../api/client'
 import { createAgent, enableLeadCapture } from '../api/agents'
 import { createGroup, createUser } from '../api/team'
 import { createWidget } from '../api/widgets'
@@ -161,11 +162,6 @@ async function newContext(browser: Browser, testInfo: TestInfo, options: Browser
   await blockThirdParty(context)
   return context
 }
-
-// Seeding clients sign in on their own. Without this they would start from the
-// project's admin storageState, and signing in ends the session the request
-// presents, i.e. the one every signed-in page shares.
-export const NO_COOKIES = { storageState: { cookies: [], origins: [] } }
 
 export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   agentSettings: [{}, { option: true }],

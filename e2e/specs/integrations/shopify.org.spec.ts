@@ -104,10 +104,10 @@ test.describe('connecting a Shopify store', () => {
     }
   })
 
-  test('a store not linked to an account yet is told to connect, not signed out @integrations', async ({ adminApi }) => {
+  test('a store not linked to an account yet is told to connect, not signed out @integrations', async () => {
     // Shopify's reviewers install before they connect: the app shows its
     // Connect prompt, and a 401 would have sent the iframe to the login page
-    const { embedded } = await openShopifyApp(adminApi, `${unique('e2e-review')}.myshopify.com`)
+    const { embedded } = await openShopifyApp(`${unique('e2e-review')}.myshopify.com`)
 
     const inbox = await embedded.raw('GET', '/chats/recent/shopify')
     expect(inbox.status()).toBe(403)

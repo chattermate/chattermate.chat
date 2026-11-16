@@ -20,6 +20,13 @@ interface CallOptions {
  * the UI. Domain modules (agents.ts, widgets.ts, …) build on this, so a route or
  * payload change is one edit there and nowhere else.
  */
+/**
+ * Options for a request context that starts signed out. In the test runner a new
+ * context otherwise inherits the project's admin storageState, and a sign-in
+ * ends the session the request presents: the one every signed-in page shares.
+ */
+export const NO_COOKIES = { storageState: { cookies: [], origins: [] } }
+
 export class ApiClient {
   readonly request: APIRequestContext
   private token?: string
