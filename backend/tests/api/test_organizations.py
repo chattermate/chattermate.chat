@@ -307,6 +307,16 @@ def test_update_organization(client, test_organization):
     assert data["name"] == update_data["name"]
     assert data["business_hours"]["monday"]["start"] == "08:00"
 
+def test_renaming_the_organization_renames_it_in_agent_copy(client, db, test_organization, test_agent):
+    test_agent.description = "Answers questions about Test Organization."
+    db.commit()
+
+    response = client.patch(f"/api/v1/organizations/{test_organization.id}", json={"name": "GlideShip"})
+
+    assert response.status_code == 200
+    db.refresh(test_agent)
+    assert test_agent.description == "Answers questions about GlideShip."
+
 # def test_delete_organization(client, test_organization):
 #     """Test deleting (soft-delete) organization"""
 #     response = client.delete(f"/api/v1/organizations/{test_organization.id}")

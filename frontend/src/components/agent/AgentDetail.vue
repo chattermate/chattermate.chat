@@ -19,7 +19,7 @@ import { useRouter } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getApiUrl, getWidgetUrl, resolveUploadUrl } from '@/config/api'
-import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbVariantToKeep, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
 import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -37,6 +37,8 @@ import AgentMCPToolsTab from './AgentMCPToolsTab.vue'
 import AgentLeadCaptureTab from './AgentLeadCaptureTab.vue'
 import AgentActionsTab from './actions/AgentActionsTab.vue'
 import AgentJourneysTab from './journeys/AgentJourneysTab.vue'
+import UpgradeModal from '@/components/common/UpgradeModal.vue'
+import AgentEditDialog, { type AgentEdit } from './AgentEditDialog.vue'
 import { FEATURE_GATES, type GateKey } from './featureGates'
 import { useFeatureLock } from '@/composables/useFeatureLock'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
@@ -157,8 +159,7 @@ onUnmounted(() => window.removeEventListener('click', closeAvatarPicker))
 
 const activeTab = ref(props.agent.use_workflow ? 'workflow-builder' : 'agent') // Track the active tab: 'agent', 'integrations', etc.
 const isEditingHeader = ref(false)
-const editDisplayName = ref(agentData.value.display_name || agentData.value.name)
-const editIsActive = ref(agentData.value.is_active)
+const savingHeader = ref(false)
 const launcherPreview = ref<LauncherPreview | null>(null)
 const customizationPreviewMode = ref<'chat' | 'launcher'>('chat')
 const LAUNCHER_BACKDROPS: { value: LauncherBackdrop; label: string }[] = [
@@ -458,9 +459,6 @@ const isJourneysLocked = computed(() => isLocked('journeys'))
 
 // The upgrade modal's copy, by gate
 const modalGate = computed(() => FEATURE_GATES[upgradeModalType.value])
-const modalTitle = computed(() => modalGate.value.title)
-const modalDescription = computed(() => modalGate.value.description)
-const modalFeatures = computed(() => modalGate.value.bullets)
 
 // Determine if we should show workflow or general tab
 const showWorkflowTab = computed(() => {
@@ -591,74 +589,58 @@ const handleCustomizationSave = (updatedAgent: AgentWithCustomization) => {
     switchTab('general')
 }
 
-// Handle save header changes
-const handleSaveHeader = async () => {
-    try {
-        const updatedAgent = await agentService.updateAgent(agentData.value.id, {
-            display_name: editDisplayName.value,
-            is_active: editIsActive.value
-        })
-        
-        // Update the agent data to trigger reactivity
-        Object.assign(agentData.value, updatedAgent)
-        
-        // Update storage to keep data in sync
-        agentStorage.updateAgent(updatedAgent)
-        
-        isEditingHeader.value = false
-        
-        toast.success('Agent updated successfully', {
-            duration: 4000,
-            closeButton: true
-        })
-    } catch (error) {
-        console.error('Error saving agent:', error)
-        toast.error('Failed to save agent changes', {
-            duration: 4000,
-            closeButton: true
-        })
-    }
+// Pin today's orb before a role change would repaint it. Best effort: a
+// failure here only risks the colour, never the save.
+const keepOrbThroughRename = async (newRole: string) => {
+    const variant = orbVariantToKeep(agentData.value.name || '', newRole, currentOrbVariant.value)
+    if (variant !== null) await persistAvatarMeta({ orb_variant: variant }).catch(() => undefined)
 }
 
-// Handle cancel header edit
-const handleCancelHeaderEdit = () => {
-    editDisplayName.value = agentData.value.display_name || agentData.value.name
-    editIsActive.value = agentData.value.is_active
-    isEditingHeader.value = false
+const handleSaveHeader = async (edit: AgentEdit) => {
+    savingHeader.value = true
+    try {
+        await keepOrbThroughRename(edit.name)
+        const updatedAgent = await agentService.updateAgent(agentData.value.id, edit)
+        Object.assign(agentData.value, updatedAgent)
+        agentStorage.updateAgent(updatedAgent)
+        isEditingHeader.value = false
+        toast.success('Agent updated successfully', { duration: 4000, closeButton: true })
+    } catch (error) {
+        console.error('Error saving agent:', error)
+        toast.error('Failed to save agent changes', { duration: 4000, closeButton: true })
+    } finally {
+        savingHeader.value = false
+    }
 }
 
 // Handle status toggle
 const handleStatusToggle = async (event: Event) => {
     const newStatus = (event.target as HTMLInputElement).checked
     
-    if (isEditingHeader.value) {
-        editIsActive.value = newStatus
-    } else {
-        // Directly update the agent status
-        try {
-            const updatedAgent = await agentService.updateAgent(agentData.value.id, {
-                is_active: newStatus
-            })
-            
-            // Update the agent data to trigger reactivity
-            agentData.value.is_active = newStatus
-            
-            // Update storage to keep data in sync
-            agentStorage.updateAgent(updatedAgent)
-            
-            toast.success(`Agent ${newStatus ? 'activated' : 'deactivated'} successfully`, {
-                duration: 3000,
-                closeButton: true
-            })
-        } catch (error) {
-            console.error('Error updating agent status:', error)
-            toast.error('Failed to update agent status', {
-                duration: 4000,
-                closeButton: true
-            })
-            // Revert the checkbox state on error
-            ;(event.target as HTMLInputElement).checked = agentData.value.is_active
-        }
+    // Directly update the agent status
+    try {
+        const updatedAgent = await agentService.updateAgent(agentData.value.id, {
+            is_active: newStatus
+        })
+        
+        // Update the agent data to trigger reactivity
+        agentData.value.is_active = newStatus
+        
+        // Update storage to keep data in sync
+        agentStorage.updateAgent(updatedAgent)
+        
+        toast.success(`Agent ${newStatus ? 'activated' : 'deactivated'} successfully`, {
+            duration: 3000,
+            closeButton: true
+        })
+    } catch (error) {
+        console.error('Error updating agent status:', error)
+        toast.error('Failed to update agent status', {
+            duration: 4000,
+            closeButton: true
+        })
+        // Revert the checkbox state on error
+        ;(event.target as HTMLInputElement).checked = agentData.value.is_active
     }
 }
 
@@ -820,49 +802,29 @@ onMounted(async () => {
                     </div>
                     <div class="agent-info">
                         <div class="name-section">
-                            <div v-if="!isEditingHeader" class="name-display">
+                            <div class="name-display">
                                 <h3>{{ agentData.display_name || agentData.name }}</h3>
-                                <button class="edit-icon-button" @click="isEditingHeader = true" title="Edit name and status">
+                                <button class="edit-icon-button" @click="isEditingHeader = true" title="Edit name, role and description" aria-label="Edit name, role and description">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                                         <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                                     </svg>
                                 </button>
                             </div>
-                            <div v-else class="name-edit">
-                                <input 
-                                    v-model="editDisplayName" 
-                                    class="name-input"
-                                    placeholder="Enter display name"
-                                    @keyup.enter="handleSaveHeader"
-                                    @keyup.escape="handleCancelHeaderEdit"
-                                >
-                                <div class="edit-actions">
-                                    <button class="save-icon-button" @click="handleSaveHeader" title="Save">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <polyline points="20,6 9,17 4,12"></polyline>
-                                        </svg>
-                                    </button>
-                                    <button class="cancel-icon-button" @click="handleCancelHeaderEdit" title="Cancel">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
                         </div>
+                        <span class="agent-role">{{ agentData.name }}</span>
+                        <p v-if="agentData.description" class="agent-summary">{{ agentData.description }}</p>
                         <div class="status-and-mode">
                             <div class="status-toggle">
-                                <label class="status-switch" :class="{ 'editing': isEditingHeader }">
+                                <label class="status-switch">
                                     <input 
                                         type="checkbox" 
-                                        :checked="isEditingHeader ? editIsActive : agentData.is_active"
+                                        :checked="agentData.is_active"
                                         @change="handleStatusToggle"
                                     >
                                     <span class="status-slider"></span>
                                 </label>
-                                <span class="status-text" :class="{ online: (isEditingHeader ? editIsActive : agentData.is_active) }">{{ (isEditingHeader ? editIsActive : agentData.is_active) ? 'Online' : 'Offline' }}</span>
+                                <span class="status-text" :class="{ online: agentData.is_active }">{{ agentData.is_active ? 'Online' : 'Offline' }}</span>
                             </div>
                             
                             <!-- Mode Selection -->
@@ -1306,46 +1268,29 @@ onMounted(async () => {
             </div>
         </div>
 
-        <!-- Upgrade Modal (only shown when enterprise module exists) -->
-        <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay">
-            <div class="upgrade-modal" role="dialog" aria-modal="true" :aria-label="modalTitle">
-                <div class="upgrade-modal-header">
-                    <div class="upgrade-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                            <path d="M2 17l10 5 10-5"/>
-                            <path d="M2 12l10 5 10-5"/>
-                        </svg>
-                    </div>
-                    <h3>{{ modalTitle }}</h3>
-                    <button class="close-button" aria-label="Close" @click="closeUpgradeModal">×</button>
-                </div>
-                <div class="upgrade-modal-content">
-                    <p class="upgrade-description">
-                        {{ modalDescription }}
-                    </p>
-                    <div class="upgrade-features">
-                        <div v-for="feature in modalFeatures" :key="feature" class="feature-item">
-                            <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20,6 9,17 4,12"/>
-                            </svg>
-                            <span>{{ feature }}</span>
-                        </div>
-                    </div>
-                    <!-- Live promo offer, when one applies to this organization -->
-                    <PromoGateNotice :feature="gateFeatureLabel" :feature-key="modalGate.feature" @claim="closeUpgradeModal" />
-                </div>
-                <div class="upgrade-modal-footer">
-                    <button class="upgrade-button" @click="handleUpgrade">
-                        Upgrade Plan
-                        <svg class="upgrade-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M5 12h14m-7-7 7 7-7 7"/>
-                        </svg>
-                    </button>
-                    <button class="cancel-upgrade-button" @click="closeUpgradeModal">Maybe Later</button>
-                </div>
-            </div>
-        </div>
+        <AgentEditDialog
+            v-if="isEditingHeader"
+            :display-name="agentData.display_name"
+            :role="agentData.name"
+            :description="agentData.description"
+            :saving="savingHeader"
+            @close="isEditingHeader = false"
+            @save="handleSaveHeader"
+        />
+
+        <UpgradeModal
+            v-if="hasEnterpriseModule && showUpgradeModal"
+            :key="upgradeModalType"
+            :title="modalGate.title"
+            :description="modalGate.description"
+            :bullets="modalGate.bullets"
+            :feature="modalGate.feature"
+            @close="closeUpgradeModal"
+            @upgrade="handleUpgrade"
+        >
+            <!-- Live promo offer, when one applies to this organization -->
+            <PromoGateNotice :feature="gateFeatureLabel" :feature-key="modalGate.feature" @claim="closeUpgradeModal" />
+        </UpgradeModal>
     </div>
 </template>
 
@@ -1659,38 +1604,27 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-}
-
-.name-edit {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    flex: 1;
-}
-
-.name-input {
-    flex: 1;
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--o12);
-    border-radius: var(--radius-input);
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: var(--tracking-display);
-    background: var(--o05);
-    color: var(--text);
     min-width: 0;
 }
 
-.name-input:focus {
-    outline: none;
-    border-color: var(--accent-ink);
-    box-shadow: var(--ring-focus);
+.agent-role {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.edit-actions {
-    display: flex;
-    gap: var(--space-xs);
+.agent-summary {
+    margin: 0;
+    color: var(--text2);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .edit-icon-button {
@@ -1710,45 +1644,6 @@ onMounted(async () => {
 .edit-icon-button:hover {
     background: var(--background-muted);
     color: var(--text-color);
-    transform: translateY(-1px);
-}
-
-.save-icon-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: var(--success-color);
-    border-radius: var(--radius-sm);
-    color: var(--toggle-knob);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.save-icon-button:hover {
-    background: var(--success-dark);
-    transform: translateY(-1px);
-}
-
-.cancel-icon-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: var(--background-muted);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.cancel-icon-button:hover {
-    background: var(--error-color);
-    color: var(--toggle-knob);
     transform: translateY(-1px);
 }
 
@@ -1806,11 +1701,6 @@ onMounted(async () => {
 .status-switch input:disabled + .status-slider {
     cursor: not-allowed;
     opacity: 0.7;
-}
-
-.status-switch.editing input:disabled + .status-slider {
-    cursor: pointer;
-    opacity: 1;
 }
 
 .status-switch:not(.editing) .status-slider:hover {
@@ -3082,199 +2972,5 @@ input:checked + .slider:before {
     .detail-panel {
     }
 }
-
-/* Upgrade Modal Styles */
-.upgrade-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(4px);
-    /* The dialog is taller than a laptop viewport: without these its header
-       and its own Upgrade button are cut off the screen with no way to reach
-       them. Scroll the overlay and let the box start at the top when it
-       cannot be centred. */
-    overflow-y: auto;
-    padding: var(--space-lg) var(--space-md);
-}
-
-.upgrade-modal {
-    background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
-    border-radius: 16px;
-    width: 90%;
-    max-width: 500px;
-    margin: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    overflow: hidden;
-    animation: modalSlideIn 0.3s ease-out;
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.upgrade-modal-header {
-    padding: var(--space-xl);
-    text-align: center;
-    position: relative;
-    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
-    color: var(--on-accent-solid);
-}
-
-.upgrade-icon {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto var(--space-md);
-    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.upgrade-icon svg {
-    width: 24px;
-    height: 24px;
-}
-
-.upgrade-modal-header h3 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-    color: var(--on-accent-solid);
-}
-
-.upgrade-modal-header .close-button {
-    position: absolute;
-    top: var(--space-md);
-    right: var(--space-md);
-    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
-    border: none;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    color: var(--on-accent-solid);
-    cursor: pointer;
-    font-size: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.upgrade-modal-header .close-button:hover {
-    background: color-mix(in srgb, var(--on-accent-solid) 30%, transparent);
-    transform: scale(1.1);
-}
-
-.upgrade-modal-content {
-    padding: var(--space-xl);
-}
-
-.upgrade-description {
-    font-size: 1rem;
-    color: var(--text-muted);
-    line-height: 1.6;
-    margin-bottom: var(--space-xl);
-    text-align: center;
-}
-
-.upgrade-features {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-}
-
-.feature-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-sm);
-    background: var(--background-soft);
-    border-radius: var(--radius-md);
-    border-left: 3px solid var(--primary-color);
-}
-
-.feature-icon {
-    width: 18px;
-    height: 18px;
-    color: var(--success-color);
-    flex-shrink: 0;
-}
-
-.feature-item span {
-    font-weight: 500;
-    color: var(--text-color);
-}
-
-.upgrade-modal-footer {
-    padding: var(--space-lg) var(--space-xl);
-    background: var(--background-soft);
-    display: flex;
-    gap: var(--space-md);
-    justify-content: center;
-}
-
-.upgrade-button {
-    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
-    color: var(--on-accent-solid);
-    border: none;
-    border-radius: var(--radius-full);
-    padding: var(--space-md) var(--space-xl);
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.upgrade-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    filter: brightness(1.1);
-}
-
-.upgrade-arrow {
-    width: 16px;
-    height: 16px;
-    transition: transform 0.2s ease;
-}
-
-.upgrade-button:hover .upgrade-arrow {
-    transform: translateX(2px);
-}
-
-.cancel-upgrade-button {
-    background: transparent;
-    color: var(--text-muted);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
-    padding: var(--space-md) var(--space-lg);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.cancel-upgrade-button:hover {
-    background: var(--background-muted);
-    color: var(--text-color);
-    border-color: var(--text-muted);
-}
-
 
 </style>

@@ -27,6 +27,7 @@ import { agentService } from '@/services/agent'
 import { permissionChecks } from '@/utils/permissions'
 import AgentDetail from './AgentDetail.vue'
 import CreateAgentModal from './CreateAgentModal.vue'
+import UpgradeModal from '@/components/common/UpgradeModal.vue'
 import { widgetService } from '@/services/widget'
 import { toast } from 'vue-sonner'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
@@ -505,43 +506,13 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
             @created="handleAgentCreated"
         />
 
-        <!-- Agent Limit Upgrade Modal -->
-        <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay" @click="closeUpgradeModal">
-            <div class="upgrade-modal" @click.stop>
-                <div class="upgrade-modal-header">
-                    <h3>Agent Limit Reached</h3>
-                    <button class="close-button" @click="closeUpgradeModal">×</button>
-                </div>
-                <div class="upgrade-modal-content">
-                    <p class="upgrade-description">
-                        You've reached your plan's agent limit ({{ currentAgentCount }}/{{ planLimits.maxAgents }}).
-                        Upgrade your plan to create more agents and unlock additional features.
-                    </p>
-                    <div class="upgrade-features">
-                        <div class="feature-item">
-                            <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-                            <span>More agents for your team</span>
-                        </div>
-                        <div class="feature-item">
-                            <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-                            <span>Advanced workflow features</span>
-                        </div>
-                        <div class="feature-item">
-                            <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-                            <span>Enhanced knowledge management</span>
-                        </div>
-                        <div class="feature-item">
-                            <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-                            <span>Priority support</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="upgrade-modal-footer">
-                    <button class="upgrade-button primary" @click="handleUpgrade">Upgrade Plan</button>
-                    <button class="upgrade-button secondary" @click="closeUpgradeModal">Maybe Later</button>
-                </div>
-            </div>
-        </div>
+        <UpgradeModal
+            v-if="hasEnterpriseModule && showUpgradeModal"
+            title="Agent limit reached"
+            :description="`Your plan includes ${planLimits.maxAgents} agent${planLimits.maxAgents === 1 ? '' : 's'}. Upgrade to add more.`"
+            @close="closeUpgradeModal"
+            @upgrade="handleUpgrade"
+        />
     </div>
 </template>
 
@@ -1147,105 +1118,4 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     .kpi-value { font-size: 28px; }
 }
 
-/* ─── Upgrade Modal ──────────────────────────────────────────────── */
-.upgrade-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(5,6,9,.7);
-    backdrop-filter: blur(4px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-}
-
-.upgrade-modal {
-    background: var(--surface);
-    border: 1px solid var(--o10);
-    border-radius: 20px;
-    padding: 0;
-    max-width: 500px;
-    width: 90%;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: var(--shadow-lg);
-}
-
-.upgrade-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--o08);
-}
-
-.upgrade-modal-header h3 {
-    margin: 0;
-    color: var(--text);
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    font-weight: 700;
-}
-
-.close-button {
-    background: var(--o05);
-    border: 1px solid var(--o10);
-    font-size: 1.25rem;
-    color: var(--muted);
-    cursor: pointer;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    transition: all var(--transition-fast);
-    line-height: 1;
-}
-
-.close-button:hover { background: var(--o10); color: var(--text); }
-
-.upgrade-modal-content { padding: var(--space-lg); }
-
-.upgrade-description {
-    color: var(--muted);
-    line-height: 1.6;
-    margin-bottom: var(--space-lg);
-    font-size: var(--text-sm);
-}
-
-.upgrade-features { display: flex; flex-direction: column; gap: var(--space-sm); }
-
-.feature-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    font-size: var(--text-sm);
-    color: var(--text3);
-}
-
-.feature-icon { color: var(--accent-ink); font-size: 12px; }
-
-.upgrade-modal-footer {
-    display: flex;
-    gap: var(--space-sm);
-    padding: var(--space-lg);
-    border-top: 1px solid var(--o08);
-}
-
-.upgrade-button {
-    flex: 1;
-    padding: 11px var(--space-md);
-    border-radius: 10px;
-    font-weight: 600;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    border: none;
-}
-
-.upgrade-button.primary { background: var(--accent-solid); color: var(--on-accent-solid); }
-.upgrade-button.primary:hover { opacity: 0.88; transform: translateY(-1px); }
-.upgrade-button.secondary { background: var(--o06); color: var(--text3); border: 1px solid var(--o10); }
-.upgrade-button.secondary:hover { background: var(--o10); color: var(--text); }
 </style>

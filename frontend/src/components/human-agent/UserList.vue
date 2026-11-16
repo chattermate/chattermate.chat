@@ -23,6 +23,7 @@ import { useUsers } from '@/composables/useUsers'
 import UserForm from './UserForm.vue'
 import ResetPasswordForm from './ResetPasswordForm.vue'
 import Modal from '@/components/common/Modal.vue'
+import UpgradeModal from '@/components/common/UpgradeModal.vue'
 import { userService } from '@/services/user'
 import { useRouter } from 'vue-router'
 import { useSubscriptionStorage } from '@/utils/storage'
@@ -544,28 +545,13 @@ onMounted(async () => {
       </template>
     </Modal>
 
-    <!-- User Limit Upgrade Modal (only shown when enterprise module exists) -->
-    <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay" @click="closeUpgradeModal">
-      <div class="upgrade-modal" @click.stop>
-        <div class="upgrade-modal-header">
-          <h3>Team limit reached</h3>
-          <button class="close-button" @click="closeUpgradeModal">×</button>
-        </div>
-        <div class="upgrade-modal-content">
-          <p class="upgrade-description">
-            {{ teamLimitText }}
-          </p>
-        </div>
-        <div class="upgrade-modal-footer">
-          <button class="upgrade-button primary" @click="handleUpgrade">
-            Upgrade Plan
-          </button>
-          <button class="upgrade-button secondary" @click="closeUpgradeModal">
-            Maybe Later
-          </button>
-        </div>
-      </div>
-    </div>
+    <UpgradeModal
+      v-if="hasEnterpriseModule && showUpgradeModal"
+      title="Team limit reached"
+      :description="teamLimitText"
+      @close="closeUpgradeModal"
+      @upgrade="handleUpgrade"
+    />
   </div>
 </template>
 
@@ -955,118 +941,6 @@ onMounted(async () => {
   font-size: 12px;
   margin-left: var(--space-xs);
   color: var(--warning-color);
-}
-
-/* Upgrade Modal Styles */
-.upgrade-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(5, 6, 9, 0.66);
-  backdrop-filter: blur(3px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.upgrade-modal {
-  background: var(--surface);
-  border: 1px solid var(--o10);
-  border-radius: 20px;
-  padding: 0;
-  max-width: 500px;
-  width: 90%;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-lg);
-}
-
-.upgrade-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--o08);
-}
-
-.upgrade-modal-header h3 {
-  margin: 0;
-  font-family: var(--font-display);
-  color: var(--text);
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.close-button {
-  background: var(--o05);
-  border: 1px solid var(--o12);
-  font-size: 1.2rem;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.close-button:hover {
-  background: var(--o10);
-  color: var(--text);
-}
-
-.upgrade-modal-content {
-  padding: var(--space-lg);
-}
-
-.upgrade-description {
-  color: var(--muted);
-  line-height: 1.6;
-  margin-bottom: var(--space-lg);
-}
-
-.upgrade-modal-footer {
-  display: flex;
-  gap: var(--space-sm);
-  padding: var(--space-lg);
-  border-top: 1px solid var(--o08);
-}
-
-.upgrade-button {
-  flex: 1;
-  padding: var(--space-md);
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-}
-
-.upgrade-button.primary {
-  background: var(--accent-solid);
-  color: var(--on-accent-solid);
-}
-
-.upgrade-button.primary:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-
-.upgrade-button.secondary {
-  background: var(--o06);
-  color: var(--text3);
-  border: 1px solid var(--o10);
-}
-
-.upgrade-button.secondary:hover {
-  background: var(--o10);
-  color: var(--text);
 }
 
 /* ── Mobile ──────────────────────────────────────────────────────────────

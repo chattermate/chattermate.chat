@@ -6087,8 +6087,12 @@ export interface components {
         AgentType: "customer_support" | "sales" | "tech_support" | "general" | "custom";
         /** AgentUpdate */
         AgentUpdate: {
+            /** Name */
+            name?: string | null;
             /** Display Name */
             display_name?: string | null;
+            /** Description */
+            description?: string | null;
             /** Instructions */
             instructions?: string[] | null;
             /** Is Active */

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Annotated, List, Optional, Dict
 from enum import Enum
 from uuid import UUID
@@ -28,6 +28,9 @@ from app.models.schemas.user_group import UserGroupResponse
 # Per customer, counting only messages the AI answers; None = no limit.
 PerMinuteLimit = Annotated[Optional[int], Field(ge=1, le=MAX_PER_MINUTE)]
 PerDayLimit = Annotated[Optional[int], Field(ge=1, le=MAX_PER_DAY)]
+
+AGENT_NAME_MAX = 100
+AGENT_DESCRIPTION_MAX = 500
 
 
 class KnowledgeItem(BaseModel):
@@ -84,7 +87,10 @@ class AgentCreate(AgentBase):
 
 
 class AgentUpdate(BaseModel):
+    # `name` is the agent's role line under its display name on cards.
+    name: Optional[str] = Field(default=None, max_length=AGENT_NAME_MAX)
     display_name: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=AGENT_DESCRIPTION_MAX)
     instructions: Optional[List[str]] = None
     is_active: Optional[bool] = None
     transfer_to_human: Optional[bool] = None
@@ -110,6 +116,20 @@ class AgentUpdate(BaseModel):
     topic_scope: Optional[str] = Field(default=None, max_length=500)
     guardrail_prompt: Optional[str] = Field(default=None, max_length=GUARDRAIL_PROMPT_MAX)
     guardrail_enabled: Optional[bool] = None
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, value: Optional[str]) -> str:
+        """The column is required, so a sent name must have text in it."""
+        stripped = (value or '').strip()
+        if not stripped:
+            raise ValueError('Name cannot be empty')
+        return stripped
+
+    @field_validator('description')
+    @classmethod
+    def strip_description(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value is not None else None
 
 
 class AgentKnowledge(BaseModel):

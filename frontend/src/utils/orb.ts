@@ -45,6 +45,12 @@ export const ORB_PALETTE_COUNT = ORB_PALETTES.length
 export const orbIndexForSeed = (seed: string): number =>
     (seed || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % ORB_PALETTES.length
 
+/** The default orb is picked from the role text, so a new role would repaint
+ *  it. Returns the variant to store first to keep today's colour, or null when
+ *  nothing would change (same role, or a variant was already chosen). */
+export const orbVariantToKeep = (oldRole: string, newRole: string, storedVariant: unknown): number | null =>
+    newRole === oldRole || typeof storedVariant === 'number' ? null : orbIndexForSeed(oldRole)
+
 // Inline style object for a specific orb variant by index.
 export const getOrbStyleAt = (index: number): Record<string, string> => {
     const p = ORB_PALETTES[((index % ORB_PALETTES.length) + ORB_PALETTES.length) % ORB_PALETTES.length]
