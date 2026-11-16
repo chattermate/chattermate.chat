@@ -1,4 +1,4 @@
-import { test, expect, env, ApiClient, createUser, login, unique, type APIRequestContext } from '@e2e'
+import { test, expect, env, NO_COOKIES, ApiClient, createUser, login, unique, type APIRequestContext } from '@e2e'
 
 // Sessions end on the server, not just in the browser: a copied token stops
 // working the moment its session is signed out, replaced or deactivated.
@@ -13,7 +13,7 @@ test.describe('sessions', () => {
 
   test.beforeEach(({ playwright }) => {
     newContext = async () => {
-      const context = await playwright.request.newContext()
+      const context = await playwright.request.newContext(NO_COOKIES)
       contexts.push(context)
       return context
     }

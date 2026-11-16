@@ -162,13 +162,18 @@ async function newContext(browser: Browser, testInfo: TestInfo, options: Browser
   return context
 }
 
+// Seeding clients sign in on their own. Without this they would start from the
+// project's admin storageState, and signing in ends the session the request
+// presents, i.e. the one every signed-in page shares.
+export const NO_COOKIES = { storageState: { cookies: [], origins: [] } }
+
 export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   agentSettings: [{}, { option: true }],
 
   org: [async ({}, use) => use(readOrgState()), { scope: 'worker', box: true }],
 
   adminApi: [async ({ playwright, org }, use) => {
-    const request = await playwright.request.newContext()
+    const request = await playwright.request.newContext(NO_COOKIES)
     const { api } = await signedInClient(new ApiClient(request), org.admin.email, org.admin.password)
     await use(api)
     await request.dispose()
@@ -194,7 +199,7 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
       const person = { name: `Member ${id}`, email: `${id}@e2e.example.com`, password: 'E2e-Member-Passw0rd!' }
       const user = await createUser(adminApi, { ...person, role, seeAllAiChats })
       for (const groupId of groupIds) await adminApi.post(`/groups/${groupId}/users/${user.id}`)
-      const context = await playwright.request.newContext()
+      const context = await playwright.request.newContext(NO_COOKIES)
       contexts.push(context)
       const { api } = await signedInClient(new ApiClient(context), person.email, person.password)
       return { ...person, id: user.id, api }
