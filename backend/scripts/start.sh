@@ -4,9 +4,30 @@ set -e
 # Set environment variable to prevent tokenizer deadlock warnings
 export TOKENIZERS_PARALLELISM=false
 
-# Wait for PostgreSQL to be ready
-echo "Waiting for PostgreSQL..."
-while ! nc -z db 5432; do
+# Print the host or port of DATABASE_URL, or nothing if it has none.
+database_url_part() {
+  python - "$1" <<'PY'
+import os
+import sys
+from urllib.parse import urlsplit
+
+try:
+    url = urlsplit(os.environ.get("DATABASE_URL", ""))
+    value = url.hostname if sys.argv[1] == "host" else url.port
+except ValueError:
+    value = None
+print(value or "")
+PY
+}
+
+# Wait for PostgreSQL to be ready. DB_HOST/DB_PORT win, then DATABASE_URL,
+# then the compose service name db:5432.
+DB_HOST="${DB_HOST:-$(database_url_part host)}"
+DB_HOST="${DB_HOST:-db}"
+DB_PORT="${DB_PORT:-$(database_url_part port)}"
+DB_PORT="${DB_PORT:-5432}"
+echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+while ! nc -z "$DB_HOST" "$DB_PORT"; do
   sleep 0.1
 done
 echo "PostgreSQL is ready!"
