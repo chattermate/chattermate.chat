@@ -348,3 +348,73 @@ describe('detailsOf', () => {
     expect(detailsOf({ details: { Note: 'x'.repeat(DETAIL_MAX_CHARS + 50) } })![0].value).toHaveLength(DETAIL_MAX_CHARS)
   })
 })
+
+describe('actions the server runs', () => {
+  const serverRequest = (overrides: Partial<ActionRequest> = {}) => request({
+    name: 'refund_order',
+    label: 'Refund $20.00 on #1005',
+    args: {},
+    confirm: 'always',
+    runs_on: 'server',
+    details: [{ key: 'Order', value: '#1005' }, { key: 'bad', value: 7 }, 'junk'],
+    decline_label: 'Keep my order',
+    ...overrides,
+  })
+
+  it('only asks: the page is never told', () => {
+    const { client, posted, confirm } = setup()
+    client.handleRequest(serverRequest())
+    expect(posted).toEqual([])
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      details: [{ key: 'Order', value: '#1005' }],
+    }))
+  })
+
+  it('sends a yes as approved and runs nothing on the page', () => {
+    const { client, posted, emitted } = setup()
+    client.handleRequest(serverRequest())
+    client.approve()
+    expect(posted).toEqual([])
+    expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'approved', confirmed: true }]])
+  })
+
+  it('sends a no as declined', () => {
+    const { client, emitted, outcomes } = setup()
+    client.handleRequest(serverRequest())
+    client.decline()
+    expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'declined', confirmed: false }]])
+    expect(outcomes.map((o) => o.status)).toEqual(['declined'])
+  })
+
+  it('shows how it went once the server ran it', () => {
+    const { client, outcomes } = setup()
+    client.handleRequest(serverRequest())
+    client.approve()
+    client.handleServerOutcome({ call_id: 'call-1', status: 'ok', summary: 'Refunded $20.00 on #1005' })
+    client.handleServerOutcome({ call_id: 'call-1', status: 'ok', summary: 'again' })
+    expect(outcomes).toEqual([expect.objectContaining({ status: 'ok', summary: 'Refunded $20.00 on #1005' })])
+  })
+
+  it('shows a failure in the server\'s words', () => {
+    const { client, outcomes } = setup()
+    client.handleRequest(serverRequest())
+    client.approve()
+    client.handleServerOutcome({ call_id: 'call-1', status: 'error', error: 'Already refunded.' })
+    expect(outcomes).toEqual([expect.objectContaining({ status: 'error', error: 'Already refunded.' })])
+  })
+
+  it('ignores an outcome for a call nobody approved here', () => {
+    const { client, outcomes } = setup()
+    client.handleServerOutcome({ call_id: 'call-1', status: 'ok', summary: 'Refunded' })
+    expect(outcomes).toEqual([])
+  })
+
+  it('does not ask twice when the request is replayed after a yes', () => {
+    const { client, confirm } = setup()
+    client.handleRequest(serverRequest())
+    client.approve()
+    confirm.mockClear()
+    client.handleRequest(serverRequest())
+    expect(confirm).not.toHaveBeenCalled()
+  })
+})

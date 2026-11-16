@@ -107,3 +107,16 @@ class TestTheAgentUsesThem:
         assert agent._shopify_fallback_cache_key() is None
         tools.has_cached_products = True
         assert agent._shopify_fallback_cache_key() == "org:store_products:s1"
+
+    def test_order_tools_are_used_instead_of_handing_every_refund_over(self):
+        agent_extensions.register(lambda c: [ExtraToolkit(StoreTools(), changes_orders=True)])
+        prompt = prompt_of(build_agent(shopify=True)).lower()
+        assert "use your order tools" in prompt
+        assert "never promise a refund" in prompt
+        assert "approving a refund, cancelling or changing an order? set transfer_to_human" not in prompt
+
+    def test_without_order_tools_a_refund_still_goes_to_a_person(self):
+        agent_extensions.register(lambda c: [ExtraToolkit(StoreTools())])
+        prompt = prompt_of(build_agent(shopify=True)).lower()
+        assert "approving a refund, cancelling or changing an order? set transfer_to_human" in prompt
+        assert "use your order tools" not in prompt
