@@ -39,6 +39,9 @@ class ConversationNote(Base):
     organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
     # Who wrote it; kept when they leave, so the note keeps its text
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    # Or the AI agent that wrote it, about something it did (an installed
+    # extension's action the customer approved)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey('agents.id', ondelete='SET NULL'), nullable=True)
     # Internal, but it is about a customer: encrypted at rest like the messages
     body = Column(EncryptedText, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
