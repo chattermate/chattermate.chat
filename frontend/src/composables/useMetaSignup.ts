@@ -154,16 +154,12 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     if (!session) {
       // Signed in, but Meta never reported which number was set up, so there
       // is nothing to connect. Say so rather than appearing to do nothing.
-      toast.error('WhatsApp signup did not complete', {
-        description: 'No number was set up. Try again, or enter credentials manually.',
-      })
+      signupError.value = 'WhatsApp signup did not complete: no number was set up. Try again, or enter credentials manually.'
       return
     }
     // Reconnecting: only the same number puts that account back to work
     if (reconnecting && session.phone_number_id !== reconnecting.external_account_id) {
-      toast.error(`That's a different number, not ${reconnectName()}`, {
-        description: 'Sign in again and choose the same number to reconnect it.',
-      })
+      signupError.value = `That's a different number, not ${reconnectName()}. Sign in again and choose the same number to reconnect it.`
       return
     }
     const account = await channelsService.connectWhatsAppEmbeddedSignup({
@@ -190,9 +186,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     // Reconnecting: only the same Page puts that account back to work, so no picker
     if (reconnecting) {
       if (!pages.some((page) => page.id === reconnecting.external_account_id)) {
-        toast.error(`That login didn't include ${reconnectName()}`, {
-          description: 'Sign in again and select that Page to reconnect it.',
-        })
+        signupError.value = `That login didn't include ${reconnectName()}. Sign in again and select that Page to reconnect it.`
         return
       }
       await connectPickedPage(reconnecting.external_account_id)
@@ -229,7 +223,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     try {
       await finishWhatsAppSignup(code)
     } catch (error: any) {
-      toast.error(apiErrorMessage(error, 'Could not finish connecting'))
+      signupError.value = apiErrorMessage(error, 'Could not finish connecting')
     } finally {
       signingUp.value = false
     }
@@ -246,7 +240,6 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
       // The user closing the popup is not an error worth a toast.
       if (error?.message !== 'cancelled') {
         signupError.value = apiErrorMessage(error, error?.message || 'Could not finish connecting')
-        toast.error(signupError.value)
       }
     } finally {
       signingUp.value = false
@@ -282,6 +275,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
 
   const startSignup = () => {
     if (signingUp.value) return
+    signupError.value = ''
 
     // Both popups must open synchronously in the click handler or the browser
     // blocks them.
