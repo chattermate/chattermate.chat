@@ -66,4 +66,7 @@ jobs:
     - name: Run type check
       run: npm run type-check
 
+    - name: Check nginx proxy passes auth cookies
+      run: sh tests/nginx/proxy-cookies.sh
+
   
