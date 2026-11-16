@@ -89,6 +89,10 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   const signupToken = ref('')
   const connectingPage = ref(false)
 
+  // The last login failure, kept on screen: a toast is gone before it is read,
+  // and the next click on the button is all the customer has to go on.
+  const signupError = ref('')
+
   const copy = SIGNUP_COPY[channel]
 
   // Manage mode: a login here reconnects this account, so it must bring the
@@ -234,13 +238,15 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   /** Shared shape of the two popup logins: run it, connect, surface failures. */
   const runPopupConnect = async (connect: (redirectUri: string) => Promise<void>) => {
     signingUp.value = true
+    signupError.value = ''
     const redirectUri = window.location.origin + META_OAUTH_CALLBACK_PATH
     try {
       await connect(redirectUri)
     } catch (error: any) {
       // The user closing the popup is not an error worth a toast.
       if (error?.message !== 'cancelled') {
-        toast.error(apiErrorMessage(error, error?.message || 'Could not finish connecting'))
+        signupError.value = apiErrorMessage(error, error?.message || 'Could not finish connecting')
+        toast.error(signupError.value)
       }
     } finally {
       signingUp.value = false
@@ -302,6 +308,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     showManualForm,
     signupPages,
     connectingPage,
+    signupError,
     copy,
     startSignup,
     onPageSelected,

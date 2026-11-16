@@ -142,6 +142,19 @@ describe('MetaChannelConnect one-click reconnect', () => {
     expect(toast.error).toHaveBeenCalledWith('Signup expired, try again')
   })
 
+  it('Messenger: "no Pages shared" stays on screen and clears on the next try', async () => {
+    const noPages = 'No Facebook Pages were shared with ChatterMate. Run the connect again and tick the Page you want to use.'
+    vi.mocked(channelsService.listMessengerSignupPages).mockRejectedValueOnce(
+      { response: { status: 400, data: { detail: noPages } } })
+    const wrapper = await reconnectWithOneClick(broken('messenger', 'PAGE1'))
+    expect(wrapper.find('.meta-signup-error').text()).toBe(noPages)
+
+    vi.mocked(channelsService.listMessengerSignupPages).mockResolvedValue(PAGES('PAGE2') as any)
+    await wrapper.find('.meta-signup-btn').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.meta-signup-error').exists()).toBe(false)
+  })
+
   it('Instagram: says so when the login brought another account', async () => {
     vi.mocked(channelsService.connectInstagramLogin).mockResolvedValue(
       { ...broken('instagram', 'IG2'), display_name: '@other', needs_reconnect: false })

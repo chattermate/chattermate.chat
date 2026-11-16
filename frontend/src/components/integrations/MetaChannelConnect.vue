@@ -106,6 +106,7 @@ const {
   signingUp,
   showManualForm,
   signupPages,
+  signupError,
   connectingPage,
   copy: signupCopy,
   startSignup,
@@ -205,6 +206,7 @@ const saveAgent = async () => {
              stays available for anyone who already has their own credentials. -->
         <div v-else-if="signupEnabled && !showManualForm" class="meta-signup">
           <p class="meta-intro">{{ signupCopy.intro }}</p>
+          <p v-if="signupError" class="meta-signup-error" role="alert">{{ signupError }}</p>
           <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startSignup">
             <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
             {{ signingUp ? 'Waiting for Meta…' : signupCopy.cta }}
@@ -410,6 +412,16 @@ const saveAgent = async () => {
   justify-content: center;
   padding: 24px 0;
   color: var(--text-muted);
+}
+
+.meta-signup-error {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--error-bg);
+  color: var(--error-color);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .meta-signup-btn {
