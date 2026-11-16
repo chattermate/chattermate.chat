@@ -49,10 +49,11 @@ _PERSON_DECIDES = (
 )
 # When the agent's tools can change orders themselves (agent_extensions.ExtraToolkit.changes_orders)
 _ORDER_TOOLS_DECIDE = (
-    "2. Do they want a refund, a cancellation or a change to an order? Use your order tools: they ask the "
-    "customer to approve, and they know the limits the business set. Set transfer_to_human to true in this "
-    "reply when a tool says to hand over, when no tool can do it, or when you aren't sure what they want. "
-    "Never promise a refund, a cancellation or a change before a tool has done it. Do not open a ticket for it."
+    "2. Do they want a refund? A person decides refunds: set transfer_to_human to true in this reply. "
+    "Do they want an order cancelled or changed, or a discount? Use your order tools: they ask the customer "
+    "to approve, and they know the limits the business set. Set transfer_to_human to true in this reply when "
+    "a tool says to hand over, when no tool can do it, or when you aren't sure what they want. Never promise "
+    "a refund, a cancellation or a change before it is done. Do not open a ticket for it."
 )
 
 _TOOLS_OR_PERSON_RULES = """**Before you call any tool, decide: tool or person?**
@@ -66,7 +67,8 @@ Setting transfer_to_human replaces your reply with a handover message, so the cu
 
 def tools_or_person_rules(changes_orders: bool = False) -> str:
     """The rules for an agent with tools that can also hand over. With
-    `changes_orders`, its tools refund, cancel or change orders themselves."""
+    `changes_orders`, its tools cancel or change orders themselves (refunds
+    always go to a person)."""
     return _TOOLS_OR_PERSON_RULES.format(order_rule=_ORDER_TOOLS_DECIDE if changes_orders else _PERSON_DECIDES)
 
 
