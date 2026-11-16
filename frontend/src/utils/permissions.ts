@@ -71,6 +71,11 @@ export const permissionChecks = {
   canViewTickets: () => hasAnyPermission(TICKET_PERMISSIONS),
   canManageTickets: () => hasAnyPermission(['manage_tickets']),
   canApproveTicketActions: () => hasAnyPermission(['approve_ticket_actions']),
+  // A customer's store orders, one permission per action
+  canRefundOrders: () => hasAnyPermission(['refund_orders']),
+  canCancelOrders: () => hasAnyPermission(['cancel_orders']),
+  canEditOrders: () => hasAnyPermission(['edit_orders']),
+  canCreateDiscounts: () => hasAnyPermission(['create_discounts']),
   canViewSubscription: () => hasAnyPermission(SUBSCRIPTION_PERMISSIONS),
   canManageSubscription: () => hasAnyPermission(['manage_subscription']),
 }

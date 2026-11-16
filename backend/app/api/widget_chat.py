@@ -472,7 +472,7 @@ async def widget_connect(sid, environ, auth):
         await _announce_conversation(sid, session_data, session_created)
 
         # A reply paused on a host action survives a reconnect: send its call again.
-        await replay_open_call(sid, session_id, db)
+        await replay_open_call(sid, session_data, db)
 
         return True
 

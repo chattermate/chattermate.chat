@@ -20,6 +20,7 @@ import { checkShopifyConnection } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { useUpgradePlan } from '@/composables/useUpgradePlan'
 import LockedNote from '@/components/common/LockedNote.vue'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 interface JiraProject {
   id: string;
@@ -101,6 +102,10 @@ const props = defineProps({
     default: ''
   }
 })
+
+// What the AI agent may do to orders, beside its Shopify switch (nothing in open source)
+const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const AgentOrderActions = enterpriseComponent(moduleImports.agentOrderActions)
 
 const { upgradeText: ticketingUpgradeText } = useUpgradePlan('ai_ticketing')
 
@@ -504,6 +509,7 @@ onMounted(async () => {
           <span class="error-icon">❌</span>
           {{ shopifyError }}
         </div>
+        <AgentOrderActions v-if="shopifyConnected && localShopifyEnabled" :agent-id="props.agentId" />
       </div>
 
       <!-- Messaging Channels (Telegram / WhatsApp / Messenger / Instagram) -->

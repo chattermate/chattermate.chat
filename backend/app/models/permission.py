@@ -38,6 +38,10 @@ DEFAULT_AGENT_ROLE_PERMISSIONS = (
     "manage_assigned_chats",
     "view_unassigned_chats",
     "view_people",
+    # Store orders: the everyday changes. Refunds and cancelling, which move
+    # money, are admin-only until an admin grants them.
+    "edit_orders",
+    "create_discounts",
 )
 
 
@@ -82,5 +86,11 @@ class Permission(Base):
             ("manage_tickets", "Can manage tickets"),
             ("approve_ticket_actions", "Can approve AI-proposed ticket resolutions"),
             ("manage_ticket_connectors", "Can manage ticket investigation connectors"),
+            # Store orders from a conversation (the inbox, or an agent the
+            # business lets act), one permission per action
+            ("refund_orders", "Can refund store orders"),
+            ("cancel_orders", "Can cancel store orders"),
+            ("edit_orders", "Can change an order's shipping address"),
+            ("create_discounts", "Can create discount codes for a customer"),
             ("super_admin", "Has all permissions")
         ]

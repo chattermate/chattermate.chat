@@ -44,6 +44,17 @@ describe('ActionConfirmCard', () => {
     expect(wrapper.find('b').exists()).toBe(false)
   })
 
+  it('uses a server-run action\'s own wording for no', () => {
+    const card = pending(null, [{ key: 'Order', value: '#1005' }])
+    const wrapper = mount(ActionConfirmCard, { props: { pending: {
+      ...card,
+      request: { ...card.request, label: 'Refund $20.00 on #1005', args: {}, runs_on: 'server' as const, decline_label: 'Keep my order' },
+    } } })
+    expect(wrapper.find('.cm-action-apply').text()).toBe('Refund $20.00 on #1005')
+    expect(wrapper.find('.cm-action-cancel').text()).toBe('Keep my order')
+    expect(wrapper.find('dd').text()).toBe('#1005')
+  })
+
   it('shows before and after when overwriting', async () => {
     const wrapper = mount(ActionConfirmCard, { props: { pending: pending({ before: 'USD', after: { code: 'GBP' } }) } })
     expect(wrapper.find('.before').text()).toContain('USD')

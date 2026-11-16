@@ -247,6 +247,9 @@ class ConversationNoteResponse(BaseModel):
     body: str
     user_id: Optional[UUID] = None
     user_name: Optional[str] = None
+    # A note the AI agent wrote about something it did
+    agent_id: Optional[UUID] = None
+    agent_name: Optional[str] = None
     mentions: List[NoteMention] = []
     created_at: datetime
 

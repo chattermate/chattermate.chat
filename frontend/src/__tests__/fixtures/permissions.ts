@@ -45,6 +45,10 @@ export const createPermissionMocks = (defaultValue = true) => ({
   canViewTickets: vi.fn(() => defaultValue),
   canManageTickets: vi.fn(() => defaultValue),
   canApproveTicketActions: vi.fn(() => defaultValue),
+  canRefundOrders: vi.fn(() => defaultValue),
+  canCancelOrders: vi.fn(() => defaultValue),
+  canEditOrders: vi.fn(() => defaultValue),
+  canCreateDiscounts: vi.fn(() => defaultValue),
   canViewSubscription: vi.fn(() => defaultValue),
   canManageSubscription: vi.fn(() => defaultValue),
 })

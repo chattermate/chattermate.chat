@@ -90,6 +90,40 @@ class AgentActionCallRepository:
             return True
         return False
 
+    def running_call(self, session_id: UUID) -> Optional[AgentActionCall]:
+        """A server-run call this conversation is waiting on, if any."""
+        return (
+            self.db.query(AgentActionCall)
+            .filter(
+                AgentActionCall.session_id == session_id,
+                AgentActionCall.status == ActionCallStatus.RUNNING.value,
+            )
+            .order_by(AgentActionCall.created_at.desc())
+            .first()
+        )
+
+    def finish(self, call: AgentActionCall, status: ActionCallStatus, *,
+               error_code: Optional[str] = None, result_ciphertext: Optional[str] = None) -> bool:
+        """Record how a running server-run call ended. False when it wasn't running."""
+        now = datetime.now(timezone.utc)
+        created = call.created_at if call.created_at.tzinfo else call.created_at.replace(tzinfo=timezone.utc)
+        result = self.db.execute(
+            update(AgentActionCall)
+            .where(AgentActionCall.id == call.id, AgentActionCall.status == ActionCallStatus.RUNNING.value)
+            .values(
+                status=status.value,
+                error_code=error_code,
+                result_ciphertext=result_ciphertext,
+                resolved_at=now,
+                latency_ms=int((now - created).total_seconds() * 1000),
+            )
+        )
+        self.db.commit()
+        if result.rowcount == 1:
+            self.db.refresh(call)
+            return True
+        return False
+
     def skip_pending(self, run_id: str, status: ActionCallStatus = ActionCallStatus.SKIPPED) -> None:
         """Close every call of the run that is still waiting."""
         self.db.execute(

@@ -23,6 +23,10 @@ limitations under the License.
  * when the action's policy says so, has the page run it, and reports the outcome
  * as action_result. The server decides what may run; the confirm card is drawn
  * here, by the widget, so the model can never skip it.
+ *
+ * Some actions run on the server (runs_on: 'server', such as a store refund):
+ * the widget only asks. A yes is sent as 'approved', the server runs it and
+ * reports the outcome as action_outcome; the page is never involved.
  */
 
 export type ConfirmPolicy = 'never' | 'always' | 'when_overwriting'
@@ -35,6 +39,20 @@ export interface ActionRequest {
   args: Record<string, unknown>
   confirm: ConfirmPolicy
   timeout_s: number
+  /** Who runs it once approved: the page (the default) or the server. */
+  runs_on?: 'page' | 'server'
+  /** A server-run action's own account of what will happen. */
+  details?: unknown
+  /** A server-run action's wording for the "no" button. */
+  decline_label?: string
+}
+
+/** The server's report on an action it ran after the visitor approved it. */
+export interface ServerOutcome {
+  call_id: string
+  status: string
+  summary?: string | null
+  error?: string | null
 }
 
 export interface ActionPreview {
@@ -60,6 +78,17 @@ export interface ActionDetail {
 /** Most detail lines a page can put on a card, and the longest value. */
 export const DETAILS_MAX = 8
 export const DETAIL_MAX_CHARS = 200
+
+/** A server-run action's detail lines ([{key, value}]): strings only, within the same limits. */
+export function serverDetailsOf(details: unknown): ActionDetail[] | null {
+  if (!Array.isArray(details)) return null
+  const lines = details
+    .filter((d): d is ActionDetail => !!d && typeof d.key === 'string' && typeof d.value === 'string'
+      && !!d.key.trim() && !!d.value.trim())
+    .slice(0, DETAILS_MAX)
+    .map((d) => ({ key: d.key.trim().slice(0, 60), value: d.value.trim().slice(0, DETAIL_MAX_CHARS) }))
+  return lines.length ? lines : null
+}
 
 /** The `details` a page's preview gave for an always-ask action: scalar values only. */
 export function detailsOf(preview: unknown): ActionDetail[] | null {
@@ -156,6 +185,8 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   // Calls the widget itself started (a journey's action chip): told to a callback, not the server.
   const local = new Map<string, (status: ActionStatus) => void>()
   const previews = new Map<string, ActionRequest>()
+  // Server-run calls the visitor approved, waiting on the server's outcome: their label.
+  const onServer = new Map<string, string>()
 
   /** Tell the server what this page offers. Sent again on every connection. */
   function announce() {
@@ -234,8 +265,13 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   function handleRequest(request: ActionRequest) {
     if (!request || typeof request.call_id !== 'string') return
     // A replay (after a reconnect) of a call already running, previewing or on screen.
-    if (waiting.has(request.call_id) || previews.has(request.call_id)
+    if (waiting.has(request.call_id) || previews.has(request.call_id) || onServer.has(request.call_id)
       || pending?.request.call_id === request.call_id) return
+    if (request.runs_on === 'server') {
+      // Always asked, and only asked: the page has no part in it.
+      setPending({ request, preview: null, details: serverDetailsOf(request.details) })
+      return
+    }
     if (request.confirm === 'always') {
       // The card shows at once; the page may then say what the call will do,
       // which matters most for a chip, whose call carries no arguments.
@@ -307,7 +343,24 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     const { request, preview } = pending
     setPending(null)
     previews.delete(request.call_id)
+    if (request.runs_on === 'server') {
+      onServer.set(request.call_id, request.label)
+      deps.emit('action_result', { call_id: request.call_id, status: 'approved', confirmed: true })
+      return
+    }
     runOnPage(request, true, preview)
+  }
+
+  /** The server ran an action the visitor approved: show how it went. */
+  function handleServerOutcome(outcome: ServerOutcome) {
+    const label = outcome && onServer.get(outcome.call_id)
+    if (!label) return
+    onServer.delete(outcome.call_id)
+    const status: ActionStatus = outcome.status === 'ok' ? 'ok' : 'error'
+    tell(label, status, null, {
+      result: { summary: outcome.summary ?? undefined },
+      error: outcome.error ?? undefined,
+    })
   }
 
   /** The visitor said no: the action does not run. */
@@ -349,10 +402,11 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     waiting.clear()
     previews.clear()
     local.clear()
+    onServer.clear()
     setPending(null)
   }
 
-  return { announce, handleRequest, handleHostMessage, approve, decline, runLocal, dispose }
+  return { announce, handleRequest, handleHostMessage, handleServerOutcome, approve, decline, runLocal, dispose }
 }
 
 export type HostActionsClient = ReturnType<typeof createHostActionsClient>

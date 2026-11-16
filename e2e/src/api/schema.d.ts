@@ -6579,6 +6579,10 @@ export interface components {
             user_id?: string | null;
             /** User Name */
             user_name?: string | null;
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Agent Name */
+            agent_name?: string | null;
             /**
              * Mentions
              * @default []

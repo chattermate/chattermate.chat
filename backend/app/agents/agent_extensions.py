@@ -50,6 +50,9 @@ class ExtraToolkit:
     instructions: str = ""
     # Its tools return products the reply shows (the product cache, enrich_shopify_response)
     products: bool = False
+    # Its tools refund, cancel or change orders, so the model uses them rather
+    # than handing every such request over (handover_prompt.tools_or_person_rules)
+    changes_orders: bool = False
 
 
 ToolkitFactory = Callable[[ToolContext], List[ExtraToolkit]]

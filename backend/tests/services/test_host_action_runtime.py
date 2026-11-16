@@ -294,7 +294,7 @@ async def test_confirm_actions_get_the_confirm_window(db, sio, session, actions)
 async def test_reconnect_replays_the_open_call(db, sio, session, actions):
     await runtime.start_paused_turn("sid", session, _paused(("c1", "open_page", {"path": "/x"})),
                                     list(actions.values()), db)
-    await runtime.replay_open_call("sid-new", session["session_id"], db)
+    await runtime.replay_open_call("sid-new", session, db)
     replay = sio.emit.call_args_list[-1]
     assert replay.args[0] == "action_request" and replay.kwargs["to"] == "sid-new"
     assert replay.args[1]["args"] == {"path": "/x"}
@@ -302,7 +302,7 @@ async def test_reconnect_replays_the_open_call(db, sio, session, actions):
 
 @pytest.mark.asyncio
 async def test_nothing_to_replay(db, sio, session):
-    await runtime.replay_open_call("sid", session["session_id"], db)
+    await runtime.replay_open_call("sid", session, db)
     sio.emit.assert_not_called()
 
 
@@ -366,3 +366,179 @@ async def test_resume_after_reconnect_keeps_the_runs_own_actions(db, sio, sessio
     monkeypatch.setattr(runtime, "build_widget_agent", built_with)
     await runtime.resume_reply("sid", fresh, "run-1", {"c1": "ok"}, db)
     assert [a.name for a in built_with.call_args.args[1]] == ["open_page"]
+
+
+# --- server-run actions ------------------------------------------------------
+
+from app.agents.host_actions import server_actions  # noqa: E402
+from app.agents.host_actions.server_actions import ActionFailed, Approval, Refusal  # noqa: E402
+
+
+class _Refund:
+    """A server-run action that records what it was asked to do."""
+    name = "refund_order"
+
+    def __init__(self, refuse=None, fail=None, crash_prepare=False, show=None):
+        self.refuse, self.fail, self.crash_prepare, self.show = refuse, fail, crash_prepare, show
+        self.ran = []
+        self.contexts = []
+
+    def prepare(self, ctx, args):
+        if self.crash_prepare:
+            raise RuntimeError("store down")
+        self.contexts.append(ctx)
+        if self.refuse:
+            return Refusal(self.refuse, show=self.show)
+        return Approval(label=f"Refund {args['amount']} on #1005", details=[("Order", "#1005")])
+
+    def run(self, ctx, args):
+        self.ran.append((ctx.call_id, args))
+        if self.fail:
+            raise ActionFailed(self.fail)
+        return {"refunded": args["amount"], "summary": f"Refunded {args['amount']} on #1005"}
+
+
+@pytest.fixture
+def refund(monkeypatch):
+    server_actions.reset()
+    action = _Refund()
+    server_actions.register(action)
+    yield action
+    server_actions.reset()
+
+
+async def _start_refund(db, session, amount="20.00"):
+    await runtime.start_paused_turn("sid", session, _paused(("c1", "refund_order", {"amount": amount})), [], db)
+
+
+@pytest.mark.asyncio
+async def test_a_server_action_asks_the_visitor_without_its_arguments(db, sio, session, refund, resumed):
+    await _start_refund(db, session)
+    [request] = _emitted(sio, "action_request")
+    assert request["runs_on"] == "server"
+    assert request["label"] == "Refund 20.00 on #1005"
+    assert request["confirm"] == "always"
+    assert request["details"] == [{"key": "Order", "value": "#1005"}]
+    assert request["args"] == {}
+    assert refund.ran == []
+    assert refund.contexts[0].session_id == session["session_id"]
+    resumed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_approving_runs_it_on_the_server_once(db, sio, session, refund, resumed):
+    await _start_refund(db, session)
+    answer = _result(db, "c1", "approved")
+    await runtime.handle_page_result("sid", session, answer, db)
+    await runtime.handle_page_result("sid", session, answer, db)  # a double tap
+    assert refund.ran == [(answer["call_id"], {"amount": "20.00"})]
+    [outcome] = _emitted(sio, "action_outcome")
+    assert outcome == {"call_id": answer["call_id"], "status": "ok",
+                       "summary": "Refunded 20.00 on #1005", "error": None}
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert (row.status, row.confirmed) == ("ok", True)
+    results = resumed.call_args.args[3]
+    assert '"refunded": "20.00"' in results["c1"]
+
+
+@pytest.mark.asyncio
+async def test_declining_never_runs_it(db, sio, session, refund, resumed):
+    await _start_refund(db, session)
+    await runtime.handle_page_result("sid", session, _result(db, "c1", "declined"), db)
+    assert refund.ran == []
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert (row.status, row.confirmed) == ("declined", False)
+    assert "declined" in resumed.call_args.args[3]["c1"]
+
+
+@pytest.mark.asyncio
+async def test_the_page_cannot_report_a_server_action_done(db, sio, session, refund, resumed):
+    await _start_refund(db, session)
+    await runtime.handle_page_result("sid", session, _result(db, "c1", "ok", result={"refunded": "999"}), db)
+    assert refund.ran == []
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert row.status == "pending"
+    resumed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_approved_is_not_an_answer_for_a_page_action(db, sio, session, actions, resumed):
+    await runtime.start_paused_turn("sid", session, _paused(("c1", "send_invoice", {})), list(actions.values()), db)
+    await runtime.handle_page_result("sid", session, _result(db, "c1", "approved"), db)
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert row.status == "pending"
+    resumed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_call_is_never_shown_and_the_model_hears_why(db, sio, session, refund, resumed):
+    refund.refuse = "Over the refund limit. Hand over to a person."
+    await _start_refund(db, session, amount="900.00")
+    assert _emitted(sio, "action_request") == []
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert (row.status, row.error_code) == ("error", "refused")
+    assert "Over the refund limit" in resumed.call_args.args[3]["c1"]
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_can_show_a_box_with_the_reply(db, sio, session, refund, resumed):
+    # The email check: drawn whether or not the model thinks to ask for it
+    refund.refuse, refund.show = "Their email isn't confirmed yet.", "email_check"
+    await _start_refund(db, session)
+    assert session[runtime.SHOW_KEY] == ["email_check"]
+
+
+@pytest.mark.asyncio
+async def test_the_resumed_reply_shows_what_a_refusal_asked_for_once(db, sio, session, agent):
+    from app.services.reply_ui import TurnEvents
+    agent.built.turn_events = TurnEvents()
+    agent.built.continue_response.return_value = _reply()
+    session[runtime.SHOW_KEY] = ["email_check"]
+    await runtime.resume_reply("sid", session, "run-1", {"c1": "refused"}, db)
+    assert agent.built.turn_events.of("email_check") == [{}]
+    assert runtime.SHOW_KEY not in session
+
+
+@pytest.mark.asyncio
+async def test_a_check_that_breaks_refuses(db, sio, session, refund, resumed):
+    refund.crash_prepare = True
+    await _start_refund(db, session)
+    assert _emitted(sio, "action_request") == []
+    assert runtime.SERVER_ACTION_UNAVAILABLE in resumed.call_args.args[3]["c1"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_run_is_shown_and_told(db, sio, session, refund, resumed):
+    refund.fail = "The order is already refunded."
+    await _start_refund(db, session)
+    await runtime.handle_page_result("sid", session, _result(db, "c1", "approved"), db)
+    [outcome] = _emitted(sio, "action_outcome")
+    assert (outcome["status"], outcome["error"]) == ("error", "The order is already refunded.")
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert (row.status, row.error_code) == ("error", "failed")
+    assert "already refunded" in resumed.call_args.args[3]["c1"]
+
+
+@pytest.mark.asyncio
+async def test_a_declared_page_action_wins_over_a_server_action_of_the_same_name(db, sio, session, test_agent, resumed):
+    server_actions.reset()
+    server_actions.register(_Refund())
+    try:
+        declared = AgentActionRepository(db).create(test_agent.organization_id, test_agent.id, AgentActionCreate(
+            name="refund_order", label="Refund", description="The page's own.", confirm="always"))
+        await runtime.start_paused_turn("sid", session, _paused(("c1", "refund_order", {"amount": "1"})), [declared], db)
+        [request] = _emitted(sio, "action_request")
+        assert "runs_on" not in request and request["args"] == {"amount": "1"}
+    finally:
+        server_actions.reset()
+
+
+@pytest.mark.asyncio
+async def test_a_running_server_action_holds_the_chat(db, sio, session, refund, monkeypatch):
+    await _start_refund(db, session)
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    AgentActionCallRepository(db).claim(row, ActionCallStatus.RUNNING, confirmed=True)
+    assert runtime.waiting_on_page(db, session["session_id"]) is True
+    # A reconnect doesn't ask again for a call that is already running
+    await runtime.replay_open_call("sid-new", session, db)
+    assert len(_emitted(sio, "action_request")) == 1

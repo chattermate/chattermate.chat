@@ -43,10 +43,33 @@ def ticket_criteria(can_reach_a_person: bool, *criteria: str) -> str:
 # For an agent with tools that can also hand over. Goes after the lists it settles.
 # Worded as a check to run before any tool, with the cases named: small models read
 # a general rule and still reach for the tool in front of them.
-TOOLS_OR_PERSON_RULES = """**Before you call any tool, decide: tool or person?**
+_PERSON_DECIDES = (
+    "2. Do they need someone to decide or do something you can't, such as approving a refund, "
+    "cancelling or changing an order? Set transfer_to_human to true in this reply. Do not open a ticket for it."
+)
+# When the agent's tools can change orders themselves (agent_extensions.ExtraToolkit.changes_orders)
+_ORDER_TOOLS_DECIDE = (
+    "2. Do they want a refund? A person decides refunds: set transfer_to_human to true in this reply. "
+    "Do they want an order cancelled or changed, or a discount? Use your order tools: they ask the customer "
+    "to approve, and they know the limits the business set. Set transfer_to_human to true in this reply when "
+    "a tool says to hand over, when no tool can do it, or when you aren't sure what they want. Never promise "
+    "a refund, a cancellation or a change before it is done. Do not open a ticket for it."
+)
+
+_TOOLS_OR_PERSON_RULES = """**Before you call any tool, decide: tool or person?**
 1. Do they ask for a person ("human", "agent", "someone", "not a bot")? Set transfer_to_human to true in this reply. Call no tool and ask them for nothing first, even if they mention an order.
-2. Do they need someone to decide or do something you can't, such as approving a refund, cancelling or changing an order? Set transfer_to_human to true in this reply. Do not open a ticket for it.
+{order_rule}
 3. Otherwise, if a tool can do what they asked, use the tool and answer from its result. Needing a detail from the customer is not a reason to transfer: ask for it.
 4. A first "no match" is not a failure: ask them to recheck their details, and don't transfer yet. Transfer if a tool failed, or if there is still no match after they rechecked.
 
 Setting transfer_to_human replaces your reply with a handover message, so the customer sees nothing else you wrote that turn. If you have an answer to give, give it and leave transfer_to_human off; they can still ask for a person."""
+
+
+def tools_or_person_rules(changes_orders: bool = False) -> str:
+    """The rules for an agent with tools that can also hand over. With
+    `changes_orders`, its tools cancel or change orders themselves (refunds
+    always go to a person)."""
+    return _TOOLS_OR_PERSON_RULES.format(order_rule=_ORDER_TOOLS_DECIDE if changes_orders else _PERSON_DECIDES)
+
+
+TOOLS_OR_PERSON_RULES = tools_or_person_rules()

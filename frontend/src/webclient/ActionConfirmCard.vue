@@ -45,9 +45,12 @@ const details = computed(() =>
 )
 
 /** The buttons say what happens: "Send an invoice" / "Not now", "Change to GBP" / "Keep USD". */
-const wording = computed(() =>
-  confirmWording(props.pending.request.label, props.pending.preview?.before, props.pending.preview?.after, overwriting.value),
-)
+const wording = computed(() => {
+  const words = confirmWording(props.pending.request.label, props.pending.preview?.before, props.pending.preview?.after, overwriting.value)
+  // A server-run action names its own "no" ("Keep my order")
+  const decline = props.pending.request.decline_label?.trim()
+  return decline ? { ...words, decline: decline.slice(0, 40) } : words
+})
 </script>
 
 <template>
