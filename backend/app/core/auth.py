@@ -28,6 +28,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.organization import Organization
 from app.services.auth_sessions import ACCESS, live_payload, revoke_session, session_id_of
+from app.core.config import secure_cookies
 from app.core.logger import get_logger
 from app.models.role import Role
 
@@ -198,12 +199,22 @@ ACCESS_COOKIE_MAX_AGE = 30 * 60
 REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
+def _session_cookie_attributes() -> dict:
+    """SameSite=None over https, so the session survives inside the embedded
+    Shopify app (another site); None requires Secure. Over plain http Secure
+    cookies are dropped, so they go without it and Lax: the dashboard and the
+    API share the host there, which makes them the same site."""
+    if secure_cookies():
+        return dict(secure=True, samesite="none")
+    return dict(secure=False, samesite="lax")
+
+
 def set_session_cookies(response: Response, user, role, access_token: str, refresh_token: str) -> None:
     """Install a dashboard session on `response`: the two httpOnly JWT cookies
     and the user_info blob the dashboard may read. One place for every
     sign-in path (password login, token refresh, organization signup, SSO),
     so a cookie attribute cannot drift between them."""
-    cookie = dict(secure=True, samesite="none")  # cross-site for the Shopify embedded app
+    cookie = _session_cookie_attributes()
     response.set_cookie("access_token", access_token, httponly=True, max_age=ACCESS_COOKIE_MAX_AGE, **cookie)
     response.set_cookie("refresh_token", refresh_token, httponly=True, max_age=REFRESH_COOKIE_MAX_AGE, **cookie)
     user_info = json.dumps({

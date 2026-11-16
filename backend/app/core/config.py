@@ -405,6 +405,15 @@ def webhooks_base_url() -> str:
     """Where platforms reach this backend's inbound webhooks."""
     return f"{settings.BACKEND_URL.rstrip('/')}{settings.API_V1_STR}/webhooks"
 
+
+def secure_cookies() -> bool:
+    """Whether the cookies this backend sets may be marked Secure: only when it
+    is served over https. Browsers refuse Secure cookies over plain http (except
+    on localhost), so an install reached at http://<server-ip> would sign in and
+    then lose the session on the next request."""
+    return settings.BACKEND_URL.strip().lower().startswith("https://")
+
+
 logger = get_logger(__name__)
 
 

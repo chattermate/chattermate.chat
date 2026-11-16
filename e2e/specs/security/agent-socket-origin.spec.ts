@@ -1,4 +1,4 @@
-import { test, expect, env, seedOrg, seedUsers, signInCookies, agentSocketOverWebSocket, agentSocketOverPolling } from '@e2e'
+import { test, expect, env, NO_COOKIES, seedOrg, seedUsers, signInCookies, agentSocketOverWebSocket, agentSocketOverPolling } from '@e2e'
 
 // The dashboard's live-chat socket signs in with the sign-in cookies, which
 // browsers send on every socket request whatever the page. Sockets get no CORS
@@ -11,7 +11,7 @@ const ORG_SITE = `https://${seedOrg.domain}`
 
 test.describe('the dashboard live-chat socket', () => {
   test('signs in from the dashboard but never from an org\'s website @security', async ({ playwright }) => {
-    const context = await playwright.request.newContext()
+    const context = await playwright.request.newContext(NO_COOKIES)
     const cookie = await signInCookies(context, seedUsers.admin.email, seedUsers.admin.password)
     await context.dispose()
 
@@ -21,7 +21,7 @@ test.describe('the dashboard live-chat socket', () => {
 
   // Polling needs every request on one worker; the prod-like run has two
   test('a <script>-tag (JSONP) handshake carries the cookies but not the page\'s origin, so it never signs in @security @one-worker', async ({ playwright, request }) => {
-    const context = await playwright.request.newContext()
+    const context = await playwright.request.newContext(NO_COOKIES)
     const cookie = await signInCookies(context, seedUsers.admin.email, seedUsers.admin.password)
     await context.dispose()
 

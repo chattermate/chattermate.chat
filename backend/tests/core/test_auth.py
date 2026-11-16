@@ -892,3 +892,30 @@ def test_user_dependencies_run_off_the_event_loop(dependency):
     FastAPI runs plain dependencies in its threadpool."""
     import inspect
     assert not inspect.iscoroutinefunction(dependency)
+
+
+def _session_cookie_headers(monkeypatch, backend_url: str) -> list[str]:
+    from fastapi import Response
+    from app.core.auth import set_session_cookies
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BACKEND_URL", backend_url)
+    user = MagicMock(id=uuid4(), email="a@example.com", full_name="A", organization_id=uuid4())
+    response = Response()
+    set_session_cookies(response, user, None, "access", "refresh")
+    return [v.decode().lower() for k, v in response.raw_headers if k == b"set-cookie"]
+
+
+def test_session_cookies_over_https_are_secure_and_cross_site(monkeypatch):
+    headers = _session_cookie_headers(monkeypatch, "https://api.example.com")
+    assert len(headers) == 3
+    for header in headers:
+        assert "; secure" in header and "samesite=none" in header
+
+
+def test_session_cookies_over_http_drop_secure_so_browsers_keep_them(monkeypatch):
+    """A self-hosted install on http://<server-ip>: Secure cookies would be refused."""
+    headers = _session_cookie_headers(monkeypatch, "http://203.0.113.7:8171")
+    assert len(headers) == 3
+    for header in headers:
+        assert "; secure" not in header and "samesite=lax" in header

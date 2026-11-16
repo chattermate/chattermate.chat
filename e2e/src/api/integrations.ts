@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
-import type { ApiClient } from './client'
+import { request } from '@playwright/test'
+import { ApiClient, NO_COOKIES } from './client'
 import { env } from '../env'
 
 // Jira and Shopify connect once per org (`*.org.spec.ts`); both reach the recording
@@ -49,8 +50,10 @@ function shopifySessionToken(shopDomain: string): string {
  * account: the session token is traded for an offline token. Returns the shop's
  * id and a client calling as the embedded app (session token, no sign-in).
  */
-export async function openShopifyApp(api: ApiClient, shopDomain: string): Promise<{ shopId: string; embedded: ApiClient }> {
-  const embedded = api.withToken(shopifySessionToken(shopDomain))
+export async function openShopifyApp(shopDomain: string): Promise<{ shopId: string; embedded: ApiClient }> {
+  // The embedded app lives in Shopify admin's iframe, which never has the
+  // dashboard's sign-in cookies, so it gets a cookie jar of its own.
+  const embedded = new ApiClient(await request.newContext(NO_COOKIES), shopifySessionToken(shopDomain))
   const { shop_id: shopId } = await embedded.post<{ shop_id: string }>('/shopify/exchange-token')
   return { shopId, embedded }
 }
@@ -61,7 +64,7 @@ export async function openShopifyApp(api: ApiClient, shopDomain: string): Promis
  * admin claims the shop. Remove it with `uninstallShopify`.
  */
 export async function installShopify(api: ApiClient, shopDomain: string): Promise<string> {
-  const { shopId } = await openShopifyApp(api, shopDomain)
+  const { shopId } = await openShopifyApp(shopDomain)
   await api.post('/shopify/link-organization', { data: { shop_id: shopId } })
   return shopId
 }
