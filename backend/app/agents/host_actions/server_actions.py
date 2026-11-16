@@ -55,8 +55,12 @@ class Approval:
 @dataclass
 class Refusal:
     """The call can't run: `reason` tells the model why and what to do instead
-    (ask for a detail, or hand over). No card is shown."""
+    (ask for a detail, or hand over). No card is shown. `show`, a turn event
+    (reply_ui.TurnEvents kind), is drawn with the reply: a box the visitor fills
+    in so the call can run next time (the email check), whether or not the
+    model thinks to ask for it."""
     reason: str
+    show: Optional[str] = None
 
 
 class ActionFailed(Exception):

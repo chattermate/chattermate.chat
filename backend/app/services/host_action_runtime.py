@@ -64,6 +64,8 @@ logger = get_logger(__name__)
 # Socket-session keys this module owns.
 OFFERED_KEY = 'host_action_names'
 PAUSES_KEY = 'host_action_pauses'
+# Turn events refused server actions asked the reply to show (Refusal.show)
+SHOW_KEY = 'host_action_show'
 
 # Statuses the page may report for a call.
 PAGE_OUTCOMES = {
@@ -260,6 +262,9 @@ async def _ask_for_server_action(sid: str, session: dict, call: AgentActionCall,
         return
     reason = prepared.reason if isinstance(prepared, Refusal) else SERVER_ACTION_UNAVAILABLE
     logger.info(f"Server action {call.action_name} call {call.id} not offered: {reason}")
+    if isinstance(prepared, Refusal) and prepared.show:
+        session[SHOW_KEY] = sorted(set(session.get(SHOW_KEY) or []) | {prepared.show})
+        await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
     text = visitor_data_block(RESULT_LABEL, NOT_OFFERED_TEXT.format(reason=reason),
                               limit=settings.ACTION_RESULT_MAX_BYTES)
     await _settle(sid, session, call, ActionCallStatus.ERROR, text,
@@ -451,6 +456,13 @@ async def resume_reply(sid: str, session: dict, run_id: str, results: Dict[str, 
     await emit_bot_typing(session['session_id'])
     actions = _actions_for_resume(db, session, run_id)
     agent = await build_widget_agent(session, actions, step_actions_hint(db, session, actions))
+    shows = session.pop(SHOW_KEY, None)
+    if shows:
+        await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
+        events = getattr(agent, 'turn_events', None)
+        if events is not None:
+            for kind in shows:
+                events.add(kind)
     try:
         response = await agent.continue_response(
             run_id, results,

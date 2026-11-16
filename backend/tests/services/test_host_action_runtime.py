@@ -378,8 +378,8 @@ class _Refund:
     """A server-run action that records what it was asked to do."""
     name = "refund_order"
 
-    def __init__(self, refuse=None, fail=None, crash_prepare=False):
-        self.refuse, self.fail, self.crash_prepare = refuse, fail, crash_prepare
+    def __init__(self, refuse=None, fail=None, crash_prepare=False, show=None):
+        self.refuse, self.fail, self.crash_prepare, self.show = refuse, fail, crash_prepare, show
         self.ran = []
         self.contexts = []
 
@@ -388,7 +388,7 @@ class _Refund:
             raise RuntimeError("store down")
         self.contexts.append(ctx)
         if self.refuse:
-            return Refusal(self.refuse)
+            return Refusal(self.refuse, show=self.show)
         return Approval(label=f"Refund {args['amount']} on #1005", details=[("Order", "#1005")])
 
     def run(self, ctx, args):
@@ -478,6 +478,25 @@ async def test_a_refused_call_is_never_shown_and_the_model_hears_why(db, sio, se
     [row] = AgentActionCallRepository(db).batch("run-1")
     assert (row.status, row.error_code) == ("error", "refused")
     assert "Over the refund limit" in resumed.call_args.args[3]["c1"]
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_can_show_a_box_with_the_reply(db, sio, session, refund, resumed):
+    # The email check: drawn whether or not the model thinks to ask for it
+    refund.refuse, refund.show = "Their email isn't confirmed yet.", "email_check"
+    await _start_refund(db, session)
+    assert session[runtime.SHOW_KEY] == ["email_check"]
+
+
+@pytest.mark.asyncio
+async def test_the_resumed_reply_shows_what_a_refusal_asked_for_once(db, sio, session, agent):
+    from app.services.reply_ui import TurnEvents
+    agent.built.turn_events = TurnEvents()
+    agent.built.continue_response.return_value = _reply()
+    session[runtime.SHOW_KEY] = ["email_check"]
+    await runtime.resume_reply("sid", session, "run-1", {"c1": "refused"}, db)
+    assert agent.built.turn_events.of("email_check") == [{}]
+    assert runtime.SHOW_KEY not in session
 
 
 @pytest.mark.asyncio
