@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 from fastapi import Request, Response
 from jose import JWTError, jwt
 
-from app.core.config import settings
+from app.core.config import secure_cookies, settings
 
 TTL_SECONDS = 10 * 60
 _COOKIE_PREFIX = "sso_"
@@ -71,7 +71,7 @@ def remember(response: Response, state: str, payload: dict) -> None:
     # Lax: the provider brings the browser back with a top-level GET.
     response.set_cookie(
         _cookie_name(state), token, max_age=TTL_SECONDS, path=cookie_path(),
-        httponly=True, secure=True, samesite="lax",
+        httponly=True, secure=secure_cookies(), samesite="lax",
     )
 
 
@@ -105,7 +105,7 @@ def carried_after_expiry(request: Request, state: Optional[str]) -> dict:
 
 
 def _delete(response: Response, name: str) -> None:
-    response.delete_cookie(name, path=cookie_path(), httponly=True, secure=True, samesite="lax")
+    response.delete_cookie(name, path=cookie_path(), httponly=True, secure=secure_cookies(), samesite="lax")
 
 
 def forget(response: Response, state: Optional[str]) -> None:

@@ -130,3 +130,15 @@ def test_escape_hatch_does_not_excuse_the_jwt_secrets():
             _config(SECRET_KEY="your-secret-key", ENCRYPTION_KEY=LEGACY_PUBLIC_KEY,
                     ALLOW_INSECURE_ENCRYPTION_KEY=True)
         )
+
+
+@pytest.mark.parametrize("backend_url, expected", [
+    ("https://api.example.com", True),
+    (" HTTPS://api.example.com ", True),
+    ("http://203.0.113.7:8171", False),
+    ("http://localhost:8000", False),
+])
+def test_secure_cookies_follows_backend_url_scheme(monkeypatch, backend_url, expected):
+    from app.core.config import secure_cookies, settings
+    monkeypatch.setattr(settings, "BACKEND_URL", backend_url)
+    assert secure_cookies() is expected

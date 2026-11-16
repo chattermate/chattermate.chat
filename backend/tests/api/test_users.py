@@ -500,6 +500,8 @@ def test_an_admin_changing_their_own_address_stays_signed_in(client: TestClient,
 def _refresh_with(client: TestClient, db: Session, user: User, **session):
     _, refresh = issue_tokens(db, user.id, user.organization_id, **session)
     db.commit()
+    # Only this token: an earlier refresh's rotated cookie would shadow it.
+    client.cookies.clear()
     client.cookies.set("refresh_token", refresh)
     return client.post("/api/v1/users/refresh"), session_id_of(refresh)
 
