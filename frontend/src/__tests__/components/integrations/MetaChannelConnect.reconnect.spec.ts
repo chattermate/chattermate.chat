@@ -91,7 +91,7 @@ describe('MetaChannelConnect one-click reconnect', () => {
     vi.mocked(channelsService.listMessengerSignupPages).mockResolvedValue(PAGES('PAGE2') as any)
     const wrapper = await reconnectWithOneClick(broken('messenger', 'PAGE1'))
     expect(channelsService.connectMessengerSignup).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith("That login didn't include Acme Support", expect.anything())
+    expect(wrapper.find('.meta-signup-error').text()).toContain("That login didn't include Acme Support")
     expect(wrapper.text()).not.toContain('Page PAGE2')
   })
 
@@ -106,9 +106,9 @@ describe('MetaChannelConnect one-click reconnect', () => {
 
   it('WhatsApp: another number is not connected', async () => {
     whatsAppSignup('PN2')
-    await reconnectWithOneClick(broken('whatsapp', 'PN1'))
+    const wrapper = await reconnectWithOneClick(broken('whatsapp', 'PN1'))
     expect(channelsService.connectWhatsAppEmbeddedSignup).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith("That's a different number, not Acme Support", expect.anything())
+    expect(wrapper.find('.meta-signup-error').text()).toContain("That's a different number, not Acme Support")
   })
 
   it('WhatsApp: the same number reconnects', async () => {
@@ -138,8 +138,23 @@ describe('MetaChannelConnect one-click reconnect', () => {
     vi.mocked(channelsService.listMessengerSignupPages).mockResolvedValue(PAGES('PAGE1') as any)
     vi.mocked(channelsService.connectMessengerSignup).mockRejectedValue(
       { response: { status: 422, data: { detail: [{ msg: 'Value error, Signup expired, try again' }] } } })
-    await reconnectWithOneClick(broken('messenger', 'PAGE1'))
-    expect(toast.error).toHaveBeenCalledWith('Signup expired, try again')
+    const wrapper = await reconnectWithOneClick(broken('messenger', 'PAGE1'))
+    expect(wrapper.find('.meta-signup-error').text()).toBe('Signup expired, try again')
+  })
+
+  it('Messenger: "no Pages shared" stays on screen and clears on the next try', async () => {
+    const noPages = 'No Facebook Pages were shared with ChatterMate. Run the connect again and tick the Page you want to use.'
+    vi.mocked(channelsService.listMessengerSignupPages).mockRejectedValueOnce(
+      { response: { status: 400, data: { detail: noPages } } })
+    const wrapper = await reconnectWithOneClick(broken('messenger', 'PAGE1'))
+    expect(wrapper.find('.meta-signup-error').text()).toBe(noPages)
+
+    vi.mocked(channelsService.listMessengerSignupPages).mockResolvedValue(PAGES('PAGE1') as any)
+    vi.mocked(channelsService.connectMessengerSignup).mockResolvedValue(
+      { ...broken('messenger', 'PAGE1'), needs_reconnect: false })
+    await wrapper.find('.meta-signup-btn').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.meta-signup-error').exists()).toBe(false)
   })
 
   it('Instagram: says so when the login brought another account', async () => {
