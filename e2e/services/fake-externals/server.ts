@@ -436,7 +436,7 @@ function shopifyOrderNode(order: ShopifyOrder) {
     currentTotalPriceSet: money('45.00'),
     originalTotalPriceSet: money('45.00'),
     customer: { id: `gid://shopify/Customer/${order.id}`, firstName: 'E2E', lastName: 'Customer', email: order.email, phone: null },
-    shippingAddress: { address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', countryCodeV2: 'US', phone: null, name: 'E2E Customer', ...(order.address ?? {}) },
+    shippingAddress: { firstName: 'E2E', lastName: 'Customer', address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', countryCodeV2: 'US', phone: null, name: 'E2E Customer', ...(order.address ?? {}) },
     currencyCode: 'USD',
     presentmentCurrencyCode: 'USD',
     totalRefundedSet: money(refunded.toFixed(2)),

@@ -24,6 +24,7 @@ from app.tools.shopify_order_access import (
     INVALID_ORDER_NUMBER,
     ORDER_NOT_FOUND,
     ORDER_NUMBER_REQUIRED,
+    is_email,
 )
 from uuid import UUID
 
@@ -332,6 +333,13 @@ def test_search_orders_honours_the_admin_base_override(shopify_tools, monkeypatc
     assert mock_post.call_args.args[0] == (
         "http://127.0.0.1:14020/shopify/test-shop.myshopify.com/admin/api/2025-10/graphql.json"
     )
+
+
+@pytest.mark.parametrize("email,ok", [
+    (" Maya@Example.com ", True), ("maya@example", False), ("not an email", False), ("", False), (None, False),
+])
+def test_is_email(email, ok):
+    assert is_email(email) is ok
 
 
 def test_search_orders_matches_the_customer_record_email(shopify_tools):
