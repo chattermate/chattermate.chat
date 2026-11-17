@@ -29,6 +29,7 @@ from app.models.user import User
 from app.models.organization import Organization
 from app.services.auth_sessions import ACCESS, live_payload, revoke_session, session_id_of
 from app.core.config import secure_cookies
+from app.core.cors import ACCESS_TOKEN_EXPIRES_IN_HEADER
 from app.core.logger import get_logger
 from app.models.role import Role
 
@@ -225,6 +226,7 @@ def set_session_cookies(response: Response, user, role, access_token: str, refre
         "role": role.to_dict() if role else None,
     }, default=str)
     response.set_cookie("user_info", quote(user_info), max_age=REFRESH_COOKIE_MAX_AGE, **cookie)
+    response.headers[ACCESS_TOKEN_EXPIRES_IN_HEADER] = str(ACCESS_COOKIE_MAX_AGE)
 
 
 def _unauthorized(detail: str) -> HTTPException:

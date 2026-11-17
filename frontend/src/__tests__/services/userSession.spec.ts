@@ -19,10 +19,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/services/api', () => ({ default: {} }))
 vi.mock('@/services/users', () => ({ uploadProfilePic: vi.fn() }))
 
-const noteAccessTokenIssued = vi.fn()
 const forgetAccessToken = vi.fn()
 vi.mock('@/services/sessionClock', () => ({
-  noteAccessTokenIssued: () => noteAccessTokenIssued(),
   forgetAccessToken: () => forgetAccessToken(),
 }))
 
@@ -37,17 +35,11 @@ describe('userService session deadline', () => {
     vi.clearAllMocks()
   })
 
-  it('starts the access-token clock on sign-in', () => {
-    userService.setCurrentUser(someone)
-
-    expect(noteAccessTokenIssued).toHaveBeenCalledTimes(1)
-  })
-
-  it('leaves the clock alone when the same user is updated', () => {
+  it('leaves the clock alone when the user is stored or updated', () => {
     userService.setCurrentUser(someone)
     userService.setCurrentUser({ ...someone, full_name: 'B' })
 
-    expect(noteAccessTokenIssued).toHaveBeenCalledTimes(1)
+    expect(forgetAccessToken).not.toHaveBeenCalled()
   })
 
   it('forgets the clock on sign-out', () => {

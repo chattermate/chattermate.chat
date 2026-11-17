@@ -19,7 +19,7 @@ import router from '@/router'
 import { getApiUrl } from '@/config/api'
 import { userService } from '@/services/user'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { accessTokenExpired, noteAccessTokenIssued } from '@/services/sessionClock'
+import { accessTokenExpired, forgetAccessToken, noteAccessTokenIssued } from '@/services/sessionClock'
 
 const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 
@@ -71,7 +71,7 @@ api.interceptors.request.use(
       config.url?.includes('/agent/') ||
       config.url?.includes('/chats/')
 
-    if (!app) await refreshIfExpired(config.url)
+    await refreshIfExpired(config.url)
 
     if (app && isShopifyEndpoint && getSessionToken) {
       try {
@@ -92,13 +92,21 @@ api.interceptors.request.use(
 
 /** The App Bridge app when this page runs inside Shopify admin, else null. */
 function embeddedShopifyApp(): unknown {
-  // Shopify admin always frames the app; the dashboard never is.
-  if (!hasEnterpriseModule || !initShopifyApp || window.top === window) return null
+  if (!hasEnterpriseModule || !initShopifyApp || !isFramed()) return null
   try {
     return initShopifyApp() || null
   } catch {
     return null
   }
+}
+
+/**
+ * Shopify admin always frames the app; the dashboard never is. Unlike
+ * embeddedShopifyApp() this holds from the first request, before App Bridge
+ * has finished loading.
+ */
+function isFramed(): boolean {
+  return window.top !== window
 }
 
 /** Signs the user out locally and sends them to the login page. */
@@ -123,7 +131,7 @@ export function refreshSession(): Promise<unknown> {
   refreshing ??= axios
     .post('/users/refresh', {}, { withCredentials: true, baseURL: getApiUrl() })
     .then((response) => {
-      noteAccessTokenIssued()
+      noteAccessTokenIssued(response.headers)
       return response
     })
     .finally(() => {
@@ -143,31 +151,38 @@ function sessionIsOver(refreshError: unknown): boolean {
   return status === 401 || status === 403
 }
 
-// Calls that sign in on their own, and need no live access token first.
-const SIGN_IN_PATHS = ['/users/login', '/users/refresh']
+// Calls that start or end the session themselves, so need no live token first.
+const SESSION_PATHS = ['/users/login', '/users/refresh', '/users/logout']
 
 /**
  * Refresh before sending when the access token is known to have run out, so a
- * page load goes out once instead of as a burst of 401s and replays. A refresh
- * that says the session is over signs out; any other failure lets the request
- * go, and the 401 path below deals with it.
+ * page load goes out once instead of as a burst of 401s and replays.
+ *
+ * The request is always sent afterwards: it may need no session at all
+ * (signup, password reset), and if it does, the 401 path below handles it.
+ * A refresh that says the session is over drops the local user, so that path
+ * goes straight to login; any other failure forgets the deadline, so later
+ * requests stop refreshing ahead until a refresh succeeds again.
  */
 async function refreshIfExpired(url: string | undefined): Promise<void> {
-  if (!accessTokenExpired() || !userService.isAuthenticated()) return
-  if (url && SIGN_IN_PATHS.some((path) => url.startsWith(path))) return
+  // Inside Shopify admin the session is Shopify's, not our cookies.
+  if (isFramed() || !accessTokenExpired() || !userService.isAuthenticated()) return
+  if (url && SESSION_PATHS.some((path) => url.startsWith(path))) return
   try {
     await refreshSession()
   } catch (refreshError) {
-    if (sessionIsOver(refreshError)) {
-      signOut()
-      throw refreshError
-    }
+    if (sessionIsOver(refreshError)) userService.clearCurrentUser()
+    else forgetAccessToken()
   }
 }
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // A sign-in (login, signup, new organization) says when its token runs out
+    noteAccessTokenIssued(response.headers)
+    return response
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config
 

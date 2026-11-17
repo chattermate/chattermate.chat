@@ -30,14 +30,20 @@ limitations under the License.
 
 const STORAGE_KEY = 'access_token_expires_at'
 
-// The backend's ACCESS_COOKIE_MAX_AGE (30 minutes), less a minute so a
-// request sent just before the deadline doesn't land just after it.
-const ACCESS_TOKEN_LIFETIME_MS = 29 * 60 * 1000
+// Every response that sets a new access token says how long it lasts, in
+// seconds (the backend's ACCESS_TOKEN_EXPIRES_IN_HEADER).
+const EXPIRES_IN_HEADER = 'x-access-token-expires-in'
 
-/** A sign-in or refresh just issued a new access token. */
-export function noteAccessTokenIssued(now: number = Date.now()): void {
+// Refresh this long before the deadline, so a request sent just before it
+// doesn't land just after it.
+const SLACK_MS = 60 * 1000
+
+/** Start the clock if `headers` (a response's) carry a new token's lifetime. */
+export function noteAccessTokenIssued(headers: unknown, now: number = Date.now()): void {
+  const seconds = Number(readHeader(headers, EXPIRES_IN_HEADER))
+  if (!(seconds > 0)) return
   try {
-    localStorage.setItem(STORAGE_KEY, String(now + ACCESS_TOKEN_LIFETIME_MS))
+    localStorage.setItem(STORAGE_KEY, String(now + seconds * 1000 - SLACK_MS))
   } catch {
     // Storage blocked: fall back to refreshing on the first 401.
   }
@@ -53,11 +59,19 @@ export function accessTokenExpired(now: number = Date.now()): boolean {
   }
 }
 
-/** Signed out: the deadline belongs to a session that is gone. */
+/** The deadline is no longer known: signed out, or a token was issued
+ * somewhere this client could not read the lifetime from. */
 export function forgetAccessToken(): void {
   try {
     localStorage.removeItem(STORAGE_KEY)
   } catch {
     // Nothing stored to forget.
   }
+}
+
+/** One header from axios' headers object (or a plain one in tests). */
+function readHeader(headers: unknown, name: string): unknown {
+  if (!headers || typeof headers !== 'object') return undefined
+  const lookup = headers as { get?: (key: string) => unknown } & Record<string, unknown>
+  return typeof lookup.get === 'function' ? lookup.get(name) : lookup[name]
 }

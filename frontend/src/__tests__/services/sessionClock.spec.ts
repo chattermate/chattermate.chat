@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { accessTokenExpired, forgetAccessToken, noteAccessTokenIssued } from '@/services/sessionClock'
 
 const MINUTE = 60 * 1000
+const lasting = (seconds: string) => ({ 'x-access-token-expires-in': seconds })
 
 describe('sessionClock', () => {
   afterEach(() => {
@@ -29,15 +30,37 @@ describe('sessionClock', () => {
     expect(accessTokenExpired()).toBe(false)
   })
 
-  it('counts a fresh token live until just before the backend lets it lapse', () => {
-    noteAccessTokenIssued(0)
+  it('counts a token live until a minute before the lifetime the server gave', () => {
+    noteAccessTokenIssued(lasting('1800'), 0)
 
     expect(accessTokenExpired(28 * MINUTE)).toBe(false)
     expect(accessTokenExpired(29 * MINUTE)).toBe(true)
   })
 
-  it('forgets the deadline on sign-out', () => {
-    noteAccessTokenIssued(0)
+  it('follows the server when it changes the lifetime', () => {
+    noteAccessTokenIssued(lasting('900'), 0)
+
+    expect(accessTokenExpired(14 * MINUTE)).toBe(true)
+  })
+
+  it('reads axios response headers', () => {
+    noteAccessTokenIssued({ get: (name: string) => (name === 'x-access-token-expires-in' ? '1800' : undefined) }, 0)
+
+    expect(accessTokenExpired(29 * MINUTE)).toBe(true)
+  })
+
+  it.each([undefined, {}, lasting(''), lasting('soon'), lasting('0')])(
+    'leaves the clock alone for a response without a lifetime (%o)',
+    (headers) => {
+      noteAccessTokenIssued(lasting('1800'), 0)
+      noteAccessTokenIssued(headers, 10 * MINUTE)
+
+      expect(accessTokenExpired(29 * MINUTE)).toBe(true)
+    },
+  )
+
+  it('forgets the deadline', () => {
+    noteAccessTokenIssued(lasting('1800'), 0)
     forgetAccessToken()
 
     expect(accessTokenExpired(60 * MINUTE)).toBe(false)
