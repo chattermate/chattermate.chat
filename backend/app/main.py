@@ -51,6 +51,7 @@ import os
 from app.channels.app_hooks import load_extensions
 from app.core.socketio import socket_app, configure_socketio, sio
 from app.core.cors import (
+    EXPOSED_HEADERS,
     FirstPartyCredentialsCORSMiddleware,
     first_party_origins,
     get_cors_origin_regex,
@@ -107,6 +108,7 @@ app.add_middleware(
     allow_origin_regex=get_cors_origin_regex(),
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=EXPOSED_HEADERS,
 )
 
 async def startup_event(api: FastAPI):

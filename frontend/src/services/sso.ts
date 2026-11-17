@@ -27,6 +27,7 @@ import type { LocationQuery } from 'vue-router'
 import api from './api'
 import { getApiUrl } from '@/config/api'
 import { userService } from './user'
+import { forgetAccessToken } from './sessionClock'
 import type { User } from '../types/user'
 
 export interface SsoProvider {
@@ -85,6 +86,9 @@ export const ssoService = {
 
   /** After the redirect back: pick up the user the cookies now identify. */
   async completeSignIn(): Promise<User> {
+    // The redirect set a new token this page could not read the lifetime of;
+    // an older deadline would only trigger a needless refresh.
+    forgetAccessToken()
     const response = await api.get<User>('/users/me')
     userService.setCurrentUser(response.data)
     return response.data

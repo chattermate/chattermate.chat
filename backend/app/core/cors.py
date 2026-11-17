@@ -38,6 +38,13 @@ logger = get_logger(__name__)
 BASE_CORS_ORIGINS: list = settings.CORS_ORIGINS
 
 _CREDENTIALS_HEADER = "access-control-allow-credentials"
+
+# Seconds until the access token a sign-in or refresh just set runs out. The
+# token is an httpOnly cookie, so this is how the dashboard learns its lifetime.
+ACCESS_TOKEN_EXPIRES_IN_HEADER = "X-Access-Token-Expires-In"
+
+# Response headers the dashboard's cross-origin scripts may read.
+EXPOSED_HEADERS = [ACCESS_TOKEN_EXPIRES_IN_HEADER]
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -255,6 +262,7 @@ def update_local_cors(app: FastAPI, new_origins: List[str]) -> bool:
                 allow_origin_regex=get_cors_origin_regex(),
                 allow_methods=["*"],
                 allow_headers=["*"],
+                expose_headers=EXPOSED_HEADERS,
             )
             logger.info(f"Added new CORS middleware with origins: {new_origins}")
             middleware_found = True

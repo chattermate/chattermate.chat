@@ -30,6 +30,17 @@ describe('ssoService.completeSignIn', () => {
     expect(api.get).toHaveBeenCalledWith('/users/me')
     expect(userService.setCurrentUser).toHaveBeenCalledWith({ id: 'u1', email: 'a@example.test' })
   })
+
+  // The redirect set a new token whose lifetime this page never saw; a
+  // deadline left from an older session would only cause a needless refresh.
+  it('forgets any earlier token deadline', async () => {
+    localStorage.setItem('access_token_expires_at', String(Date.now() - 1000))
+    ;(api.get as any).mockResolvedValue({ data: { id: 'u1' } })
+
+    await ssoService.completeSignIn()
+
+    expect(localStorage.getItem('access_token_expires_at')).toBeNull()
+  })
 })
 
 describe('ssoService.startUrl', () => {

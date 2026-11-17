@@ -19,6 +19,7 @@ import api from './api'
 import { uploadProfilePic } from './users'
 import { notifySignedOut } from '@/utils/sessionEvents'
 import emitter from '@/utils/emitter'
+import { forgetAccessToken } from './sessionClock'
 
 
 
@@ -52,6 +53,7 @@ export const userService = {
   clearCurrentUser() {
     this.userInfo = null
     localStorage.removeItem('user_info')
+    forgetAccessToken()
     notifySignedOut()
   },
 
