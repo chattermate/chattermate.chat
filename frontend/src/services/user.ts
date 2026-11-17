@@ -19,6 +19,7 @@ import api from './api'
 import { uploadProfilePic } from './users'
 import { notifySignedOut } from '@/utils/sessionEvents'
 import emitter from '@/utils/emitter'
+import { forgetAccessToken, noteAccessTokenIssued } from './sessionClock'
 
 
 
@@ -26,6 +27,9 @@ export const userService = {
   userInfo: null as User | null,
 
   setCurrentUser(user: User) {
+    // A different user (or none before) means a sign-in, which issues a fresh
+    // access token; the same user again is just a profile or status update.
+    if (this.getCurrentUser()?.id !== user.id) noteAccessTokenIssued()
     this.userInfo = user
     localStorage.setItem('user_info', JSON.stringify(user))
   },
@@ -52,6 +56,7 @@ export const userService = {
   clearCurrentUser() {
     this.userInfo = null
     localStorage.removeItem('user_info')
+    forgetAccessToken()
     notifySignedOut()
   },
 

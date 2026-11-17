@@ -19,6 +19,7 @@ import router from '@/router'
 import { getApiUrl } from '@/config/api'
 import { userService } from '@/services/user'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { accessTokenExpired, noteAccessTokenIssued } from '@/services/sessionClock'
 
 const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 
@@ -70,6 +71,8 @@ api.interceptors.request.use(
       config.url?.includes('/agent/') ||
       config.url?.includes('/chats/')
 
+    if (!app) await refreshIfExpired(config.url)
+
     if (app && isShopifyEndpoint && getSessionToken) {
       try {
         const token = await getSessionToken(app)
@@ -119,6 +122,10 @@ let refreshing: Promise<unknown> | null = null
 export function refreshSession(): Promise<unknown> {
   refreshing ??= axios
     .post('/users/refresh', {}, { withCredentials: true, baseURL: getApiUrl() })
+    .then((response) => {
+      noteAccessTokenIssued()
+      return response
+    })
     .finally(() => {
       refreshing = null
     })
@@ -134,6 +141,28 @@ export function refreshSession(): Promise<unknown> {
 function sessionIsOver(refreshError: unknown): boolean {
   const status = (refreshError as AxiosError)?.response?.status
   return status === 401 || status === 403
+}
+
+// Calls that sign in on their own, and need no live access token first.
+const SIGN_IN_PATHS = ['/users/login', '/users/refresh']
+
+/**
+ * Refresh before sending when the access token is known to have run out, so a
+ * page load goes out once instead of as a burst of 401s and replays. A refresh
+ * that says the session is over signs out; any other failure lets the request
+ * go, and the 401 path below deals with it.
+ */
+async function refreshIfExpired(url: string | undefined): Promise<void> {
+  if (!accessTokenExpired() || !userService.isAuthenticated()) return
+  if (url && SIGN_IN_PATHS.some((path) => url.startsWith(path))) return
+  try {
+    await refreshSession()
+  } catch (refreshError) {
+    if (sessionIsOver(refreshError)) {
+      signOut()
+      throw refreshError
+    }
+  }
 }
 
 // Response interceptor

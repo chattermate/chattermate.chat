@@ -242,6 +242,102 @@ describe('api client', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
+  describe('with an access token known to have run out', () => {
+    const DEADLINE_KEY = 'access_token_expires_at'
+
+    beforeEach(() => {
+      localStorage.setItem(DEADLINE_KEY, String(Date.now() - 1000))
+    })
+
+    afterEach(() => {
+      localStorage.removeItem(DEADLINE_KEY)
+    })
+
+    it('refreshes before sending, so the request goes out once', async () => {
+      const { api, axios } = await loadApi()
+      const refresh = vi.spyOn(axios, 'post').mockResolvedValue({ data: {} } as never)
+      const { adapter, seen } = adapterQueue([200])
+
+      const response = await api.get('/agents', { adapter })
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(200)
+      expect(seen).toHaveLength(1)
+      expect(Number(localStorage.getItem(DEADLINE_KEY))).toBeGreaterThan(Date.now())
+    })
+
+    // Seen in production: a page load after the token lapsed sent ~20 calls,
+    // all 401, then replayed them, and the replays hit the rate limit (503).
+    it('sends a page-load burst once, behind a single refresh', async () => {
+      const { api, axios } = await loadApi()
+      const refresh = vi.spyOn(axios, 'post').mockResolvedValue({ data: {} } as never)
+      const { adapter, seen } = adapterQueue([])
+
+      await Promise.all(Array.from({ length: 20 }, (_, i) => api.get(`/page-${i}`, { adapter })))
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(seen).toHaveLength(20)
+      expect(seen.every((config) => !config._retry)).toBe(true)
+    })
+
+    it('signs out without sending when the refresh says the session is over', async () => {
+      const { api, axios } = await loadApi()
+      vi.spyOn(axios, 'post').mockRejectedValue(refreshFailure(401))
+      const { adapter, seen } = adapterQueue([])
+
+      await expect(api.get('/agents', { adapter })).rejects.toMatchObject({ response: { status: 401 } })
+
+      expect(seen).toHaveLength(0)
+      expect(push).toHaveBeenCalledWith('/login')
+    })
+
+    it('still sends the request when the refresh fails for another reason', async () => {
+      const { api, axios } = await loadApi()
+      vi.spyOn(axios, 'post').mockRejectedValue(refreshFailure(503))
+      const { adapter, seen } = adapterQueue([200])
+
+      const response = await api.get('/agents', { adapter })
+
+      expect(response.status).toBe(200)
+      expect(seen).toHaveLength(1)
+      expect(push).not.toHaveBeenCalled()
+    })
+
+    it('does not refresh ahead of a login', async () => {
+      const { api, axios } = await loadApi()
+      const refresh = vi.spyOn(axios, 'post')
+      const { adapter } = adapterQueue([200])
+
+      await api.post('/users/login', {}, { adapter })
+
+      expect(refresh).not.toHaveBeenCalled()
+    })
+
+    it('does not refresh when nobody is signed in', async () => {
+      isAuthenticated.mockReturnValue(false)
+      const { api, axios } = await loadApi()
+      const refresh = vi.spyOn(axios, 'post')
+      const { adapter } = adapterQueue([200])
+
+      await api.get('/agents', { adapter })
+
+      expect(refresh).not.toHaveBeenCalled()
+    })
+  })
+
+  it('does not refresh ahead when the deadline is unknown or still to come', async () => {
+    const { api, axios } = await loadApi()
+    const refresh = vi.spyOn(axios, 'post')
+    const { adapter } = adapterQueue([200, 200])
+
+    await api.get('/agents', { adapter })
+    localStorage.setItem('access_token_expires_at', String(Date.now() + 60_000))
+    await api.get('/agents', { adapter })
+    localStorage.removeItem('access_token_expires_at')
+
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
   describe('inside Shopify admin', () => {
     const realTop = window.top
 
