@@ -59,7 +59,7 @@ const PromoGateNotice = enterpriseComponent(moduleImports.promoGateNotice)
 const agentData = ref({ ...props.agent })
 
 // Avatar picker (preset avatars + upload)
-const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.png', {
+const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.webp', {
   eager: true,
   query: '?url',
   import: 'default',

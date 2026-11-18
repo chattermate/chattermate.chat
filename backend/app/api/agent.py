@@ -38,14 +38,11 @@ from app.models.agent import Agent, AgentCustomization
 from app.models.organization import Organization
 from app.agents.guardrail_policy import DEFAULT_GUARDRAIL_PROMPT
 from app.models.schemas.agent_customization import CustomizationCreate, CustomizationResponse, customization_schema
-import aiofiles
-from uuid import uuid4
-from PIL import Image
 from uuid import UUID
-from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
 from app.services import launcher, telegram_webhooks
-from app.services.file_storage import local_upload_path
+from app.services.avatar_image import AvatarRejected, delete_replaced_avatar, store_avatar
+from app.services.file_storage import agent_photo_folder
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
 from app.utils.agno_utils import create_model
@@ -54,12 +51,7 @@ from app.utils.rate_limit import limit_instruction_generation
 router = APIRouter()
 logger = get_logger(__name__)
 
-UPLOAD_DIR = "uploads/agents"
-
 ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
-# The stored name's extension comes from the validated content type, never from
-# the caller's filename — nothing user-supplied reaches the path that way.
-MIME_EXTENSIONS = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # Model for instruction generation request
@@ -88,7 +80,10 @@ def verify_agent_access(agent: Agent, auth_info: dict) -> None:
 
 
 async def save_file(file: UploadFile, organization_id: UUID) -> str:
-    """Save uploaded file and return the file path"""
+    """Store an agent photo upload, shrunk to a small WebP, and return its URL.
+
+    The photo is only ever shown as a small avatar, so the original upload is
+    never kept: see app/services/avatar_image.py."""
     # Validate file size
     file.file.seek(0, 2)  # Seek to end
     size = file.file.tell()
@@ -109,37 +104,12 @@ async def save_file(file: UploadFile, organization_id: UUID) -> str:
         )
 
     try:
-        # Verify it's a valid image
-        img = Image.open(file.file)
-        img.verify()
-        file.file.seek(0)
-    except Exception:
+        return await store_avatar(await file.read(), agent_photo_folder(organization_id))
+    except AvatarRejected:
         raise HTTPException(
             status_code=400,
             detail="Invalid image file"
         )
-
-    file_name = f"{uuid4()}{MIME_EXTENSIONS[file.content_type]}"
-    
-    if settings.S3_FILE_STORAGE:
-        folder = f"agents/{organization_id}"
-        file.file.seek(0)
-        content = await file.read()
-        return await upload_file_to_s3(content, folder, file_name, content_type=file.content_type)
-    else:
-        # Local storage
-        upload_dir = f"uploads/agents/{organization_id}"
-        if not os.path.exists(upload_dir):
-            os.makedirs(upload_dir)
-
-        file_path = os.path.join(upload_dir, file_name)
-        async with aiofiles.open(file_path, 'wb') as f:
-            content = await file.read()
-            await f.write(content)
-
-        # The uploads/ directory is static-mounted at {API_V1_STR}/uploads,
-        # so the stored URL must carry that prefix (same shape as store_upload).
-        return f"{settings.API_V1_STR}/{file_path}"
 
 
 @router.post("", response_model=AgentWithCustomizationResponse, status_code=status.HTTP_201_CREATED)
@@ -568,7 +538,7 @@ async def create_agent_customization(
 @router.post("/{agent_id}/customization/photo/shopify", response_model=CustomizationResponse)
 @router.post("/{agent_id}/customization/photo", response_model=CustomizationResponse)
 async def upload_agent_photo(
-    agent_id: str,
+    agent_id: UUID,
     photo: UploadFile = File(...),
     auth_info: dict = Depends(require_unified_permissions("manage_agents")),
     db: Session = Depends(get_db)
@@ -587,18 +557,9 @@ async def upload_agent_photo(
         db_customization = db.query(AgentCustomization).filter(
             AgentCustomization.agent_id == agent_id
         ).first()
+        old_photo_url = db_customization.photo_url if db_customization else None
 
-        # Delete old photo if it exists
-        if db_customization and db_customization.photo_url:
-            if settings.S3_FILE_STORAGE:
-                from app.core.s3 import delete_file_from_s3
-                await delete_file_from_s3(db_customization.photo_url)
-            else:
-                old_photo_path = local_upload_path(db_customization.photo_url)
-                if os.path.exists(old_photo_path):
-                    os.remove(old_photo_path)
-
-        # Save new photo file
+        # Store the new photo first: a rejected upload must leave the old one working.
         photo_url = await save_file(photo, auth_info["organization_id"])
 
         # Update or create customization
@@ -614,6 +575,9 @@ async def upload_agent_photo(
 
         db.commit()
         db.refresh(db_customization)
+
+        # Only now that nothing points at it.
+        await delete_replaced_avatar(old_photo_url, agent_photo_folder(auth_info["organization_id"]))
 
         # photo_url is signed by CustomizationResponse on serialization. Assigning
         # it here would leave the refreshed instance dirty and persist the

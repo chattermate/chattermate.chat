@@ -151,7 +151,7 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
       isUploading.value = true
       const res = await fetch(url)
       const blob = await res.blob()
-      const file = new File([blob], 'profile.png', { type: blob.type || 'image/png' })
+      const file = new File([blob], 'avatar.webp', { type: blob.type || 'image/webp' })
       const updatedCustomization = await agentService.uploadAgentPhoto(agentData.value.id, file)
       agentData.value.customization = updatedCustomization
     } catch (error) {

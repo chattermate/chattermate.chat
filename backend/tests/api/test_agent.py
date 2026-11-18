@@ -27,6 +27,10 @@ from datetime import datetime
 import os
 from typing import Dict, Generator
 from app.api import agent as agent_router
+from io import BytesIO
+from PIL import Image as PILImage
+from app.core.config import settings
+from app.services.file_storage import local_upload_path
 from app.core.auth import get_current_user, require_permissions, get_unified_auth
 from app.models.schemas.agent_customization import CustomizationCreate
 from app.database import get_db
@@ -2016,3 +2020,73 @@ def test_an_api_clients_first_save_keeps_the_new_agents_medium_launcher(client, 
     assert response.status_code == 200
     assert _customization_rows(db, created["id"])[0].customization_metadata == {
         "avatar_style": "orb", "launcher": {"size": "md"}}
+
+
+
+class TestAgentPhotoUpload:
+    """POST /{agent_id}/customization/photo with local storage."""
+
+    @staticmethod
+    def _png(size: int = 64) -> bytes:
+        buffer = BytesIO()
+        PILImage.new("RGB", (size, size), (200, 40, 40)).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    @staticmethod
+    def _stored_photo(organization_id, name: str = "old.png") -> str:
+        folder = os.path.join("uploads", "agents", str(organization_id))
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), "wb") as f:
+            f.write(b"old")
+        return f"{settings.API_V1_STR}/uploads/agents/{organization_id}/{name}"
+
+    @pytest.fixture(autouse=True)
+    def _local_storage(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(settings, "S3_FILE_STORAGE", False)
+
+    def _upload(self, client, agent_id, content: bytes):
+        return client.post(f"/api/agents/{agent_id}/customization/photo",
+                           files={"photo": ("me.png", content, "image/png")})
+
+    def test_the_new_photo_is_a_webp_and_the_old_file_is_removed(self, client, db, test_agent, test_customization):
+        old_url = self._stored_photo(test_agent.organization_id)
+        test_customization.photo_url = old_url
+        db.commit()
+
+        response = self._upload(client, test_agent.id, self._png(512))
+
+        assert response.status_code == 200
+        assert response.json()["photo_url"].endswith(".webp")
+        assert not os.path.exists(local_upload_path(old_url))
+
+    def test_a_rejected_upload_keeps_the_old_photo(self, client, db, test_agent, test_customization):
+        old_url = self._stored_photo(test_agent.organization_id)
+        test_customization.photo_url = old_url
+        db.commit()
+
+        response = self._upload(client, test_agent.id, b"not an image")
+
+        assert response.status_code == 400
+        db.refresh(test_customization)
+        assert test_customization.photo_url == old_url
+        assert os.path.exists(local_upload_path(old_url))
+
+    @pytest.mark.parametrize("name", ["theirs.png", "../escape.png"])
+    def test_a_file_outside_the_organizations_folder_is_never_removed(
+            self, client, db, test_agent, test_customization, name):
+        other = self._stored_photo(uuid4(), "theirs.png")
+        os.makedirs(os.path.join("uploads", "agents"), exist_ok=True)
+        with open(os.path.join("uploads", "agents", "escape.png"), "wb") as f:
+            f.write(b"x")
+        # photo_url is whatever the customization form saved: point it elsewhere.
+        foreign = other if name == "theirs.png" else (
+            f"{settings.API_V1_STR}/uploads/agents/{test_agent.organization_id}/../escape.png")
+        test_customization.photo_url = foreign
+        db.commit()
+
+        response = self._upload(client, test_agent.id, self._png())
+
+        assert response.status_code == 200
+        assert os.path.exists(local_upload_path(other))
+        assert os.path.exists(os.path.join("uploads", "agents", "escape.png"))

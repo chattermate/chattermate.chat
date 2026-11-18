@@ -29,7 +29,7 @@ from app.database import get_db
 from app.models.agent import Agent, AgentCustomization
 from app.models.schemas.agent_customization import CustomizationResponse, LauncherIcon
 from app.services.feature_gate import check_feature_access
-from app.services.file_storage import delete_upload, store_upload
+from app.services.file_storage import agent_photo_folder, delete_upload, store_upload
 from app.services.launcher import (
     FREE_ICON_FALLBACK,
     LAUNCHER_KEY,
@@ -88,7 +88,7 @@ async def upload_launcher_logo(
 
     try:
         logo_url = await store_upload(
-            processed.content, f"agents/{organization_id}", f"{uuid4()}{LOGO_EXTENSION}", LOGO_CONTENT_TYPE)
+            processed.content, agent_photo_folder(organization_id), f"{uuid4()}{LOGO_EXTENSION}", LOGO_CONTENT_TYPE)
     except Exception as e:
         logger.error(f"Error storing launcher logo: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to upload logo")

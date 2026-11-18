@@ -17,15 +17,19 @@ A team member without a picture gets their SSO account's photo, after the
 sign-in has answered.
 """
 
+import io
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from PIL import Image
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.models.user import User
 from app.services import profile_pictures
+from app.services.avatar_image import AVATAR_PIXELS, AvatarRejected
+from app.services.file_storage import local_upload_path
 from app.services.sso_providers import GoogleProvider
 
 GOOGLE = GoogleProvider(key="google", label="Google", discovery_url="", scopes="", client_id="c", client_secret="s")
@@ -83,13 +87,34 @@ async def test_no_photo_request_means_no_fetch(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("s3, folder", [(False, "user/org-1/user-1"), (True, "users/org-1/user-1")])
 async def test_the_photo_is_stored_like_an_uploaded_profile_picture(monkeypatch, s3, folder):
-    """Same place the profile-picture upload uses, on disk and on S3."""
+    """Same place and same treatment (shrunk WebP) as the profile-picture upload,
+    on disk and on S3."""
     monkeypatch.setattr(settings, "S3_FILE_STORAGE", s3)
     store = AsyncMock(return_value="stored-url")
-    monkeypatch.setattr(profile_pictures, "store_upload", store)
+    monkeypatch.setattr(profile_pictures, "store_avatar", store)
 
     assert await profile_pictures.store_profile_picture("org-1", "user-1", (b"jpeg", "image/jpeg")) == "stored-url"
-    store.assert_awaited_once_with(b"jpeg", folder, "profile.jpg", "image/jpeg")
+    store.assert_awaited_once_with(b"jpeg", folder)
+
+
+@pytest.mark.asyncio
+async def test_a_large_provider_photo_is_shrunk(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "S3_FILE_STORAGE", False)
+    buffer = io.BytesIO()
+    Image.new("RGB", (800, 800), (10, 120, 200)).save(buffer, format="JPEG")
+
+    stored = await profile_pictures.store_profile_picture("org-1", "user-1", (buffer.getvalue(), "image/jpeg"))
+
+    assert stored.endswith(".webp")
+    picture = Image.open(local_upload_path(stored))
+    assert picture.format == "WEBP" and max(picture.size) == AVATAR_PIXELS
+
+
+@pytest.mark.asyncio
+async def test_a_provider_photo_that_is_not_an_image_is_refused():
+    with pytest.raises(AvatarRejected):
+        await profile_pictures.store_profile_picture("org-1", "user-1", (b"<html>", "image/jpeg"))
 
 
 @pytest.fixture

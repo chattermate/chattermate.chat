@@ -19,6 +19,7 @@ S3 Storage Utilities
 """
 import asyncio
 import re
+import time
 from functools import lru_cache, partial
 import boto3
 from app.core.config import settings
@@ -39,6 +40,10 @@ S3_MAX_PRESIGN_SECONDS = 604800
 # failures rather than failing the whole upload.
 _UPLOAD_VERIFY_ATTEMPTS = 3
 _UPLOAD_VERIFY_BACKOFF_SECONDS = 0.5
+
+# Distinct objects sign_s3_url_stable keeps a URL for at once. A cached URL is a
+# short string; an evicted one is simply signed again.
+_STABLE_URL_CACHE_SIZE = 4096
 
 
 def strip_s3_signature(url: Optional[str]) -> Optional[str]:
@@ -147,7 +152,15 @@ def get_s3_client():
     )
 
 
-def sign_s3_url(s3_url: str, expiration: Optional[int] = None) -> str:
+def _is_signable(s3_url: Optional[str]) -> bool:
+    """Inline data URIs (e.g. generated orb avatars stored in photo_url) and any
+    non-S3 absolute URL are not S3 objects, and nothing is signed without S3."""
+    return bool(settings.S3_FILE_STORAGE and s3_url
+                and not s3_url.startswith('data:') and 'amazonaws.com' in s3_url)
+
+
+def sign_s3_url(s3_url: str, expiration: Optional[int] = None,
+                cache_seconds: Optional[int] = None) -> str:
     """
     Generate a signed URL for an S3 object.
 
@@ -159,32 +172,70 @@ def sign_s3_url(s3_url: str, expiration: Optional[int] = None) -> str:
         s3_url: The S3 URL of the object
         expiration: Lifetime in seconds; defaults to settings.S3_PRESIGN_EXPIRY_SECONDS
                     and is clamped to S3_MAX_PRESIGN_SECONDS
+        cache_seconds: When given, S3 answers with a Cache-Control header letting
+                    the browser keep the object that long. Signed into the URL,
+                    since the bucket's objects carry no Cache-Control of their own.
     Returns:
         Signed URL for the object, or the input unchanged if it is not signable
     """
+    if not _is_signable(s3_url):
+        return s3_url
+    if expiration is None:
+        expiration = settings.S3_PRESIGN_EXPIRY_SECONDS
     try:
-        if not settings.S3_FILE_STORAGE or not s3_url:
-            return s3_url
+        return _presign(s3_url, expiration, cache_seconds)
+    except Exception as e:
+        logger.exception(f"Error generating signed URL: {str(e)}")
+        return s3_url
 
-        # Inline data URIs (e.g. generated orb avatars stored in photo_url) and any
-        # non-S3 absolute URL are not S3 objects — return them unchanged.
-        if s3_url.startswith('data:') or 'amazonaws.com' not in s3_url:
-            return s3_url
 
-        if expiration is None:
-            expiration = settings.S3_PRESIGN_EXPIRY_SECONDS
-        expiration = min(expiration, S3_MAX_PRESIGN_SECONDS)
+def _presign(s3_url: str, expiration: int, cache_seconds: Optional[int]) -> str:
+    """The presign itself, for an object already known to be signable. Raises
+    on failure, so the cached caller never keeps a failed result."""
+    params = {
+        'Bucket': settings.S3_BUCKET,
+        'Key': _key_from_url(s3_url)
+    }
+    if cache_seconds:
+        params['ResponseCacheControl'] = f"private, max-age={cache_seconds}"
+    return get_s3_client().generate_presigned_url(
+        'get_object',
+        Params=params,
+        ExpiresIn=min(expiration, S3_MAX_PRESIGN_SECONDS)
+    )
 
-        s3_client = get_s3_client()
-        signed_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={
-                'Bucket': settings.S3_BUCKET,
-                'Key': _key_from_url(s3_url)
-            },
-            ExpiresIn=expiration
-        )
-        return signed_url
+
+def _stable_window_seconds() -> int:
+    lifetime = min(settings.S3_PRESIGN_EXPIRY_SECONDS, S3_MAX_PRESIGN_SECONDS)
+    return max(lifetime // 2, 1)
+
+
+@lru_cache(maxsize=_STABLE_URL_CACHE_SIZE)
+def _sign_until(s3_url: str, expires_at: int, cache_seconds: int) -> str:
+    return _presign(s3_url, expires_at - int(time.time()), cache_seconds)
+
+
+def sign_s3_url_stable(s3_url: Optional[str]) -> Optional[str]:
+    """A signed URL that stays the same for a while, so the browser can cache
+    the object (sign_s3_url gives a new URL on every call, which no cache can
+    reuse). Meant for small, often-shown images such as agent photos.
+
+    Time is cut into windows of half the configured lifetime. Every call in one
+    window gets the URL that expires at the end of the NEXT window, so a URL
+    handed out is valid for between half and all of the configured lifetime,
+    never longer. Repeat calls in a window are answered from a small cache; with
+    the SigV2 signer (us-east-1) the URL also comes out identical across
+    processes, since its only time input is the expiry itself. The cache does
+    not notice rotated S3 credentials: restart after revoking a key.
+    """
+    if not _is_signable(s3_url):
+        return s3_url
+    # Some callers hand in an already-signed URL; key the cache on the object.
+    s3_url = strip_s3_signature(s3_url)
+    window = _stable_window_seconds()
+    expires_at = (int(time.time()) // window + 2) * window
+    try:
+        return _sign_until(s3_url, expires_at, window)
     except Exception as e:
         logger.exception(f"Error generating signed URL: {str(e)}")
         return s3_url

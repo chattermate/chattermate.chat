@@ -19,7 +19,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
-from app.core.s3 import sign_s3_url
+from app.core.s3 import sign_s3_url_stable
 from app.core.security import validate_password_strength
 
 from app.models.schemas.role import RoleResponse
@@ -84,7 +84,7 @@ class TeammateResponse(BaseModel):
 
     @field_serializer('profile_pic')
     def _sign_profile_pic(self, v: Optional[str]) -> Optional[str]:
-        return sign_s3_url(v) if v else v
+        return sign_s3_url_stable(v) if v else v
 
     class Config:
         from_attributes = True
@@ -126,8 +126,9 @@ class UserResponse(UserBase):
 
     @field_serializer('profile_pic')
     def _sign_profile_pic(self, v: Optional[str]) -> Optional[str]:
-        """Sign on the way out, every response — never stored signed."""
-        return sign_s3_url(v) if v else v
+        """Sign on the way out, every response — never stored signed. The stable
+        signature lets the browser cache the picture across page loads."""
+        return sign_s3_url_stable(v) if v else v
 
     class Config:
         from_attributes = True
