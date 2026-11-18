@@ -42,6 +42,20 @@ export interface PreviewContext {
     helpCenterUrl?: Readonly<Ref<string | null>>
 }
 
+/**
+ * A real conversation to show in place of the sample: the dashboard's own test
+ * chat with the agent (useOnboardingTestChat), so trying the agent looks the
+ * way the widget does. The panel's composer and quick actions send through it.
+ */
+export interface LiveConversation {
+    messages: Readonly<Ref<WidgetMessage[]>>
+    /** Waiting for the agent's reply */
+    loading: Readonly<Ref<boolean>>
+    /** Whether a message can be sent now (connected, not waiting) */
+    canSend: Readonly<Ref<boolean>>
+    send: (text: string) => void
+}
+
 const noop = () => {}
 
 /** The sample as shown: its follow-up chips dropped while follow-ups are off. */
@@ -68,11 +82,15 @@ const startStateFields = (c: Partial<AgentCustomization>) => JSON.stringify([
  *
  * It shows the sample conversation; an edit to the welcome text or quick actions
  * shows the start state, where they are, until a quick action brings the sample back.
+ *
+ * Given a live conversation it shows that instead, from the start state, and
+ * sending works: still no visitor, host page or stored widget session.
  */
 export function usePreviewController(
     customization: Readonly<Ref<Partial<AgentCustomization>>>,
     sampleConversation: PreviewConversation,
     context: PreviewContext,
+    live?: LiveConversation,
 ): WidgetController {
     const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
     const isAskAnythingStyle = computed(() => customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value)
@@ -81,11 +99,13 @@ export function usePreviewController(
     watch(() => startStateFields(customization.value), () => { showingStart.value = true })
     // The Ask AI designs open on their palette with nothing asked yet, as in the classic preview.
     // Follow-up chips under the sample answer only when the agent turned them on.
-    const messages = computed<WidgetMessage[]>(() =>
-        showingStart.value || isAskAnythingStyle.value
+    const messages = computed<WidgetMessage[]>(() => {
+        if (live) return live.messages.value
+        return showingStart.value || isAskAnythingStyle.value
             ? []
-            : withFollowUps(sampleConversation.messages, followUpsOn(customization.value)))
-    const receipts = computed(() => (messages.value.length ? sampleConversation.receipts : []))
+            : withFollowUps(sampleConversation.messages, followUpsOn(customization.value))
+    })
+    const receipts = computed(() => (!live && messages.value.length ? sampleConversation.receipts : []))
 
     const humanAgent = ref<HumanAgent>({})
     const presentation = useWidgetPresentation({
@@ -106,6 +126,21 @@ export function usePreviewController(
 
     const showSample = () => { showingStart.value = false }
     const showStart = () => { showingStart.value = true }
+
+    const newMessage = ref('')
+    const sendLive = (text: string) => {
+        const message = text.trim()
+        if (!live || !message || !live.canSend.value) return
+        live.send(message)
+        newMessage.value = ''
+    }
+    const sendMessage = async () => { sendLive(newMessage.value) }
+    const sendQuickAction = (label: string) => (live ? sendLive(label) : showSample())
+    const handleKeyPress = (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' || event.shiftKey) return
+        event.preventDefault()
+        if (live) sendLive(newMessage.value)
+    }
 
     return {
         ready: Promise.resolve(),
@@ -172,7 +207,7 @@ export function usePreviewController(
 
         // conversation: the sample, already revealed
         messages,
-        loading: ref(false),
+        loading: live ? live.loading : ref(false),
         loadingHistory: ref(false),
         hasStartedChat: computed(() => messages.value.length > 0),
         humanAgent,
@@ -201,15 +236,15 @@ export function usePreviewController(
         handleStarClick: asyncNoop,
         handleSubmitRating: asyncNoop,
 
-        // composer: typing works, sending does nothing
-        newMessage: ref(''),
+        // composer: typing works; sending does nothing, or sends to the live conversation
+        newMessage,
         secretInMessage: ref(false),
         isMessageInputEnabled: ref(true),
         canTypeMessage: ref(true),
         placeholderText: computed(() => (isAskAnythingStyle.value ? 'Ask me anything...' : 'Type a message...')),
-        sendMessage: asyncNoop,
-        sendQuickAction: showSample,
-        handleKeyPress: (event) => { if (event.key === 'Enter') event.preventDefault() },
+        sendMessage,
+        sendQuickAction,
+        handleKeyPress,
         heldForEmail: ref(false),
         uploadedAttachments: ref([]),
         isUploading: ref(false),
