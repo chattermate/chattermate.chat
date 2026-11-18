@@ -17,6 +17,7 @@ limitations under the License.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, isRef, nextTick, ref } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
+import type { WidgetMessage } from '@/types/widget'
 import { usePreviewController, type PreviewContext } from '@/composables/usePreviewController'
 import { previewSampleConversation } from '@/webclient/panel/preview-sample'
 import { PREVIEW_SAMPLE_COPY } from '@/webclient/copy'
@@ -200,5 +201,70 @@ describe('usePreviewController', () => {
         width.value = 420
         expect(ctrl.containerStyles.value.width).toBe('420px')
         expect(isRef(ctrl.newMessage)).toBe(true)
+    })
+})
+
+describe('usePreviewController with a live conversation', () => {
+    function setUpLive(customization: Partial<AgentCustomization> = {}) {
+        const look = ref<Partial<AgentCustomization>>({ chat_style: 'SUNRISE', ...customization })
+        const messages = ref<WidgetMessage[]>([])
+        const loading = ref(false)
+        const canSend = ref(true)
+        const send = vi.fn()
+        const scope = effectScope()
+        const ctrl = scope.run(() => usePreviewController(look, previewSampleConversation(), {
+            widgetId: ref('w-1'),
+            agentName: ref('Ada'),
+            photoUrl: ref('https://cdn.test/ada.png'),
+            showBranding: ref(true),
+            width: ref(400),
+            height: ref(600),
+        }, { messages, loading, canSend, send }))!
+        return { ctrl, messages, loading, canSend, send }
+    }
+
+    it('starts empty and shows the real messages, not the sample', () => {
+        const { ctrl, messages } = setUpLive()
+        expect(ctrl.messages.value).toEqual([])
+        messages.value = [{ message_type: 'user', message: 'Hi', created_at: '', session_id: 's' }]
+        expect(ctrl.messages.value.map(m => m.message)).toEqual(['Hi'])
+        expect(ctrl.receiptCount.value).toBe(0)
+    })
+
+    it('shows them in the Ask AI designs too', () => {
+        const { ctrl, messages } = setUpLive({ chat_style: 'ASK_ANYTHING' })
+        messages.value = [{ message_type: 'user', message: 'Hi', created_at: '', session_id: 's' }]
+        expect(ctrl.messages.value).toHaveLength(1)
+    })
+
+    it('sends what was typed, on Send or Enter, and clears the box', async () => {
+        const { ctrl, send } = setUpLive()
+        ctrl.newMessage.value = '  Do you ship to Canada? '
+        await ctrl.sendMessage()
+        expect(send).toHaveBeenCalledWith('Do you ship to Canada?')
+        expect(ctrl.newMessage.value).toBe('')
+
+        ctrl.newMessage.value = 'Returns?'
+        const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+        ctrl.handleKeyPress(enter)
+        expect(send).toHaveBeenLastCalledWith('Returns?')
+    })
+
+    it('sends a quick action as the question', () => {
+        const { ctrl, send } = setUpLive()
+        ctrl.sendQuickAction('Is the Linen Shirt in stock?')
+        expect(send).toHaveBeenCalledWith('Is the Linen Shirt in stock?')
+    })
+
+    it('sends nothing while it cannot (connecting, or waiting for a reply)', async () => {
+        const { ctrl, canSend, send, loading } = setUpLive()
+        canSend.value = false
+        loading.value = true
+        ctrl.newMessage.value = 'Hello'
+        await ctrl.sendMessage()
+        ctrl.sendQuickAction('Returns?')
+        expect(send).not.toHaveBeenCalled()
+        expect(ctrl.newMessage.value).toBe('Hello')
+        expect(ctrl.loading.value).toBe(true)
     })
 })

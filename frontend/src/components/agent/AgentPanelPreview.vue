@@ -25,7 +25,7 @@ import type { AgentCustomization } from '@/types/agent'
 import PanelWidget from '@/webclient/panel/PanelWidget.vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from '@/webclient/panel/controller'
 import { previewSampleConversation } from '@/webclient/panel/preview-sample'
-import { usePreviewController } from '@/composables/usePreviewController'
+import { usePreviewController, type LiveConversation } from '@/composables/usePreviewController'
 
 const props = defineProps<{
     customization: AgentCustomization
@@ -35,6 +35,8 @@ const props = defineProps<{
     showBranding: boolean
     windowWidth?: number
     windowHeight?: number
+    /** A real test conversation to show instead of the sample */
+    live?: LiveConversation
 }>()
 
 // The loader's default window (400 px wide) unless Placement set one.
@@ -49,7 +51,7 @@ provide(WIDGET_CTX, usePreviewController(toRef(props, 'customization'), previewS
     showBranding: toRef(props, 'showBranding'),
     width,
     height,
-}))
+}, props.live))
 </script>
 
 <template>
