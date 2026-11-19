@@ -18,5 +18,5 @@ limitations under the License.
 export const DOCS_URL = 'https://docs.chattermate.chat'
 export const WIDGET_INSTALL_GUIDE_URL = `${DOCS_URL}/features/widget`
 export const CLI_DOCS_URL = `${DOCS_URL}/features/cli`
-// Our WordPress plugin: adds the widget to WordPress and WooCommerce sites with just the widget ID.
-export const WORDPRESS_PLUGIN_URL = 'https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest'
+// Our WordPress plugin (ChatterMate Chat) in the WordPress.org plugin directory.
+export const WORDPRESS_PLUGIN_URL = 'https://wordpress.org/plugins/chattermate-chat/'
