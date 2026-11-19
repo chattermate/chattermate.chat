@@ -21,12 +21,6 @@ import { getSetupStatus } from '@/services/organization'
 import { canAccessMatchedPaths } from '@/router/routePermissions'
 import { resolveLandingRoute } from '@/router/landing'
 import { getApiUrl } from '@/config/api'
-import HumanAgentView from '@/views/HumanAgentView.vue'
-import OrganizationSettings from '@/views/settings/OrganizationSettings.vue'
-import AIConfigSettings from '@/views/settings/AIConfigSettings.vue'
-import IntegrationsSettings from '@/views/settings/IntegrationsSettings.vue'
-import WidgetAppsSettings from '@/views/settings/WidgetAppsSettings.vue'
-import UserSettingsView from '@/views/UserSettingsView.vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 // Initialize enterprise features
@@ -146,13 +140,13 @@ const baseRoutes = [
   {
     path: '/human-agents',
     name: 'human-agents',
-    component: HumanAgentView,
+    component: () => import('@/views/HumanAgentView.vue'),
     meta: { requiresAuth: true },
   },
   {
     path: '/settings/organization',
     name: 'organization-settings',
-    component: OrganizationSettings,
+    component: () => import('@/views/settings/OrganizationSettings.vue'),
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
@@ -161,7 +155,7 @@ const baseRoutes = [
   {
     path: '/settings/ai-config',
     name: 'ai-config-settings',
-    component: AIConfigSettings,
+    component: () => import('@/views/settings/AIConfigSettings.vue'),
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
@@ -170,7 +164,7 @@ const baseRoutes = [
   {
     path: '/settings/integrations',
     name: 'integrations-settings',
-    component: IntegrationsSettings,
+    component: () => import('@/views/settings/IntegrationsSettings.vue'),
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
@@ -179,7 +173,7 @@ const baseRoutes = [
   {
     path: '/settings/widget-apps',
     name: 'widget-apps',
-    component: WidgetAppsSettings,
+    component: () => import('@/views/settings/WidgetAppsSettings.vue'),
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
@@ -197,7 +191,7 @@ const baseRoutes = [
   {
     path: '/settings/user',
     name: 'user-settings',
-    component: UserSettingsView,
+    component: () => import('@/views/UserSettingsView.vue'),
     meta: {
       requiresAuth: true,
       layout: 'dashboard',

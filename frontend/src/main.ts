@@ -19,7 +19,6 @@ import '@/assets/base.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import VueApexCharts from 'vue3-apexcharts'
 import App from './App.vue'
 import router from './router'
 import { initializeFirebase } from './services/firebase'
@@ -27,16 +26,8 @@ import { setupPWA } from './pwa/register'
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
-/* Font Awesome imports */
-import { library } from '@fortawesome/fontawesome-svg-core'
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { fas } from '@fortawesome/free-solid-svg-icons'
-import { far } from '@fortawesome/free-regular-svg-icons'
-import { fab } from '@fortawesome/free-brands-svg-icons'
+import { registerLazyGlobals } from './plugins/lazyGlobals'
 import { SHOPIFY_APP_PATH_PREFIX } from './utils/shopifyEmbed'
-
-/* Add icons to the library */
-library.add(fas, far, fab)
 
 const savedTheme = localStorage.getItem('cm-theme') ?? 'dark'
 // The embedded Shopify app sits inside Shopify's light admin, whatever the
@@ -52,8 +43,8 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.component('apexchart', VueApexCharts)
-app.component('font-awesome-icon', FontAwesomeIcon)
+// Icons and charts load with the first page that shows one
+registerLazyGlobals(app)
 app.use(FloatingVue)
 
 initializeFirebase()
