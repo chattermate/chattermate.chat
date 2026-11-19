@@ -60,6 +60,33 @@ export class AgentsPage {
     })
   }
 
+  /** One agent's card on the list, by its name (unique in the org). */
+  agentCard(name: string): Locator {
+    // A card is a styled block with no role of its own; its name line is exact
+    return this.page.locator('.agent-card').filter({ has: this.page.getByText(name, { exact: true }) })
+  }
+
+  /** Opens the card's "More options" menu and picks an item. */
+  async agentMenu(name: string, item: 'Duplicate' | 'Delete'): Promise<void> {
+    await step(`${item} agent "${name}"`, async () => {
+      await this.page.getByRole('button', { name: `More options for ${name}`, exact: true }).click()
+      await this.page.getByRole('menuitem', { name: item, exact: true }).click()
+    })
+  }
+
+  /** The confirm dialog Delete opens: what goes with the agent and what stays. */
+  deleteDialog(displayName: string): Locator {
+    return this.page.getByRole('dialog', { name: `Delete ${displayName}?` })
+  }
+
+  async confirmDelete(displayName: string): Promise<void> {
+    await step(`Confirm deleting "${displayName}"`, async () => {
+      const dialog = this.deleteDialog(displayName)
+      await dialog.getByRole('button', { name: 'Delete agent' }).click()
+      await expect(dialog).toBeHidden()
+    })
+  }
+
   /** The list's "Create Agent" button; locked (disabled, titled with the limit) at the plan's cap. */
   get createAgentButton(): Locator {
     return this.page.getByRole('button', { name: /Create Agent/ })

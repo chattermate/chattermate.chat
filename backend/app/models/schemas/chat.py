@@ -34,7 +34,8 @@ class CustomerInfo(BaseModel):
 
 
 class AgentInfo(BaseModel):
-    id: UUID
+    # None for a deleted agent's chats (see repositories/chat._agent_info)
+    id: Optional[UUID] = None
     name: str
     display_name: Optional[str]
     # False means this agent never answers with AI, so an unclaimed chat of its

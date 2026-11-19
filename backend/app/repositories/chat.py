@@ -32,7 +32,7 @@ from app.channels.sent_choices import SENT_CHOICES_ATTRIBUTE, decode_sent_choice
 from app.models.user import User
 from app.repositories.customer import CustomerRepository
 from app.repositories.conversation_notes import ConversationNoteRepository
-from sqlalchemy.orm import aliased, joinedload
+from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.attributes import set_committed_value
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -44,6 +44,23 @@ logger = get_logger(__name__)
 def _utc_midnight() -> datetime:
     """The start of today in UTC: "today" when the caller sends no day start."""
     return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+DELETED_AGENT_NAME = "Deleted agent"
+
+
+def _agent_info(row: Any) -> Dict[str, Any]:
+    """The chat's agent as the inbox shows it. A deleted agent's chats keep
+    their place in the inbox under a placeholder; no AI answers them."""
+    if row.agent_id is None:
+        return {'id': None, 'name': DELETED_AGENT_NAME, 'display_name': None,
+                'ai_replies_enabled': False}
+    return {
+        'id': row.agent_id,
+        'name': row.agent_name,
+        'display_name': row.agent_display_name,
+        'ai_replies_enabled': row.agent_ai_replies_enabled,
+    }
 
 
 def _readable_attributes(attributes: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -454,16 +471,12 @@ class ChatRepository:
 
     @staticmethod
     def _has_listed_messages():
-        """At least one message whose agent and customer still exist, the rows
-        the list joins. The widget opens a session on page load, long before
-        anyone writes, and a deleted agent's chats drop out of the list;
-        counting either would leave a badge nobody can clear."""
-        # Its own Agent alias: the outer query's Agent would otherwise be
-        # correlated into the subquery
-        message_agent = aliased(Agent)
+        """At least one message whose customer still exists, the rows the list
+        joins. The widget opens a session on page load, long before anyone
+        writes; counting it would leave a badge nobody can clear. A deleted
+        agent's chats stay listed (the list joins the agent as optional)."""
         return (
             select(ChatHistory.id)
-            .join(message_agent, ChatHistory.agent_id == message_agent.id)
             .join(Customer, ChatHistory.customer_id == Customer.id)
             .where(ChatHistory.session_id == SessionToAgent.session_id)
             .exists()
@@ -620,7 +633,8 @@ class ChatRepository:
             func.max(ChatHistory.created_at).label('updated_at'),
             func.count(ChatHistory.id).label('message_count'),
             SessionToAgent.session_id.label('session_id')
-        ).join(
+        ).outerjoin(
+            # Optional: a deleted agent's past chats stay in the inbox
             Agent, ChatHistory.agent_id == Agent.id
         ).join(
             Customer, ChatHistory.customer_id == Customer.id
@@ -709,12 +723,7 @@ class ChatRepository:
                 'full_name': r.customer_full_name,
                 'phone': r.customer_phone,
             },
-            'agent': {
-                'id': r.agent_id,
-                'name': r.agent_name,
-                'display_name': r.agent_display_name,
-                'ai_replies_enabled': r.agent_ai_replies_enabled
-            },
+            'agent': _agent_info(r),
             'last_message': last_messages.get(r.session_id),
             'updated_at': r.updated_at,
             'message_count': r.message_count,
@@ -811,7 +820,8 @@ class ChatRepository:
                 func.min(ChatHistory.created_at).label('created_at'),
                 func.max(ChatHistory.created_at).label('updated_at')
             )
-            .join(Agent, ChatHistory.agent_id == Agent.id)
+            # Optional: a deleted agent's past chats stay readable
+            .outerjoin(Agent, ChatHistory.agent_id == Agent.id)
             .join(Customer, ChatHistory.customer_id == Customer.id)
             .join(SessionToAgent, ChatHistory.session_id == SessionToAgent.session_id)
             .outerjoin(User, SessionToAgent.user_id == User.id)
@@ -895,12 +905,7 @@ class ChatRepository:
                 'meta_data': result.customer_meta_data,
                 'phone': result.customer_phone,
             },
-            'agent': {
-                'id': result.agent_id,
-                'name': result.agent_name,
-                'display_name': result.agent_display_name,
-                'ai_replies_enabled': result.agent_ai_replies_enabled
-            },
+            'agent': _agent_info(result),
             'status': result.status,
             'channel': result.channel,
             'channel_account_id': self._channel_account_id(result.channel, result.session_id),

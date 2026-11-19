@@ -41,6 +41,9 @@ from app.models.schemas.agent_customization import CustomizationCreate, Customiz
 from uuid import UUID
 from app.core.config import settings
 from app.services import launcher, telegram_webhooks
+from app.services.agent_copy import duplicate_agent, other_agent_uses_photo
+from app.services.agent_quota import check_agent_quota
+from app.services.agent_removal import LastAgentError, delete_agent, removal_impact
 from app.services.avatar_image import AvatarRejected, delete_replaced_avatar, store_avatar
 from app.services.file_storage import agent_photo_folder
 from pydantic import BaseModel
@@ -121,30 +124,8 @@ async def create_agent(
     """Create a new agent"""
     try:
         agent_repo = AgentRepository(db)
-        
-        # Check enterprise subscription limits if enterprise module is available
-        try:
-            from app.enterprise.services.feature_access import require_accessible_subscription
-            HAS_ENTERPRISE = True
-        except ImportError:
-            HAS_ENTERPRISE = False
+        subscription = check_agent_quota(db, current_user.organization_id)
 
-        if HAS_ENTERPRISE:
-            # Accessible = active/trial/past-due-in-period OR cancelled-but-
-            # still-in-paid-period; raises 403 when the org has no plan.
-            subscription = require_accessible_subscription(db, current_user.organization_id)
-
-            # Get current agents count
-            current_agents_count = agent_repo.count_by_organization(current_user.organization_id)
-
-            # Check if adding this agent would exceed the limit
-            if subscription.plan.max_agents is not None and (current_agents_count + 1) > subscription.plan.max_agents:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Cannot create agent: Maximum number of agents ({subscription.plan.max_agents}) exceeded for current plan , please upgrade your plan"
-                )
-
-        
         # Check if agent with the same name already exists in the organization
         existing_agent = agent_repo.get_by_name(agent_data.name, current_user.organization_id)
         if existing_agent:
@@ -164,7 +145,7 @@ async def create_agent(
             agent_dict["display_name"] = agent_dict["name"]
         
         # Check rating feature availability and override ask_for_rating if necessary
-        if HAS_ENTERPRISE:
+        if subscription is not None:
             from app.enterprise.repositories.plan import PlanRepository
             plan_repo = PlanRepository(db)
             if not plan_repo.check_feature_availability(str(subscription.plan_id), 'rating'):
@@ -224,6 +205,58 @@ async def create_agent(
         logger.error(f"Error creating agent: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _org_agent_or_404(db: Session, agent_id: UUID, organization_id: UUID) -> Agent:
+    agent = AgentRepository(db).get_agent_in_org(agent_id, organization_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+@router.post("/{agent_id}/duplicate", response_model=AgentWithCustomizationResponse,
+             status_code=status.HTTP_201_CREATED)
+async def duplicate_agent_endpoint(
+    agent_id: UUID,
+    current_user: User = Depends(require_permissions("manage_agents")),
+    db: Session = Depends(get_db)
+):
+    """A copy of the agent under a free "(copy)" name: settings, look, knowledge,
+    groups, MCP tools and lead capture. Widgets, channels, workflows and
+    journeys stay with the original (see services/agent_copy)."""
+    source = _org_agent_or_404(db, agent_id, current_user.organization_id)
+    check_agent_quota(db, current_user.organization_id)
+    # photo_url is signed by CustomizationResponse on serialization.
+    return duplicate_agent(db, source)
+
+
+@router.get("/{agent_id}/removal-impact")
+async def agent_removal_impact(
+    agent_id: UUID,
+    current_user: User = Depends(require_permissions("manage_agents")),
+    db: Session = Depends(get_db)
+):
+    """What deleting the agent takes with it, for the confirm dialog."""
+    agent = _org_agent_or_404(db, agent_id, current_user.organization_id)
+    impact = removal_impact(db, agent)
+    return {"widgets": impact.widgets, "channels": impact.channels, "workflows": impact.workflows}
+
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent_endpoint(
+    agent_id: UUID,
+    current_user: User = Depends(require_permissions("manage_agents")),
+    db: Session = Depends(get_db)
+):
+    """Delete the agent for good, with its widgets and workflows; its past
+    conversations stay in the inbox (see services/agent_removal)."""
+    agent = _org_agent_or_404(db, agent_id, current_user.organization_id)
+    try:
+        delete_agent(db, agent)
+    except LastAgentError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="This is your only agent. Create another one before deleting it.")
+    logger.info(f"Agent {agent_id} deleted by user {current_user.id}")
 
 
 def _require_agents_workflow(db: Session, agent: Agent, workflow_id: UUID) -> None:
@@ -576,8 +609,9 @@ async def upload_agent_photo(
         db.commit()
         db.refresh(db_customization)
 
-        # Only now that nothing points at it.
-        await delete_replaced_avatar(old_photo_url, agent_photo_folder(auth_info["organization_id"]))
+        # Only now that nothing points at it: a duplicate may still share it.
+        if not other_agent_uses_photo(db, old_photo_url, agent_id):
+            await delete_replaced_avatar(old_photo_url, agent_photo_folder(auth_info["organization_id"]))
 
         # photo_url is signed by CustomizationResponse on serialization. Assigning
         # it here would leave the refreshed instance dirty and persist the

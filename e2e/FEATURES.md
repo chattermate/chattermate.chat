@@ -67,6 +67,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Human handover | After hours, or nobody online: the chat waits in the team's queue with a reply that says so | `specs/handover/after-hours.org.spec.ts`, `nobody-online.spec.ts` | P1 | ✅ |
 | Human handover | A visitor's attachment reaches the teammate through a signed link | `specs/handover/attachments.spec.ts` | P2 | ✅ |
 | Agents | Create in the dashboard → edit instructions → they reach the model | `specs/agents/agent-editor.spec.ts` | P1 | ✅ |
+| Agents | Duplicate from the card menu makes a "(copy)" with the same instructions; Delete says what goes with it (widget stops working) and what stays, removes the card, and the agent's past chat stays in the inbox | `specs/agents/duplicate-delete.spec.ts` | P2 | ✅ |
 | Agents | Every agent gets the new panel: one that chose the original widget and a new one, in the preview and on the site; no design choice left | `specs/agents/widget-design.spec.ts` | P1 | ✅ |
 | Agents | Toggles (handover, rating, reply buttons) | — | P1 | ⬜ |
 | Knowledge | Add text → answer is grounded in it (real search) | `specs/knowledge/knowledge-answer.spec.ts` | P1 | ✅ |

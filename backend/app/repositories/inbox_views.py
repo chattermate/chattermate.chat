@@ -79,14 +79,16 @@ def mentions(user_id: Optional[UUID]) -> ColumnElement:
 
 def waiting_for_human() -> ColumnElement:
     """Nobody holds it and no AI reply is coming: handed over, queued for a
-    group, or the agent never answers with AI. Mirrors chatHandler() in the
-    frontend's utils/chatState.ts."""
+    group, the agent never answers with AI, or the agent was deleted (the
+    joined row is missing). Mirrors chatHandler() in the frontend's
+    utils/chatState.ts."""
     return and_(
         SessionToAgent.user_id.is_(None),
         or_(
             SessionToAgent.status == SessionStatus.TRANSFERRED,
             SessionToAgent.group_id.isnot(None),
             Agent.ai_replies_enabled.is_(False),
+            Agent.id.is_(None),
         ),
     )
 
@@ -99,6 +101,7 @@ def ai_handling() -> ColumnElement:
         SessionToAgent.user_id.is_(None),
         SessionToAgent.status == SessionStatus.OPEN,
         SessionToAgent.group_id.is_(None),
+        Agent.id.isnot(None),
         Agent.ai_replies_enabled.isnot(False),
     )
 

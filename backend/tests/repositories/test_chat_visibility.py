@@ -217,11 +217,11 @@ def test_inbox_counts_stay_inside_the_organization(
     assert _badges(counts) == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
 
 
-def test_inbox_counts_skip_chats_the_list_cannot_show(
+def test_a_deleted_agents_chat_stays_listed_and_counted(
     db, test_organization_id, test_agent, customer, agent_user, sessions
 ):
-    """A deleted agent's chat drops out of the list (it joins the agent), so
-    the badge must not count it either, or nobody could ever clear it."""
+    """A deleted agent's chat (its messages' agent is gone) stays in the list,
+    and the badge counts exactly what the list shows."""
     orphan = SessionToAgent(
         session_id=uuid4(),
         organization_id=test_organization_id,
@@ -244,6 +244,31 @@ def test_inbox_counts_skip_chats_the_list_cannot_show(
     listed = repo.get_recent_chats(organization_id=test_organization_id)
     counts = repo.get_inbox_counts(organization_id=test_organization_id, current_user_id=agent_user.id)
 
-    assert str(orphan.session_id) not in _ids(listed)
-    assert counts["open"] == len(_open_ids(listed)) == 4
-    assert counts["waiting_for_human"] == 1  # only my_group
+    assert str(orphan.session_id) in _ids(listed)
+    shown = next(c for c in listed if str(c["session_id"]) == str(orphan.session_id))
+    assert shown["agent"] == {"id": None, "name": "Deleted agent", "display_name": None,
+                              "ai_replies_enabled": False}
+    assert counts["open"] == len(_open_ids(listed)) == 5
+    # Not in a group: the admin view counts it alongside my_group
+    assert counts["waiting_for_human"] == 2
+
+
+def test_an_open_chat_of_a_deleted_agent_waits_for_a_person(
+    db, test_organization_id, customer, agent_user, sessions
+):
+    """Nobody answers it with AI any more, so it is not AI handling now."""
+    before = ChatRepository(db).get_inbox_counts(
+        organization_id=test_organization_id, current_user_id=agent_user.id)
+    orphan = SessionToAgent(session_id=uuid4(), organization_id=test_organization_id,
+                            customer_id=customer.id, status=SessionStatus.OPEN)
+    db.add(orphan)
+    db.commit()
+    db.add(ChatHistory(message="hello?", message_type="user", session_id=orphan.session_id,
+                       organization_id=test_organization_id, agent_id=None, customer_id=customer.id))
+    db.commit()
+
+    after = ChatRepository(db).get_inbox_counts(
+        organization_id=test_organization_id, current_user_id=agent_user.id)
+
+    assert after["waiting_for_human"] == before["waiting_for_human"] + 1
+    assert after["ai_handling"] == before["ai_handling"]

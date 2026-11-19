@@ -25,6 +25,13 @@ function agentEndpoint(path: string): string {
   return isEmbeddedShopify() ? `${path}/shopify` : path
 }
 
+/** What deleting an agent takes with it */
+export interface AgentRemovalImpact {
+  widgets: number
+  channels: number
+  workflows: number
+}
+
 export const agentService = {
   /**
    * Names of the org's AI agents, for the inbox filter.
@@ -142,6 +149,25 @@ export const agentService = {
   async updateAgentGroups(agentId: string, groupIds: string[]): Promise<Agent> {
     const response = await api.put(`/agent/${agentId}/groups`, groupIds)
     return response.data
+  },
+
+  /** A copy under a free "(copy)" name; widgets, channels and workflows stay with the original. */
+  async duplicateAgent(agentId: string): Promise<Agent> {
+    const response = await api.post(`/agent/${agentId}/duplicate`)
+    agentStorage.setAgents([...agentStorage.getAgents(), response.data])
+    return response.data
+  },
+
+  /** What deleting the agent takes with it, for the confirm dialog. */
+  async getRemovalImpact(agentId: string): Promise<AgentRemovalImpact> {
+    const response = await api.get(`/agent/${agentId}/removal-impact`)
+    return response.data
+  },
+
+  /** Deletes the agent for good, with its widgets and workflows. */
+  async deleteAgent(agentId: string): Promise<void> {
+    await api.delete(`/agent/${agentId}`)
+    agentStorage.setAgents(agentStorage.getAgents().filter(a => a.id !== agentId))
   },
 
   async getAgentById(agentId: string): Promise<Agent> {

@@ -27,6 +27,8 @@ import { agentService } from '@/services/agent'
 import { permissionChecks } from '@/utils/permissions'
 import AgentDetail from './AgentDetail.vue'
 import CreateAgentModal from './CreateAgentModal.vue'
+import DeleteAgentModal from './DeleteAgentModal.vue'
+import { apiErrorMessage } from '@/utils/apiError'
 import UpgradeModal from '@/components/common/UpgradeModal.vue'
 import { widgetService } from '@/services/widget'
 import { toast } from 'vue-sonner'
@@ -73,6 +75,38 @@ const toggleAgentActive = async (agent: Agent) => {
     } finally {
         togglingActiveId.value = null
     }
+}
+
+// Duplicate counts against the plan's agent limit, like Create
+const duplicatingId = ref<string | null>(null)
+const duplicateAgent = async (agent: Agent) => {
+    closeMenu()
+    if (isAgentCreationLocked.value && hasEnterpriseModule) { showUpgradeModal.value = true; return }
+    duplicatingId.value = agent.id
+    try {
+        const copy = await agentService.duplicateAgent(agent.id)
+        await agentService.getOrganizationAgents()
+        await refreshAgents()
+        toast.success(`Created ${copy.name}`)
+    } catch (err) {
+        console.error('Failed to duplicate agent:', err)
+        toast.error(apiErrorMessage(err, 'Failed to duplicate the agent'))
+    } finally {
+        duplicatingId.value = null
+    }
+}
+
+// The org's only agent stays: every surface that answers customers needs one
+const agentToDelete = ref<Agent | null>(null)
+const isOnlyAgent = computed(() => agents.value.length <= 1)
+const askToDelete = (agent: Agent) => {
+    closeMenu()
+    agentToDelete.value = agent
+}
+const onAgentDeleted = async (agent: Agent) => {
+    agentToDelete.value = null
+    agents.value = agents.value.filter(a => a.id !== agent.id)
+    await refreshAgents()
 }
 
 const copyAgentId = async (agent: Agent) => {
@@ -397,6 +431,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
                                 :class="{ active: openMenuId === agent.id }"
                                 @click.stop="toggleMenu(agent.id)"
                                 title="More options"
+                                :aria-label="`More options for ${agent.name}`"
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                     <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
@@ -415,6 +450,26 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
                                 >
                                     {{ agent.is_active ? 'Set offline' : 'Set online' }}
                                 </button>
+                                <template v-if="canManageAgents">
+                                    <button
+                                        class="card-menu-item"
+                                        role="menuitem"
+                                        :disabled="duplicatingId === agent.id"
+                                        @click="duplicateAgent(agent)"
+                                    >
+                                        {{ duplicatingId === agent.id ? 'Duplicating…' : 'Duplicate' }}
+                                    </button>
+                                    <div class="card-menu-divider"></div>
+                                    <button
+                                        class="card-menu-item card-menu-item-danger"
+                                        role="menuitem"
+                                        :disabled="isOnlyAgent"
+                                        :title="isOnlyAgent ? 'Your only agent can\'t be deleted' : undefined"
+                                        @click="askToDelete(agent)"
+                                    >
+                                        Delete
+                                    </button>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -504,6 +559,13 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
             v-if="showCreateModal"
             @close="showCreateModal = false"
             @created="handleAgentCreated"
+        />
+
+        <DeleteAgentModal
+            v-if="agentToDelete"
+            :agent="agentToDelete"
+            @close="agentToDelete = null"
+            @deleted="onAgentDeleted"
         />
 
         <UpgradeModal
@@ -856,6 +918,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 
 .card-menu-item:hover:not(:disabled) { background: var(--o06); }
 .card-menu-item:disabled { opacity: 0.55; cursor: not-allowed; }
+.card-menu-item-danger { color: var(--c-danger); }
 
 .card-menu-divider {
     height: 1px;

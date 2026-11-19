@@ -2770,6 +2770,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/{agent_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Agent Endpoint
+         * @description A copy of the agent under a free "(copy)" name: settings, look, knowledge,
+         *     groups, MCP tools and lead capture. Widgets, channels, workflows and
+         *     journeys stay with the original (see services/agent_copy).
+         */
+        post: operations["duplicate_agent_endpoint_api_v1_agent__agent_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/removal-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Removal Impact
+         * @description What deleting the agent takes with it, for the confirm dialog.
+         */
+        get: operations["agent_removal_impact_api_v1_agent__agent_id__removal_impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/{agent_id}": {
         parameters: {
             query?: never;
@@ -2788,7 +2830,12 @@ export interface paths {
          */
         put: operations["update_agent_api_v1_agent__agent_id__put"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Agent Endpoint
+         * @description Delete the agent for good, with its widgets and workflows; its past
+         *     conversations stay in the inbox (see services/agent_removal).
+         */
+        delete: operations["delete_agent_endpoint_api_v1_agent__agent_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5956,11 +6003,8 @@ export interface components {
         };
         /** AgentInfo */
         AgentInfo: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+            /** Id */
+            id?: string | null;
             /** Name */
             name: string;
             /** Display Name */
@@ -16035,6 +16079,72 @@ export interface operations {
             };
         };
     };
+    duplicate_agent_endpoint_api_v1_agent__agent_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWithCustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_removal_impact_api_v1_agent__agent_id__removal_impact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_by_id_api_v1_agent__agent_id__get: {
         parameters: {
             query?: never;
@@ -16089,6 +16199,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentWithCustomizationResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_endpoint_api_v1_agent__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
