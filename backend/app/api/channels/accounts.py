@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import List
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,6 +27,7 @@ from app.core.auth import (
     require_any_permission,
     require_permissions,
 )
+from app.services.channel_limits import display_caps
 from app.services.meta_own_app import AUTO_WEBHOOK_SETTING, is_own_app, own_app_webhook_url
 from app.core.config import webhooks_base_url
 from app.database import get_db
@@ -90,6 +91,17 @@ def to_account_out(
         out.webhook_verify_token = account.webhook_secret
         out.webhook_auto_configured = (account.settings or {}).get(AUTO_WEBHOOK_SETTING)
     return out
+
+
+@router.get("/limits", response_model=Dict[str, Optional[int]])
+async def channel_account_limits(
+    _: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """How many accounts of each capped channel the plan allows ({"whatsapp": 2});
+    null means no limit."""
+    return display_caps(db, organization.id)
 
 
 @router.get("/accounts", response_model=List[ChannelAccountOut])

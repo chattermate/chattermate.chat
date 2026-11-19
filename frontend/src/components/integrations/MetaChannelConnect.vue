@@ -191,10 +191,10 @@ const saveAgent = async () => {
 
 <template>
   <div class="meta-modal" @click.self="emit('close')">
-    <div class="meta-modal-content">
+    <div class="meta-modal-content" role="dialog" aria-modal="true" :aria-label="form.title">
       <div class="meta-modal-header">
         <h3>{{ form.title }}</h3>
-        <button class="meta-close-btn" @click="emit('close')">×</button>
+        <button class="meta-close-btn" aria-label="Close" @click="emit('close')">×</button>
       </div>
 
       <!-- Step 1: credentials -->

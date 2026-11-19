@@ -23,11 +23,12 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
-import { accountToManage, accountWarning } from '@/utils/channelAccounts'
+import { accountNamesSummary, accountToManage, accountWarning } from '@/utils/channelAccounts'
 import crmService, { type CrmConnection, type CrmProvider } from '@/services/crm'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
 import WhatsAppTemplateManager from '@/components/integrations/WhatsAppTemplateManager.vue'
+import WhatsAppNumbersModal from '@/components/integrations/WhatsAppNumbersModal.vue'
 import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.vue'
 
 // Import logos
@@ -68,6 +69,9 @@ const showTelegramModal = ref(false)
 // Which Meta connect modal is open (null = none)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
 const showTemplateManager = ref(false)
+const showWhatsAppNumbers = ref(false)
+// The plan's limit per capped channel ({ whatsapp: 2 }); absent or null = no limit
+const channelLimits = ref<Partial<Record<string, number | null>>>({})
 // Which credential connect modal is open (null = none)
 const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | null>(null)
 // Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
@@ -161,6 +165,11 @@ const manageIntegration = (integration: IntegrationCard) => {
   } else if (id === 'telegram') {
     telegramModalAccount.value = acc
     showTelegramModal.value = true
+  } else if (id === 'whatsapp') {
+    // Several numbers: the list says which one to manage, and adds another.
+    // The limit is read again: the plan may have changed since the page loaded.
+    fetchChannelLimits()
+    showWhatsAppNumbers.value = true
   } else if (META_CHANNELS.includes(id)) {
     metaModalAccount.value = acc
     metaModalChannel.value = id as 'whatsapp' | 'messenger' | 'instagram'
@@ -192,6 +201,29 @@ const fetchChannelAccounts = async () => {
   } finally {
     channelsLoading.value = false
   }
+}
+
+// Unknown limits read as none: the server refuses a number past the plan's anyway
+const fetchChannelLimits = async () => {
+  try {
+    channelLimits.value = await channelsService.getAccountLimits()
+  } catch (error) {
+    console.error('Error loading channel limits:', error)
+  }
+}
+
+const whatsAppLimit = computed(() => channelLimits.value.whatsapp ?? null)
+
+// From the numbers list: the connect form for one number, or for a new one
+const openWhatsAppConnect = (account: ChannelAccount | null) => {
+  showWhatsAppNumbers.value = false
+  metaModalAccount.value = account
+  metaModalChannel.value = 'whatsapp'
+}
+
+const onWhatsAppNumberDisconnected = (account: ChannelAccount) => {
+  channelAccounts.value = channelAccounts.value.filter(a => a.id !== account.id)
+  if (accountsFor('whatsapp').length === 0) showWhatsAppNumbers.value = false
 }
 
 const onChannelConnected = async () => {
@@ -488,7 +520,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       category: 'MESSAGING',
       color: meta.color,
       connected: accounts.length > 0,
-      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
+      teamName: accountNamesSummary(accounts),
       warning: accountWarning(accounts),
       isLoading: channelsLoading.value,
       connectAction: () => { metaModalChannel.value = channel },
@@ -617,6 +649,7 @@ onMounted(async () => {
     fetchJiraStatus(),
     fetchShopifyStatus(),
     fetchChannelAccounts(),
+    fetchChannelLimits(),
     fetchCrmConnections()
   ])
   
@@ -858,6 +891,15 @@ onMounted(async () => {
         <p>Are you sure you want to disconnect this integration?</p>
         <p class="warning-text">This will remove all connections and configurations associated with this integration.</p>
         
+        <!-- The card's Disconnect removes every number; one at a time is in Manage -->
+        <div
+          v-if="disconnectingIntegration === 'whatsapp' && accountsFor('whatsapp').length > 1"
+          class="integration-specific-warning"
+          data-testid="whatsapp-disconnect-all"
+        >
+          <p>This disconnects all {{ accountsFor('whatsapp').length }} WhatsApp numbers. To remove just one, use Manage.</p>
+        </div>
+
         <div v-if="disconnectingIntegration === 'jira'" class="integration-specific-warning">
           <p>Disconnecting Jira will:</p>
           <ul>
@@ -997,6 +1039,17 @@ onMounted(async () => {
     :existing-account="metaModalAccount"
     @close="metaModalChannel = null; metaModalAccount = null; fetchChannelAccounts()"
     @connected="onChannelConnected"
+  />
+
+  <!-- WhatsApp numbers: manage, disconnect or add one -->
+  <WhatsAppNumbersModal
+    v-if="showWhatsAppNumbers"
+    :accounts="accountsFor('whatsapp')"
+    :limit="whatsAppLimit"
+    @close="showWhatsAppNumbers = false"
+    @add="openWhatsAppConnect(null)"
+    @manage="openWhatsAppConnect"
+    @disconnected="onWhatsAppNumberDisconnected"
   />
 
   <!-- WhatsApp template management -->

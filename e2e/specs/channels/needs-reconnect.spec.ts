@@ -38,8 +38,10 @@ test.describe('a WhatsApp number whose token Meta refuses', () => {
     const warning = integrations.expiredAccessFor(number.account.display_name ?? '')
     await integrations.goto()
     await expect(integrations.card('WhatsApp')).toContainText(warning)
-    // Other numbers are connected too; Manage still leads to the fix, not the first number
+    // Other numbers are connected too; the numbers list leads to this one's fix
     await integrations.manage('WhatsApp')
+    await expect(integrations.whatsAppNumber(number.account.display_name ?? '')).toContainText('Access expired')
+    await integrations.manageWhatsAppNumber(number.account.display_name ?? '', 'Reconnect')
     await expect(integrations.reconnectPrompt()).toBeVisible()
 
     // The customer swaps in a working token: same number, connected again
