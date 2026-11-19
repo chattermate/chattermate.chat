@@ -16,14 +16,29 @@ limitations under the License.
 
 import type { AgentRemovalImpact } from '@/services/agent'
 
-/** What deleting an agent takes with it, one sentence per kind it has. */
-export const removalConsequences = (impact: AgentRemovalImpact): string[] => {
-  const lines: string[] = []
-  if (impact.widgets === 1) lines.push("Its chat widget stops working on any site where it's installed.")
-  else if (impact.widgets > 1) lines.push(`Its ${impact.widgets} chat widgets stop working on any site where they're installed.`)
-  if (impact.channels === 1) lines.push('1 channel it answers is left without an agent.')
-  else if (impact.channels > 1) lines.push(`${impact.channels} channels it answers are left without an agent.`)
-  if (impact.workflows === 1) lines.push('Its workflow is deleted.')
-  else if (impact.workflows > 1) lines.push(`Its ${impact.workflows} workflows are deleted.`)
-  return lines
+export interface RemovalConsequence {
+  /** Font Awesome icon for the row */
+  icon: string
+  text: string
+}
+
+/** What deleting an agent takes with it, one row per kind it has. */
+export const removalConsequences = (impact: AgentRemovalImpact): RemovalConsequence[] => {
+  const rows: RemovalConsequence[] = []
+  if (impact.widgets === 1) {
+    rows.push({ icon: 'fa-solid fa-code', text: "Its chat widget stops working on any site where it's installed." })
+  } else if (impact.widgets > 1) {
+    rows.push({ icon: 'fa-solid fa-code', text: `Its ${impact.widgets} chat widgets stop working on any site where they're installed.` })
+  }
+  if (impact.channels === 1) {
+    rows.push({ icon: 'fa-solid fa-comment-dots', text: '1 channel it answers is left without an agent.' })
+  } else if (impact.channels > 1) {
+    rows.push({ icon: 'fa-solid fa-comment-dots', text: `${impact.channels} channels it answers are left without an agent.` })
+  }
+  if (impact.workflows === 1) {
+    rows.push({ icon: 'fa-solid fa-diagram-project', text: 'Its workflow is deleted.' })
+  } else if (impact.workflows > 1) {
+    rows.push({ icon: 'fa-solid fa-diagram-project', text: `Its ${impact.workflows} workflows are deleted.` })
+  }
+  return rows
 }

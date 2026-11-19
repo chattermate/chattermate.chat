@@ -23,15 +23,20 @@ describe('removalConsequences', () => {
   })
 
   it('names each kind once, singular', () => {
-    expect(removalConsequences({ widgets: 1, channels: 1, workflows: 1 })).toEqual([
+    expect(removalConsequences({ widgets: 1, channels: 1, workflows: 1 }).map(r => r.text)).toEqual([
       "Its chat widget stops working on any site where it's installed.",
       '1 channel it answers is left without an agent.',
       'Its workflow is deleted.',
     ])
   })
 
+  it('gives each kind its own icon', () => {
+    expect(removalConsequences({ widgets: 1, channels: 1, workflows: 1 }).map(r => r.icon))
+      .toEqual(['fa-solid fa-code', 'fa-solid fa-comment-dots', 'fa-solid fa-diagram-project'])
+  })
+
   it('counts several', () => {
-    expect(removalConsequences({ widgets: 2, channels: 3, workflows: 4 })).toEqual([
+    expect(removalConsequences({ widgets: 2, channels: 3, workflows: 4 }).map(r => r.text)).toEqual([
       "Its 2 chat widgets stop working on any site where they're installed.",
       '3 channels it answers are left without an agent.',
       'Its 4 workflows are deleted.',

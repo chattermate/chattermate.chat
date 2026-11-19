@@ -74,9 +74,9 @@ export class AgentsPage {
     })
   }
 
-  /** The confirm dialog Delete opens: what goes with the agent and what stays. */
+  /** The confirm dialog Delete opens for this agent: what goes with it and what stays. */
   deleteDialog(displayName: string): Locator {
-    return this.page.getByRole('dialog', { name: `Delete ${displayName}?` })
+    return this.page.getByRole('dialog', { name: 'Delete this agent?' }).filter({ hasText: displayName })
   }
 
   async confirmDelete(displayName: string): Promise<void> {

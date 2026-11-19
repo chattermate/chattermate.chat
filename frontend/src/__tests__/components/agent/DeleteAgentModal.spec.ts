@@ -30,7 +30,7 @@ vi.mock('@/services/agent', () => ({ agentService: { getRemovalImpact, deleteAge
 const agent = { id: 'ag-1', name: 'support', display_name: 'Support Bot' } as Agent
 
 const mountModal = async () => {
-  const wrapper = mount(DeleteAgentModal, { props: { agent }, global: { stubs: { teleport: true } } })
+  const wrapper = mount(DeleteAgentModal, { props: { agent }, global: { stubs: { teleport: true, 'font-awesome-icon': true } } })
   await flushPromises()
   return wrapper
 }
@@ -48,7 +48,9 @@ describe('DeleteAgentModal', () => {
     getRemovalImpact.mockResolvedValue({ widgets: 1, channels: 2, workflows: 0 })
     const wrapper = await mountModal()
 
-    expect(wrapper.text()).toContain('Delete Support Bot?')
+    expect(wrapper.text()).toContain('Delete this agent?')
+    expect(wrapper.find('.dam-agent').text()).toContain('Support Bot')
+    expect(wrapper.find('.dam-agent').text()).toContain('support')
     expect(wrapper.find('[data-testid="agent-removal-impact"]').text())
       .toContain("Its chat widget stops working on any site where it's installed.")
     expect(wrapper.text()).toContain('2 channels it answers are left without an agent.')
@@ -62,6 +64,22 @@ describe('DeleteAgentModal', () => {
 
     expect(wrapper.text()).toContain('Its widgets and workflows are deleted with it')
     expect(deleteButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('says when nothing else is set up on the agent', async () => {
+    getRemovalImpact.mockResolvedValue({ widgets: 0, channels: 0, workflows: 0 })
+    const wrapper = await mountModal()
+
+    expect(wrapper.text()).toContain('Nothing else is set up on this agent.')
+    expect(wrapper.find('[data-testid="agent-removal-impact"]').exists()).toBe(false)
+  })
+
+  it('waits for the preview before allowing the delete', async () => {
+    getRemovalImpact.mockReturnValue(new Promise(() => {}))
+    const wrapper = mount(DeleteAgentModal, { props: { agent }, global: { stubs: { teleport: true, 'font-awesome-icon': true } } })
+    await flushPromises()
+
+    expect(deleteButton(wrapper).attributes('disabled')).toBeDefined()
   })
 
   it('deletes on confirm and says so', async () => {
