@@ -309,7 +309,8 @@ async def run_processor():
             )
             for item_id, result in zip(pending_item_ids, results):
                 if isinstance(result, Exception):
-                    logger.error(f"Queue item {item_id} failed: {result}")
+                    # process_queue_item logged the message; this keeps the traceback
+                    logger.error(f"Queue item {item_id} failed: {result}", exc_info=result)
 
         PROCESSOR_STATUS["last_run"] = datetime.utcnow().isoformat()
 

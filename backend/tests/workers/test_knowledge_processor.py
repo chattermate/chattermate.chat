@@ -198,7 +198,9 @@ async def test_one_failed_item_does_not_end_the_pass(mock_dependencies):
     assert sorted(processed) == [1, 2]
     assert PROCESSOR_STATUS["error"] is None
     assert isinstance(PROCESSOR_STATUS["last_run"], str)
-    log.error.assert_any_call("Queue item 1 failed: Couldn't reach the site (ConnectError).")
+    failed = [c for c in log.error.call_args_list if c.args[0].startswith("Queue item 1 failed")]
+    assert len(failed) == 1
+    assert isinstance(failed[0].kwargs["exc_info"], RuntimeError)
 
 
 # ---------------------------------------------------------------------------
