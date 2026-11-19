@@ -31,6 +31,13 @@ vi.mock('@/services/widget', () => ({
   },
 }))
 
+// Making an agent for a new account (its own tests cover what it does)
+const createSiteWidget = vi.fn()
+vi.mock('@/utils/siteAgent', () => ({
+  createSiteWidget: (...args: unknown[]) => createSiteWidget(...args),
+  siteAgentName: (siteName: string, siteHost: string) => siteName || siteHost,
+}))
+
 // The hosted build's learn option and token service; an empty object is the open-source build
 const enterprise: { connectToken?: ReturnType<typeof vi.fn> } = {}
 const LearnOption = {
@@ -41,6 +48,7 @@ const LearnOption = {
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
     moduleImports: { wordpressLearnOption: 'learn-option', wordpressSites: 'sites' },
+    hasEnterpriseModule: Boolean(enterprise.connectToken),
     enterpriseComponent: () => (enterprise.connectToken ? LearnOption : { render: () => null }),
     loadModule: async () => (enterprise.connectToken ? { wordpressSites: { connectToken: enterprise.connectToken } } : null),
   }),
@@ -178,13 +186,70 @@ describe('ConnectWordPressView', () => {
     expect(returned().searchParams.has('widget_id')).toBe(false)
   })
 
-  it('points to creating an agent when there is none', async () => {
-    getWidgets.mockResolvedValue([])
-    const wrapper = mountView()
-    await flushPromises()
+  describe('a new account with no agent yet', () => {
+    const NEW_WIDGET = { id: 'w-new-0003', agent: { name: 'Larkfield Goods', display_name: 'Larkfield Goods' } }
 
-    expect(wrapper.text()).toContain("don't have an AI agent")
-    expect(wrapper.find('.connect-actions').exists()).toBe(false)
+    beforeEach(() => {
+      getWidgets.mockResolvedValue([])
+      createSiteWidget.mockResolvedValue(NEW_WIDGET)
+    })
+
+    it('offers to create an agent for the site instead of a list', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain("don't have an AI agent yet")
+      expect(wrapper.find('.connect-agents').exists()).toBe(false)
+      expect(wrapper.find('.connect-actions button').text()).toBe('Create my AI agent and connect')
+      expect(wrapper.text()).not.toContain('Choose the AI agent')
+    })
+
+    it('creates the agent named after the site and sends its widget back', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false)
+      expect(returned().origin + returned().pathname).toBe('https://shop.example.com/wp-admin/admin-post.php')
+      expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
+      expect(returned().searchParams.get('state')).toBe('nonce12345')
+    })
+
+    it('asks for an AI provider first in open source, without leaving', async () => {
+      createSiteWidget.mockResolvedValue(null)
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('[role="alert"]').text()).toContain('needs an AI model first')
+      expect(assign).not.toHaveBeenCalled()
+    })
+
+    it('says so when the agent cannot be made, and can be tried again', async () => {
+      createSiteWidget.mockRejectedValueOnce(new Error('500'))
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('[role="alert"]').text()).toContain("couldn't create your AI agent")
+      expect(assign).not.toHaveBeenCalled()
+
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+      expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
+    })
+
+    it('cancels back to the plugin', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.findAll('.connect-actions button')[1].trigger('click')
+
+      expect(returned().searchParams.get('error')).toBe('cancelled')
+      expect(createSiteWidget).not.toHaveBeenCalled()
+    })
   })
 
   it('offers a retry hint when the agents cannot be loaded', async () => {
@@ -244,6 +309,21 @@ describe('ConnectWordPressView', () => {
       expect(assign).not.toHaveBeenCalled()
       expect(wrapper.find('.connect-error').text()).toContain("couldn't set up learning for shop.example.com")
       expect(wrapper.find('.connect-actions button').attributes('disabled')).toBeUndefined()
+    })
+
+    it("teaches a new account's agent the site too, on the managed AI", async () => {
+      getWidgets.mockResolvedValue([])
+      createSiteWidget.mockResolvedValue({ id: 'w-new-0003', agent: { name: 'Larkfield Goods' } })
+      const wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.find('.learn-option').exists()).toBe(true)
+
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', true)
+      expect(enterprise.connectToken).toHaveBeenCalledWith('w-new-0003', 'https://shop.example.com/', RETURN)
+      expect(returned().searchParams.get('connect_token')).toBe('tok-123')
     })
   })
 

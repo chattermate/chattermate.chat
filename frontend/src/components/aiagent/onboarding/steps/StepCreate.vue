@@ -16,8 +16,8 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, computed, defineAsyncComponent, onMounted } from 'vue'
-import { AxiosError } from 'axios'
-import { aiService } from '@/services/ai'
+import { AGENT_TYPE_DEFAULTS } from '@/utils/agentDefaults'
+import { ensureAiConfig } from '@/utils/aiConfig'
 import { agentService } from '@/services/agent'
 import { leadCaptureService } from '@/services/leadCapture'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
@@ -58,13 +58,7 @@ const agentTypes = [
   { value: 'general', label: 'General' },
 ] as const
 
-// Sensible starter instructions per agent type — prefilled so setup is quick
-const TYPE_DEFAULTS: Record<string, string> = {
-  customer_support: 'Be concise, friendly, and empathetic. Answer questions using the knowledge base. Escalate billing or account issues to a human agent.',
-  sales: 'Be enthusiastic and helpful. Highlight product benefits, answer pricing questions, and guide visitors toward booking a demo or starting a trial. Capture lead details when it feels natural.',
-  tech_support: 'Be clear and patient. Help users troubleshoot step by step using the documentation. Ask for error messages or screenshots when needed, and escalate unresolved issues to a human.',
-  general: 'Be helpful, concise, and friendly. Answer questions accurately using the knowledge base, and hand off to a human when a request needs personal attention.',
-}
+const TYPE_DEFAULTS = AGENT_TYPE_DEFAULTS
 const DEFAULT_VALUES = Object.values(TYPE_DEFAULTS)
 
 // Prefill from the existing agent when returning to this step
@@ -218,26 +212,10 @@ const generateWithAI = async () => {
 const showAiGate = ref(false)
 
 const ensureAIConfig = async (): Promise<boolean> => {
-  try {
-    await aiService.getOrganizationConfig()
-    return true
-  } catch (err) {
-    if (err instanceof AxiosError && err.response?.status === 404) {
-      if (hasEnterpriseModule) {
-        // Managed ChatterMate AI — zero setup, backend injects the key
-        await aiService.setupAI({
-          model_type: 'CHATTERMATE',
-          model_name: 'chattermate',
-          api_key: '',
-        })
-        return true
-      }
-      // OSS: route into the existing provider setup form as a gate
-      showAiGate.value = true
-      return false
-    }
-    throw err
-  }
+  if (await ensureAiConfig(hasEnterpriseModule)) return true
+  // OSS: route into the existing provider setup form as a gate
+  showAiGate.value = true
+  return false
 }
 
 const instructionList = () =>

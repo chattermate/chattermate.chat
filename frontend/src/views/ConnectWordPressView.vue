@@ -20,6 +20,7 @@ import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
+import { createSiteWidget, siteAgentName } from '@/utils/siteAgent'
 
 /** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
 interface WidgetWithAgent {
@@ -31,7 +32,7 @@ const route = useRoute()
 const request = computed(() => parseConnectRequest(route.query as Record<string, unknown>))
 
 // Teaching the agent the site (hosted builds): the option renders nothing in open source
-const { enterpriseComponent, loadModule, moduleImports } = useEnterpriseFeatures()
+const { enterpriseComponent, hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 const LearnOption = enterpriseComponent(moduleImports.wordpressLearnOption)
 const learn = ref(true)
 
@@ -44,6 +45,9 @@ const allowedDomains = ref<string[] | null>(null)
 const addDomain = ref(false)
 const connecting = ref(false)
 const connectError = ref('')
+// A new account (from the plugin's "Get started"): no agent yet, so one is made here
+const creating = ref(false)
+const needsAiProvider = ref(false)
 
 const siteHost = computed(() => request.value?.siteHost ?? '')
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
@@ -116,6 +120,29 @@ async function connect() {
   window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
 }
 
+/** No widget yet: make an agent for this site, then connect it as usual. */
+async function createAndConnect() {
+  if (!request.value) return
+  creating.value = true
+  connectError.value = ''
+  needsAiProvider.value = false
+  try {
+    const widget = await createSiteWidget(siteAgentName(request.value.siteName, siteHost.value), hasEnterpriseModule)
+    if (!widget) {
+      needsAiProvider.value = true
+      return
+    }
+    widgets.value = [widget]
+    selectedId.value = widget.id
+  } catch {
+    connectError.value = "We couldn't create your AI agent. Try again, or create one from the dashboard."
+    return
+  } finally {
+    creating.value = false
+  }
+  await connect()
+}
+
 function cancel() {
   if (request.value) window.location.assign(buildReturnUrl(request.value, { error: 'cancelled' }))
 }
@@ -141,7 +168,7 @@ onMounted(() => {
 
       <template v-else>
         <h1 id="connect-title">Connect {{ request.siteName }}</h1>
-        <p class="connect-lead">
+        <p v-if="widgets.length" class="connect-lead">
           Choose the AI agent that answers on <strong>{{ siteHost }}</strong>. We send its Widget ID back to your WordPress
           admin at <strong>{{ request.returnUrl.host }}</strong>.
         </p>
@@ -150,8 +177,35 @@ onMounted(() => {
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
         <template v-else-if="!widgets.length">
-          <p class="connect-lead">You don't have an AI agent with a widget yet. Create one, then come back to this page.</p>
-          <router-link class="connect-button" to="/ai-agents">Create an AI agent</router-link>
+          <p class="connect-lead">
+            You don't have an AI agent yet. We'll create one for <strong>{{ siteHost }}</strong> and connect it.
+          </p>
+          <component
+            :is="LearnOption"
+            v-if="returnsToTheSite(request)"
+            v-model="learn"
+            :site-host="siteHost"
+            :store="request.store"
+          />
+          <p v-if="needsAiProvider" class="connect-error" role="alert">
+            Your agent needs an AI model first.
+            <router-link to="/settings/ai-config">Add your AI provider</router-link>, then come back to this page.
+          </p>
+          <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
+
+          <div class="connect-actions">
+            <button
+              type="button"
+              class="connect-button"
+              :disabled="creating || connecting"
+              @click="createAndConnect"
+            >
+              {{ creating || connecting ? 'Setting up…' : 'Create my AI agent and connect' }}
+            </button>
+            <button type="button" class="connect-button connect-button--secondary" :disabled="creating || connecting" @click="cancel">
+              Cancel
+            </button>
+          </div>
         </template>
 
         <template v-else>
