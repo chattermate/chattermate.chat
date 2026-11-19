@@ -41,9 +41,8 @@ vi.mock('@/utils/siteAgent', () => ({
 // The hosted build's learn option and token service; an empty object is the open-source build
 const enterprise: { connectToken?: ReturnType<typeof vi.fn> } = {}
 const LearnOption = {
-  props: ['modelValue', 'siteHost', 'store'],
-  emits: ['update:modelValue'],
-  template: '<label class="learn-option"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />{{ store ? "store" : "site" }} {{ siteHost }}</label>',
+  props: ['siteHost', 'store'],
+  template: '<div class="learn-option">{{ store ? "store" : "site" }} {{ siteHost }}</div>',
 }
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
@@ -275,7 +274,7 @@ describe('ConnectWordPressView', () => {
       Object.assign(query, { site_url: 'https://shop.example.com/', store: '1' })
     })
 
-    it('is ticked by default and sends the token back with the widget', async () => {
+    it('is part of every connect: the token goes back with the widget', async () => {
       const wrapper = mountView()
       await flushPromises()
       expect(wrapper.find('.learn-option').text()).toContain('store shop.example.com')
@@ -288,17 +287,6 @@ describe('ConnectWordPressView', () => {
       expect(returned().searchParams.get('widget_id')).toBe('w-sales-0001')
     })
 
-    it('connects without learning when unticked', async () => {
-      const wrapper = mountView()
-      await flushPromises()
-      await wrapper.find('.learn-option input').setValue(false)
-      await wrapper.find('.connect-actions button').trigger('click')
-      await flushPromises()
-
-      expect(enterprise.connectToken).not.toHaveBeenCalled()
-      expect(returned().searchParams.has('connect_token')).toBe(false)
-    })
-
     it('stays on the page and says why when learning cannot be set up', async () => {
       enterprise.connectToken!.mockRejectedValue(new Error('403'))
       const wrapper = mountView()
@@ -309,6 +297,20 @@ describe('ConnectWordPressView', () => {
       expect(assign).not.toHaveBeenCalled()
       expect(wrapper.find('.connect-error').text()).toContain("couldn't set up learning for shop.example.com")
       expect(wrapper.find('.connect-actions button').attributes('disabled')).toBeUndefined()
+    })
+
+    it('offers no way to connect without learning: trying again sends the token', async () => {
+      enterprise.connectToken!.mockRejectedValueOnce(new Error('503'))
+      const wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+      expect(assign).not.toHaveBeenCalled()
+
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+      expect(returned().searchParams.get('connect_token')).toBe('tok-123')
     })
 
     it("teaches a new account's agent the site too, on the managed AI", async () => {

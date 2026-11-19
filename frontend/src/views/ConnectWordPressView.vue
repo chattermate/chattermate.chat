@@ -36,10 +36,10 @@ interface WidgetWithAgent {
 const route = useRoute()
 const request = computed(() => parseConnectRequest(route.query as Record<string, unknown>))
 
-// Teaching the agent the site (hosted builds): the option renders nothing in open source
+// Teaching the agent the site (hosted builds) is part of every connect, not a
+// choice: the same link gives the agent the store's tools. Open source has none.
 const { enterpriseComponent, hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 const LearnOption = enterpriseComponent(moduleImports.wordpressLearnOption)
-const learn = ref(true)
 
 const widgets = ref<WidgetWithAgent[]>([])
 const selectedId = ref('')
@@ -96,10 +96,10 @@ watch(selectedId, async (id) => {
   }
 })
 
-/** The token the plugin claims to teach the agent the site; null when not wanted or not offered. */
+/** The token the plugin claims to teach the agent the site; null where it isn't offered. */
 async function learnToken(widgetId: string): Promise<string | null> {
   const req = request.value
-  if (!learn.value || !req?.siteUrl || !returnsToTheSite(req)) return null
+  if (!req?.siteUrl || !returnsToTheSite(req)) return null
   const sites = (await loadModule(moduleImports.wordpressSites))?.wordpressSites
   return sites ? sites.connectToken(widgetId, req.siteUrl, req.returnUrl.toString()) : null
 }
@@ -122,7 +122,7 @@ async function connect() {
     connectToken = await learnToken(selectedId.value)
   } catch {
     connecting.value = false
-    connectError.value = `We couldn't set up learning for ${siteHost.value}. Try again, or untick it to connect without it.`
+    connectError.value = `We couldn't set up learning for ${siteHost.value}. Please try again in a moment.`
     return
   }
   window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
@@ -219,7 +219,6 @@ onMounted(() => {
           <component
             :is="LearnOption"
             v-if="returnsToTheSite(request)"
-            v-model="learn"
             :site-host="siteHost"
             :store="request.store"
           />
@@ -261,7 +260,6 @@ onMounted(() => {
           <component
             :is="LearnOption"
             v-if="returnsToTheSite(request)"
-            v-model="learn"
             :site-host="siteHost"
             :store="request.store"
           />
