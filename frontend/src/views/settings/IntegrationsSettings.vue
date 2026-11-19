@@ -45,6 +45,8 @@ import smsLogo from '@/assets/sms-logo.svg'
 import lineLogo from '@/assets/line-logo.svg'
 import hubspotLogo from '@/assets/hubspot-logo.svg'
 import pipedriveLogo from '@/assets/pipedrive-logo.svg'
+import wordpressLogo from '@/assets/wordpress-logo.svg'
+import { WORDPRESS_PLUGIN_URL } from '@/config/docs'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -394,6 +396,9 @@ interface IntegrationCard {
   /** An extra action on the connected card, alongside Manage/Disconnect. */
   extraActionLabel?: string;
   extraAction?: () => void;
+  /** Set up outside the app (e.g. a plugin): the card links here and shows no connection state. */
+  externalUrl?: string;
+  externalLabel?: string;
 }
 
 // List of available integrations
@@ -422,6 +427,17 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     shopDomain: shopifyShopDomain.value,
     isLoading: shopifyLoading.value,
     disconnectAction: handleDisconnectShopify
+  },
+  {
+    id: 'wordpress',
+    name: 'WordPress + WooCommerce',
+    description: 'Get the ChatterMate Chat plugin from WordPress.org. It adds the chat to your site, and on WooCommerce it finds products, adds to the cart and checks orders.',
+    logo: wordpressLogo,
+    category: 'E-COMMERCE',
+    color: 'accent',
+    connected: false,
+    externalUrl: WORDPRESS_PLUGIN_URL,
+    externalLabel: 'Get the plugin'
   },
   {
     id: 'slack',
@@ -581,8 +597,10 @@ const connectedChannelNames = computed(() =>
   availableIntegrations.value.filter(card => card.category === 'MESSAGING' && card.connected).map(card => card.name))
 
 const intSummary = computed(() => {
-  const total = availableIntegrations.value.length
-  const connected = availableIntegrations.value.filter(it => it.connected).length
+  // Link-only cards have no connection state, so they don't count either way.
+  const connectable = availableIntegrations.value.filter(it => !it.externalUrl)
+  const total = connectable.length
+  const connected = connectable.filter(it => it.connected).length
   return `${connected}/${total} connected`
 })
 
@@ -724,14 +742,14 @@ onMounted(async () => {
               Connected
             </span>
             <span
-              v-else-if="!integration.comingSoon"
+              v-else-if="!integration.comingSoon && !integration.externalUrl"
               class="status-badge not-connected"
             >
               <span class="status-dot"></span>
               Not connected
             </span>
             <span
-              v-else
+              v-else-if="integration.comingSoon"
               class="status-badge soon"
             >
               Soon
@@ -790,6 +808,20 @@ onMounted(async () => {
           >
             Coming soon
           </button>
+
+          <!-- Set up outside the app: open its page -->
+          <a
+            v-else-if="integration.externalUrl"
+            :href="integration.externalUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="int-btn int-btn-connect int-btn-link"
+          >
+            {{ integration.externalLabel }}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 17 17 7M9 7h8v8"></path>
+            </svg>
+          </a>
 
           <!-- Not connected: Connect / Install -->
           <button
@@ -1257,6 +1289,12 @@ onMounted(async () => {
 
 .int-btn-connect:hover {
   filter: brightness(1.05);
+}
+
+/* A link styled as the connect button (cards set up outside the app) */
+.int-btn-link {
+  box-sizing: border-box;
+  text-decoration: none;
 }
 
 .int-btn-manage {
