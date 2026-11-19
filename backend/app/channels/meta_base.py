@@ -335,6 +335,28 @@ async def register_phone_number(phone_number_id: str, access_token: str, pin: st
                                 json_body={"messaging_product": "whatsapp", "pin": pin})
 
 
+async def whatsapp_send_blocker(phone_number_id: str, access_token: str) -> Optional[str]:
+    """Why Meta blocks this number from sending, or None when it can send.
+
+    Reads the number's health_status, which names each blocking entity (the
+    number, its WhatsApp Business Account, the business) with Meta's own
+    description: a WABA whose payment method failed is connected and registered
+    but still fails every send. Best-effort: an unreadable status is None.
+    """
+    ok, data = await graph_get(phone_number_id, access_token, params={"fields": "health_status"})
+    health = data.get("health_status") if ok else None
+    if not isinstance(health, dict) or health.get("can_send_message") != "BLOCKED":
+        return None
+    reasons = [
+        error.get("error_description")
+        for entity in health.get("entities") or []
+        if entity.get("can_send_message") == "BLOCKED"
+        for error in entity.get("errors") or []
+        if error.get("error_description")
+    ]
+    return " ".join(reasons) or "Meta is blocking this number from sending messages."
+
+
 # Template fields worth reading back from Graph; components carries the body
 # text and any {{n}} variables the UI has to prompt for.
 TEMPLATE_FIELDS = "name,status,category,language,components"

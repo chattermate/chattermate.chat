@@ -34,6 +34,7 @@ from app.channels.meta_base import (
     graph_list_all,
     instagram_token_payload,
     register_phone_number,
+    whatsapp_send_blocker,
     subscribe_app,
     subscribe_instagram_app,
     GRAPH_INSTAGRAM_BASE,
@@ -137,6 +138,13 @@ def _generate_verification_pin() -> str:
     registered — so it is random rather than chosen, and kept for re-registers.
     """
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _stored_pin(db: Session, account) -> str | None:
+    """The PIN we registered this number with before, if any."""
+    if account is None:
+        return None
+    return ChannelAccountRepository(db).get_credentials(account).get("verification_pin")
 
 
 # Channels that can be onboarded through a Meta login popup, each with the Meta
@@ -436,8 +444,9 @@ async def connect_whatsapp_embedded_signup(
     everything after that is the same upsert and webhook subscribe.
     """
     check_signup_access(ChannelType.WHATSAPP.value, current_user)
+    previous = _previous_account(db, organization, ChannelType.WHATSAPP.value, request.phone_number_id)
     # Before the number is registered with Meta below, which can't be undone
-    if _previous_account(db, organization, ChannelType.WHATSAPP.value, request.phone_number_id) is None:
+    if previous is None:
         check_channel_access(db, organization.id)
 
     ok, data = await exchange_signup_code(request.code)
@@ -454,14 +463,20 @@ async def connect_whatsapp_embedded_signup(
         request.waba_id, request.phone_number_id, access_token)
 
     # A number from Embedded Signup is attached to the WABA but cannot send
-    # until it is registered for Cloud API use.
-    pin = _generate_verification_pin()
+    # until it is registered for Cloud API use. A number we registered before
+    # already has our PIN, and Meta refuses any other one.
+    pin = _stored_pin(db, previous) or _generate_verification_pin()
     registered, register_data = await register_phone_number(
         request.phone_number_id, access_token, pin)
-    if not registered:
+    if registered:
+        # Registered is not the same as able to send: Meta also blocks numbers
+        # whose WhatsApp account or business has a problem (billing, a lock)
+        send_problem = await whatsapp_send_blocker(request.phone_number_id, access_token)
+    else:
+        send_problem = graph_detail(register_data, "Meta did not say why")
+    if send_problem:
         logger.warning(
-            f"Phone {request.phone_number_id} not registered after signup: "
-            f"{graph_detail(register_data, 'unknown error')}")
+            f"Phone {request.phone_number_id} cannot send after signup: {send_problem}")
 
     credentials = {"access_token": access_token, "waba_id": request.waba_id}
     # Only keep the PIN we actually set on the number. Storing one from a failed
@@ -472,8 +487,7 @@ async def connect_whatsapp_embedded_signup(
 
     # Connected from the customer's own app before: its token is the one that
     # can hand the number's webhooks back
-    previous_token = own_app_token(_previous_account(
-        db, organization, ChannelType.WHATSAPP.value, request.phone_number_id))
+    previous_token = own_app_token(previous)
     account = _upsert_account(
         db, organization, ChannelType.WHATSAPP.value,
         external_account_id=request.phone_number_id,
@@ -482,6 +496,9 @@ async def connect_whatsapp_embedded_signup(
             profile, request.phone_number_id),
         forget=(APP_SECRET_KEY,),
     )
+    # Connected but unable to send: keep Meta's reason on the account so the
+    # dashboard says so, instead of showing a healthy number whose replies fail
+    ChannelAccountRepository(db).set_send_problem(account, send_problem)
     if not await subscribe_app(request.waba_id, access_token):
         logger.warning(f"WABA subscribe failed for {request.waba_id} after Embedded Signup")
     await sync_own_app(db, account, None, access_token, previous_token)

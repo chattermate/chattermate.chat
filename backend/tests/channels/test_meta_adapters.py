@@ -35,6 +35,7 @@ from app.channels.meta_base import (
     exchange_instagram_long_lived,
     graph_get,
     graph_list_all,
+    whatsapp_send_blocker,
     graph_post,
     graph_post_json,
     instagram_token_payload,
@@ -289,6 +290,17 @@ class TestWhatsAppStatuses:
         assert events[0].status == DeliveryState.FAILED
         assert events[0].error == "More than 24 hours have passed"
         assert events[0].error_code == "131047"
+        # One message out of its window: the account itself is fine
+        assert events[0].account_blocked is False
+
+    @pytest.mark.parametrize("code", ["131031", "131042", "133010"])
+    def test_a_failure_the_account_causes_is_flagged(self, code):
+        [e] = get_adapter("whatsapp").parse_status_events(_wa_statuses({
+            "id": "wamid.X", "status": "failed", "recipient_id": "447",
+            "errors": [{"code": int(code), "title": "Business account has been locked."}],
+        }))
+        assert e.account_blocked is True
+        assert e.error == "Business account has been locked."
 
     def test_unknown_states_and_messages_are_ignored(self):
         adapter = get_adapter("whatsapp")
@@ -767,3 +779,41 @@ class TestGraphPostAuthFailure:
         result = await graph_post("PN1/messages", "tok", {})
         assert result.ok is True
         assert result.auth_failed is False
+
+
+class TestWhatsAppSendBlocker:
+    """Meta's health_status: registered and connected is not the same as able to send."""
+
+    def _health(self, monkeypatch, response):
+        monkeypatch.setattr("app.channels.meta_base.graph_get", AsyncMock(return_value=response))
+
+    @pytest.mark.asyncio
+    async def test_a_blocked_waba_gives_metas_reason(self, monkeypatch):
+        """tkt-8's actual status: the number LIMITED, the WABA BLOCKED on billing."""
+        self._health(monkeypatch, (True, {"health_status": {
+            "can_send_message": "BLOCKED",
+            "entities": [
+                {"entity_type": "PHONE_NUMBER", "can_send_message": "LIMITED", "errors": [
+                    {"error_code": 138024, "error_description": "Calling cannot use SIP"}]},
+                {"entity_type": "WABA", "can_send_message": "BLOCKED", "errors": [
+                    {"error_code": 141006, "error_description": "There is an error with the payment method."}]},
+                {"entity_type": "BUSINESS", "can_send_message": "LIMITED", "errors": [
+                    {"error_code": 141010, "error_description": "Not verified."}]},
+            ]}}))
+
+        assert await whatsapp_send_blocker("PN1", "token") == "There is an error with the payment method."
+
+    @pytest.mark.asyncio
+    async def test_limited_or_available_is_not_blocked(self, monkeypatch):
+        self._health(monkeypatch, (True, {"health_status": {"can_send_message": "LIMITED", "entities": []}}))
+        assert await whatsapp_send_blocker("PN1", "token") is None
+
+    @pytest.mark.asyncio
+    async def test_blocked_without_a_description_still_says_so(self, monkeypatch):
+        self._health(monkeypatch, (True, {"health_status": {"can_send_message": "BLOCKED"}}))
+        assert await whatsapp_send_blocker("PN1", "token")
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_status_is_not_a_problem(self, monkeypatch):
+        self._health(monkeypatch, (False, {"error": {"message": "Unsupported get request"}}))
+        assert await whatsapp_send_blocker("PN1", "token") is None

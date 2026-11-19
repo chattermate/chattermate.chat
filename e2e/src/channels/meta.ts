@@ -1,5 +1,5 @@
 import type { APIRequestContext } from '@playwright/test'
-import { connectInstagram, connectMessenger, connectWhatsApp, routeToAgent, type ChannelAccount } from '../api/channels'
+import { connectInstagram, connectMessenger, connectWhatsApp, connectWhatsAppSignup, routeToAgent, type ChannelAccount } from '../api/channels'
 import type { ApiClient } from '../api/client'
 import { env } from '../env'
 import { FakeExternals, type RecordedCall } from '../fakes/externals'
@@ -106,6 +106,33 @@ export async function connectWhatsAppNumber(api: ApiClient, phoneNumberId = digi
   const token = app ? app.token(phoneNumberId) : metaToken(phoneNumberId)
   const account = await connectWhatsApp(api, phoneNumberId, token, app?.secret)
   return { account, phoneNumberId, token }
+}
+
+/**
+ * Connects a number the way WhatsApp Embedded Signup does: the popup hands the
+ * dashboard a code plus the WABA and number the customer picked, and the backend
+ * trades the code for a token, lists the WABA's numbers and registers the number.
+ * The code is a token owning both, which the fake Graph hands back on exchange.
+ */
+export async function signUpWhatsAppNumber(api: ApiClient, phoneNumberId = digits(15), wabaId = digits(15)): Promise<WhatsAppNumber> {
+  return step('Connect a WhatsApp number with one-click signup', async () => {
+    const token = metaToken(phoneNumberId, wabaId)
+    const account = await connectWhatsAppSignup(api, token, wabaId, phoneNumberId)
+    return { account, phoneNumberId, token }
+  })
+}
+
+/** A delivery receipt WhatsApp posts for a message the number sent; `errors` as Meta words a failure. */
+export async function deliverWhatsAppReceipt(request: APIRequestContext, number: WhatsAppNumber, status: 'sent' | 'delivered' | 'read' | 'failed',
+  errors?: Array<{ code: number; title: string }>): Promise<void> {
+  await deliverMeta(request, {
+    object: 'whatsapp_business_account',
+    entry: [{ id: digits(15), changes: [{ field: 'messages', value: {
+      messaging_product: 'whatsapp',
+      metadata: { phone_number_id: number.phoneNumberId },
+      statuses: [{ id: `wamid.${unique('out')}`, status, timestamp: String(Math.floor(Date.now() / 1000)), recipient_id: phoneNumber().slice(1), ...(errors ? { errors } : {}) }],
+    } }] }],
+  })
 }
 
 /** The webhook body WhatsApp sends for one inbound message. */

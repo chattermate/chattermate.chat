@@ -6430,6 +6430,8 @@ export interface components {
              * @default false
              */
             needs_reconnect: boolean;
+            /** Send Problem */
+            send_problem?: string | null;
             /** Webhook Verify Token */
             webhook_verify_token?: string | null;
             /** Webhook Auto Configured */

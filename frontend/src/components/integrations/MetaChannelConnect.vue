@@ -93,6 +93,18 @@ const values = ref<Record<string, string>>({})
 const connecting = ref(false)
 const account = ref<ChannelAccount | null>(props.existingAccount ?? null)
 
+// What stops this account replying, if anything. Expired access comes first:
+// until it's reconnected nothing else can be checked.
+const fixWarning = computed(() => {
+  if (account.value?.needs_reconnect) {
+    return "Meta stopped accepting this account's access. Reconnect to resume replies."
+  }
+  if (account.value?.send_problem) {
+    return `WhatsApp can't send replies from this number. Meta said: “${account.value.send_problem}” Fix it in WhatsApp Manager, then reconnect.`
+  }
+  return ''
+})
+
 const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
@@ -248,8 +260,8 @@ const saveAgent = async () => {
 
       <!-- Step 2: route to an agent -->
       <div v-else class="meta-modal-body">
-        <div v-if="account.needs_reconnect" class="meta-reconnect">
-          <p class="meta-reconnect-text">Meta stopped accepting this account's access. Reconnect to resume replies.</p>
+        <div v-if="fixWarning" class="meta-reconnect">
+          <p class="meta-reconnect-text">{{ fixWarning }}</p>
           <button class="meta-btn meta-btn-primary" @click="reconnect">Reconnect</button>
         </div>
         <p class="meta-intro">

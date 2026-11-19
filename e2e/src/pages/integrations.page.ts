@@ -1,6 +1,9 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 import { step } from '../support/step'
 
+/** `text` as a literal inside a RegExp (account names carry +, parentheses). */
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 /** /settings/integrations: one card per integration, with Connect or Manage/Disconnect. */
 export class IntegrationsPage {
   readonly page: Page
@@ -24,8 +27,19 @@ export class IntegrationsPage {
    * share the org, so this checks for one name within it.
    */
   expiredAccessFor(account: string): RegExp {
-    const name = account.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const name = escapeRegExp(account)
     return new RegExp(`Access expired for [^—]*${name}[^—]*— reconnect to resume replies\\.`)
+  }
+
+  /** The card's warning for a number the platform won't let send. */
+  cannotSendFor(account: string): RegExp {
+    const name = escapeRegExp(account)
+    return new RegExp(`${name}[^—]*can't send replies — open it to see why\\.`)
+  }
+
+  /** The Manage dialog's explanation of why WhatsApp won't send from a number, quoting Meta. */
+  cannotSendPrompt(): Locator {
+    return this.page.getByText(/WhatsApp can't send replies from this number\. Meta said:/)
   }
 
   /** Opens the card's Manage dialog. */
