@@ -40,12 +40,13 @@ vi.mock('@/config/api', () => ({ getApiUrl: () => 'http://api.test/api/v1' }))
 // Off by default; the embedded-Shopify tests switch it on before loadApi().
 const shopify = { enterprise: false, app: null as unknown }
 const getSessionToken = vi.fn()
+const forgetSessionToken = vi.fn()
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
     hasEnterpriseModule: shopify.enterprise,
     loadModule: async (name: string) => name === 'bridge'
       ? { initShopifyApp: () => shopify.app }
-      : { getSessionToken },
+      : { getSessionToken, forgetSessionToken },
     moduleImports: { shopifyAppBridgeUtilities: 'utils', shopifyAppBridge: 'bridge' },
   }),
 }))
@@ -438,7 +439,7 @@ describe('api client', () => {
       isAuthenticated.mockReturnValue(false)
       const { api, axios } = await loadEmbeddedApi()
       const refresh = vi.spyOn(axios, 'post')
-      const { adapter } = adapterQueue([401])
+      const { adapter } = adapterQueue([401, 401])
 
       await expect(api.get('/shopify/shop-config-status', { adapter })).rejects.toMatchObject({
         response: { status: 401 },
@@ -447,6 +448,27 @@ describe('api client', () => {
       expect(refresh).not.toHaveBeenCalled()
       expect(push).not.toHaveBeenCalled()
       expect(clearCurrentUser).not.toHaveBeenCalled()
+    })
+
+    it('drops a refused session token and tries once more with a new one', async () => {
+      forgetSessionToken.mockReset()
+      getSessionToken.mockResolvedValueOnce('kept-token').mockResolvedValueOnce('new-token')
+      const { api } = await loadEmbeddedApi()
+      const { adapter, seen } = adapterQueue([401, 200])
+
+      const response = await api.get('/shopify/shop-config-status', { adapter })
+
+      expect(response.status).toBe(200)
+      expect(forgetSessionToken).toHaveBeenCalledTimes(1)
+      expect(seen.map((config) => config.headers?.Authorization)).toEqual(['Bearer kept-token', 'Bearer new-token'])
+    })
+
+    it('tries only once more: a second 401 goes to the page', async () => {
+      const { api } = await loadEmbeddedApi()
+      const { adapter, seen } = adapterQueue([401, 401])
+
+      await expect(api.get('/shopify/shop-config-status', { adapter })).rejects.toMatchObject({ response: { status: 401 } })
+      expect(seen).toHaveLength(2)
     })
 
     it('treats an unframed page as the dashboard', async () => {
