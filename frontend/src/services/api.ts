@@ -28,27 +28,27 @@ let getSessionToken: any = null
 let forgetSessionToken: (() => void) | null = null
 let initShopifyApp: any = null
 
-if (hasEnterpriseModule) {
-  // Load Shopify dependencies asynchronously
-  ;(async () => {
-    try {
-      // Load Shopify App Bridge utilities via wrapper module
-      const appBridgeUtilitiesModule = await loadModule(moduleImports.shopifyAppBridgeUtilities)
-      if (appBridgeUtilitiesModule?.getSessionToken) {
-        getSessionToken = appBridgeUtilitiesModule.getSessionToken
-      }
-      forgetSessionToken = appBridgeUtilitiesModule?.forgetSessionToken ?? null
-
-      // Load Shopify app bridge plugin
-      const shopifyAppBridgeModule = await loadModule(moduleImports.shopifyAppBridge)
-      if (shopifyAppBridgeModule?.initShopifyApp) {
-        initShopifyApp = shopifyAppBridgeModule.initShopifyApp
-      }
-    } catch (error) {
-      console.warn('Failed to load Shopify dependencies:', error)
+// Settles once the Shopify modules have loaded (or failed to). A request made
+// inside Shopify admin waits for it: the page can be ready to call before they
+// are, and a call sent without its session token gets a 401.
+const shopifyModulesLoaded: Promise<void> = !hasEnterpriseModule ? Promise.resolve() : (async () => {
+  try {
+    // Load Shopify App Bridge utilities via wrapper module
+    const appBridgeUtilitiesModule = await loadModule(moduleImports.shopifyAppBridgeUtilities)
+    if (appBridgeUtilitiesModule?.getSessionToken) {
+      getSessionToken = appBridgeUtilitiesModule.getSessionToken
     }
-  })()
-}
+    forgetSessionToken = appBridgeUtilitiesModule?.forgetSessionToken ?? null
+
+    // Load Shopify app bridge plugin
+    const shopifyAppBridgeModule = await loadModule(moduleImports.shopifyAppBridge)
+    if (shopifyAppBridgeModule?.initShopifyApp) {
+      initShopifyApp = shopifyAppBridgeModule.initShopifyApp
+    }
+  } catch (error) {
+    console.warn('Failed to load Shopify dependencies:', error)
+  }
+})()
 
 const api = axios.create({
   baseURL: getApiUrl(),
@@ -61,6 +61,8 @@ const api = axios.create({
 // Request interceptor to add session token for Shopify embedded app
 api.interceptors.request.use(
   async (config) => {
+    if (isFramed()) await shopifyModulesLoaded
+
     // Embedded in Shopify admin: App Bridge started on the first page load
     // (which carries ?shop=&host=) and stays up, so this holds on every page
     // the app moves to, even once the address no longer has those params.
