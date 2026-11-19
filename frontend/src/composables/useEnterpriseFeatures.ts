@@ -142,6 +142,8 @@ const moduleImports = {
   // WordPress connect: teach the agent the site through the plugin (nothing in open source)
   wordpressLearnOption: '/src/modules/enterprise/components/wordpress/WordPressLearnOption.vue',
   wordpressSites: '/src/modules/enterprise/utils/wordpressSites.ts',
+  // The WordPress site connected to an agent's widget, with Disconnect (agent Integrations tab)
+  agentWordPressSite: '/src/modules/enterprise/components/wordpress/AgentWordPressSite.vue',
   // What the agent may do to a customer's store order (nothing in open source)
   agentOrderActions: '/src/modules/enterprise/components/agent/AgentOrderActions.vue',
 }

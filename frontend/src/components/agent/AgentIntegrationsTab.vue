@@ -41,6 +41,11 @@ const props = defineProps({
     type: String,
     required: true
   },
+  // The agent's widget, for the WordPress site connected to it
+  widgetId: {
+    type: String,
+    default: ''
+  },
   // Jira props
   jiraConnected: {
     type: Boolean,
@@ -106,6 +111,8 @@ const props = defineProps({
 // What the AI agent may do to orders, beside its Shopify switch (nothing in open source)
 const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
 const AgentOrderActions = enterpriseComponent(moduleImports.agentOrderActions)
+// The WordPress site connected through the plugin, with Disconnect (nothing in open source)
+const AgentWordPressSite = enterpriseComponent(moduleImports.agentWordPressSite)
 
 const { upgradeText: ticketingUpgradeText } = useUpgradePlan('ai_ticketing')
 
@@ -511,6 +518,8 @@ onMounted(async () => {
         </div>
         <AgentOrderActions v-if="shopifyConnected && localShopifyEnabled" :agent-id="props.agentId" />
       </div>
+
+      <AgentWordPressSite v-if="props.widgetId" :widget-id="props.widgetId" />
 
       <!-- Messaging Channels (Telegram / WhatsApp / Messenger / Instagram) -->
       <div class="integration-section">
