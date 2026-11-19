@@ -115,7 +115,7 @@ export function buildAiInstallPrompt(snippet: string): string {
     '',
     '- React or Vite: add it once to index.html, not inside a component.',
     '- Next.js: load it with next/script in the root layout.',
-    `- WordPress: install the ChatterMate plugin (${WORDPRESS_PLUGIN_URL}) and enter the widget ID from the snippet.`,
+    `- WordPress: install ChatterMate Chat from the plugin directory (${WORDPRESS_PLUGIN_URL}), then connect it or enter the widget ID from the snippet.`,
     '- Change nothing else on the site.',
     `Install guide: ${WIDGET_INSTALL_GUIDE_URL}`,
   ].join('\n')

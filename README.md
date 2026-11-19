@@ -22,7 +22,7 @@
 
 > **Open-source AI customer support platform with human handoff.** ChatterMate is an open source AI chatbot that answers customers 24/7 from your knowledge base, hands complex conversations to your team in one shared inbox, and works across your website, **WhatsApp, Instagram, Messenger, Telegram, Slack, SMS and email** (omnichannel). It captures and qualifies leads, generates an **AI help center**, calls your tools over **MCP**, and runs on the model you choose (OpenAI, Anthropic Claude, Google Gemini, Mistral, xAI Grok, DeepSeek, Groq or any OpenAI-compatible endpoint). Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, Chatbase and Chatwoot**.
 
-**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)** | **[WordPress Plugin](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)**
+**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)** | **[WordPress Plugin](https://wordpress.org/plugins/chattermate-chat/)**
 
 ### Works with the tools you already use
 
@@ -77,7 +77,7 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 | 🤝 **Smart Human Handoff** | Intelligent AI-to-human transfer with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
 | 📥 **Shared Inbox** | One inbox for every chat the AI and your team handle, across all channels: views for chats waiting for a person, yours, mentions and AI-handled chats, **internal notes with @mentions**, editing a reply you sent, keyboard shortcuts and a customer details panel. The hosted service adds snooze, saved replies, saved views and AI help with drafts and summaries. |
 | 🛍️ **Shopify & E-commerce Support** | Native **Shopify integration** ([App Store listing](https://apps.shopify.com/chattermate-chat)) — answer order, shipping, and product questions from store data. Works for any online store. |
-| 📝 **WordPress Plugin** | Official **WordPress plugin** ([download](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)) — add the chat widget to any WordPress site by entering your Widget ID. No theme edits required. |
+| 📝 **WordPress Plugin** | Official **WordPress plugin** ([WordPress.org](https://wordpress.org/plugins/chattermate-chat/)) — connect in one click; it learns your pages and WooCommerce products, shows product cards, adds to the cart and checks orders. No theme edits required. |
 | 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **Mistral**, **xAI (Grok)**, **DeepSeek**, and **Groq** — with your own API key, or enter a custom model ID. Switch providers anytime without code changes. |
 | 💬 **Ask Anything Mode** | Let visitors start conversations instantly — no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
 | 📎 **File Attachments** | Customers can share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
@@ -711,7 +711,7 @@ Yes — human handoff is a core feature, not an add-on. ChatterMate detects frus
 Yes. Install it from the [Shopify App Store](https://apps.shopify.com/chattermate-chat) to answer order-status, shipping, and product questions directly from your store data. The widget also embeds on any other e-commerce or website platform with one line of code.
 
 **Does ChatterMate work with WordPress?**
-Yes. Download the [WordPress plugin](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip), install it via **Plugins → Add New → Upload Plugin**, then enter your Widget ID under **Settings → ChatterMate Chat**. The chat launcher appears on your site with no theme edits. A WordPress.org directory listing is in progress.
+Yes. Install [ChatterMate Chat](https://wordpress.org/plugins/chattermate-chat/) from **Plugins → Add New** (search for ChatterMate Chat), open the **ChatterMate** menu and click **Connect with ChatterMate**, or paste your Widget ID. On WooCommerce stores it also finds products, adds them to the cart and checks order status. No theme edits needed.
 
 **Can I self-host ChatterMate?**
 Yes. Run the full stack (Postgres, Redis, backend, frontend) on your own infrastructure with `npm install -g chattermate-deploy` — see [Quick Start](#quick-start). Self-hosting gives you complete data ownership.
