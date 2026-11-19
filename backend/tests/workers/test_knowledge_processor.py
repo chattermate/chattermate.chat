@@ -176,6 +176,31 @@ async def test_run_processor_error(mock_dependencies):
     assert not PROCESSOR_STATUS["is_running"]
     assert PROCESSOR_STATUS["error"] == error_message
 
+@pytest.mark.asyncio
+async def test_one_failed_item_does_not_end_the_pass(mock_dependencies):
+    """An item that fails with one of our errors (a site that went away
+    mid-read) is marked failed on its own; the other pending items are still
+    read in the same pass, and the pass completes."""
+    from app.api.knowledge import PROCESSOR_STATUS
+    first, second = MagicMock(id=1), MagicMock(id=2)
+    mock_dependencies['queue_repo'].get_pending.return_value = [first, second]
+    processed = []
+
+    async def run(item_id):
+        processed.append(item_id)
+        if item_id == 1:
+            raise RuntimeError("Couldn't reach the site (ConnectError).")
+
+    with patch('app.workers.knowledge_processor.process_queue_item', side_effect=run), \
+         patch('app.workers.knowledge_processor.logger') as log:
+        await run_processor()
+
+    assert sorted(processed) == [1, 2]
+    assert PROCESSOR_STATUS["error"] is None
+    assert isinstance(PROCESSOR_STATUS["last_run"], str)
+    log.error.assert_any_call("Queue item 1 failed: Couldn't reach the site (ConnectError).")
+
+
 # ---------------------------------------------------------------------------
 # Vector agent-filter re-assert
 #

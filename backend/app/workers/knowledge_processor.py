@@ -299,8 +299,17 @@ async def run_processor():
                 async with semaphore:
                     await process_queue_item(item_id)
 
-            # Process items with semaphore control
-            await asyncio.gather(*[process_with_semaphore(item_id) for item_id in pending_item_ids])
+            # One item's failure must not end the pass: it is already marked
+            # failed and its owner told, and with return_exceptions the other
+            # items keep being read instead of being left behind (or, when the
+            # pass runs in its own event loop, cut off mid-read)
+            results = await asyncio.gather(
+                *[process_with_semaphore(item_id) for item_id in pending_item_ids],
+                return_exceptions=True,
+            )
+            for item_id, result in zip(pending_item_ids, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Queue item {item_id} failed: {result}")
 
         PROCESSOR_STATUS["last_run"] = datetime.utcnow().isoformat()
 
