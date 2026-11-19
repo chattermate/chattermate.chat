@@ -154,9 +154,10 @@ def get_s3_client():
 
 def _is_signable(s3_url: Optional[str]) -> bool:
     """Inline data URIs (e.g. generated orb avatars stored in photo_url) and any
-    non-S3 absolute URL are not S3 objects, and nothing is signed without S3."""
-    return bool(settings.S3_FILE_STORAGE and s3_url
-                and not s3_url.startswith('data:') and 'amazonaws.com' in s3_url)
+    URL whose host isn't an S3 endpoint are not S3 objects, and nothing is
+    signed without S3. Judged by the parsed host (is_s3_url), never a substring:
+    "amazonaws.com" can sit anywhere in a URL."""
+    return bool(settings.S3_FILE_STORAGE and s3_url and is_s3_url(s3_url))
 
 
 def sign_s3_url(s3_url: str, expiration: Optional[int] = None,
