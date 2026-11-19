@@ -20,7 +20,8 @@ import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
-import { createSiteWidget, siteAgentName } from '@/utils/siteAgent'
+import { agentWithoutWidget, createSiteWidget, siteAgentName } from '@/utils/siteAgent'
+import type { Agent } from '@/types/agent'
 import BrandMark from '@/components/common/BrandMark.vue'
 import wordpressLogo from '@/assets/wordpress-logo.svg'
 
@@ -53,10 +54,13 @@ const connectError = ref('')
 // A new account (from the plugin's "Get started"): no agent yet, so one is made here
 const creating = ref(false)
 const needsAiProvider = ref(false)
+// An agent the account already has, without a widget: it is the one set up here
+const existingAgent = ref<Agent | null>(null)
 
 const siteHost = computed(() => request.value?.siteHost ?? '')
 // What a new account's agent is called: the site's own name
 const newAgentName = computed(() => (request.value ? siteAgentName(request.value.siteName, siteHost.value) : ''))
+const existingAgentName = computed(() => existingAgent.value?.display_name || existingAgent.value?.name || '')
 const busy = computed(() => creating.value || connecting.value)
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
 
@@ -75,6 +79,8 @@ async function loadWidgets() {
   try {
     widgets.value = (await widgetService.getWidgets()) as unknown as WidgetWithAgent[]
     selectedId.value = widgets.value[0]?.id ?? ''
+    // No widget yet: name the agent this page would set up, so it says which
+    if (!widgets.value.length) existingAgent.value = await agentWithoutWidget()
   } catch {
     loadError.value = "We couldn't load your agents. Refresh the page to try again."
   } finally {
@@ -120,9 +126,13 @@ async function connect() {
   let connectToken: string | null
   try {
     connectToken = await learnToken(selectedId.value)
-  } catch {
+  } catch (err) {
     connecting.value = false
-    connectError.value = `We couldn't set up learning for ${siteHost.value}. Please try again in a moment.`
+    // Learning is part of connecting, so say what would get past it: a missing
+    // permission won't change by trying again
+    connectError.value = (err as { response?: { status?: number } })?.response?.status === 403
+      ? `Connecting ${siteHost.value} teaches your AI the site, which needs permission to manage knowledge. Ask an admin to connect it, or to give you that permission.`
+      : `We couldn't set up learning for ${siteHost.value}. Please try again in a moment.`
     return
   }
   window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
@@ -135,7 +145,7 @@ async function createAndConnect() {
   connectError.value = ''
   needsAiProvider.value = false
   try {
-    const widget = await createSiteWidget(siteAgentName(request.value.siteName, siteHost.value), hasEnterpriseModule)
+    const widget = await createSiteWidget(newAgentName.value, hasEnterpriseModule, existingAgent.value)
     if (!widget) {
       needsAiProvider.value = true
       return
@@ -195,15 +205,22 @@ onMounted(() => {
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
         <template v-else-if="!widgets.length">
-          <p class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
+          <p v-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
+          <p v-else class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
           <ul class="connect-plan">
             <li>
               <span class="connect-plan__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8" /><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M9 14h.01M15 14h.01" /></svg>
               </span>
               <span>
-                <strong>An AI agent called {{ newAgentName }}</strong>
-                <span class="connect-muted">It answers your visitors and hands over to your team.</span>
+                <template v-if="existingAgent">
+                  <strong>{{ existingAgentName }}, your AI agent</strong>
+                  <span class="connect-muted">It answers here with the instructions you gave it.</span>
+                </template>
+                <template v-else>
+                  <strong>An AI agent called {{ newAgentName }}</strong>
+                  <span class="connect-muted">It answers your visitors and hands over to your team.</span>
+                </template>
               </span>
             </li>
             <li>
@@ -231,7 +248,7 @@ onMounted(() => {
           <div class="connect-actions">
             <button type="button" class="connect-button connect-button--wide" :disabled="busy" @click="createAndConnect">
               <span v-if="busy" class="connect-spinner" aria-hidden="true"></span>
-              {{ busy ? 'Setting up…' : 'Create my AI agent and connect' }}
+              {{ busy ? 'Setting up…' : existingAgent ? 'Connect my AI agent' : 'Create my AI agent and connect' }}
             </button>
             <button type="button" class="connect-quiet" :disabled="busy" @click="cancel">Cancel</button>
           </div>

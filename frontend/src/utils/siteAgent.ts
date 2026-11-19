@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import { agentService } from '@/services/agent'
+import type { Agent } from '@/types/agent'
 import { widgetService } from '@/services/widget'
 import { AGENT_TYPE_DEFAULTS } from '@/utils/agentDefaults'
 import { ensureAiConfig } from '@/utils/aiConfig'
@@ -35,15 +36,24 @@ export function siteAgentName(siteName: string, siteHost: string): string {
 }
 
 /**
- * An AI agent with a widget for the site being connected, for an account
- * that has no widget yet (a new signup from the WordPress plugin). An agent
- * made earlier without a widget (setup left half way) gets the widget rather
- * than a second agent. Null when open source needs the admin's own AI
- * provider first.
+ * For an account with no widget yet: the agent made earlier and left without
+ * one (setup stopped half way), which gets the widget rather than a second
+ * agent. Only an active agent: an inactive one isn't answering anywhere, so a
+ * new agent is made instead. Null when there is none to reuse.
  */
-export async function createSiteWidget(name: string, managedAi: boolean): Promise<SiteWidget | null> {
+export async function agentWithoutWidget(): Promise<Agent | null> {
+  const agents = await agentService.getOrganizationAgents()
+  return agents.find((agent) => agent.is_active) ?? null
+}
+
+/**
+ * The agent's widget for the site being connected, for an account with no
+ * widget yet (a new signup from the WordPress plugin): on `existing` when the
+ * page offered that agent, else on a new agent named after the site. Null when
+ * open source needs the admin's own AI provider first.
+ */
+export async function createSiteWidget(name: string, managedAi: boolean, existing: Agent | null = null): Promise<SiteWidget | null> {
   if (!(await ensureAiConfig(managedAi))) return null
-  const [existing] = await agentService.getOrganizationAgents()
   const agent = existing ?? await agentService.createAgent({
     name,
     display_name: name,

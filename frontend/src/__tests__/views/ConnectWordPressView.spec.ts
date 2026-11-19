@@ -33,8 +33,10 @@ vi.mock('@/services/widget', () => ({
 
 // Making an agent for a new account (its own tests cover what it does)
 const createSiteWidget = vi.fn()
+const agentWithoutWidget = vi.fn()
 vi.mock('@/utils/siteAgent', () => ({
   createSiteWidget: (...args: unknown[]) => createSiteWidget(...args),
+  agentWithoutWidget: (...args: unknown[]) => agentWithoutWidget(...args),
   siteAgentName: (siteName: string, siteHost: string) => siteName || siteHost,
 }))
 
@@ -190,6 +192,7 @@ describe('ConnectWordPressView', () => {
 
     beforeEach(() => {
       getWidgets.mockResolvedValue([])
+      agentWithoutWidget.mockResolvedValue(null)
       createSiteWidget.mockResolvedValue(NEW_WIDGET)
     })
 
@@ -209,7 +212,7 @@ describe('ConnectWordPressView', () => {
       await wrapper.find('.connect-actions button').trigger('click')
       await flushPromises()
 
-      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false)
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false, null)
       expect(returned().origin + returned().pathname).toBe('https://shop.example.com/wp-admin/admin-post.php')
       expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
       expect(returned().searchParams.get('state')).toBe('nonce12345')
@@ -239,6 +242,21 @@ describe('ConnectWordPressView', () => {
       await wrapper.find('.connect-actions button').trigger('click')
       await flushPromises()
       expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
+    })
+
+    it('names an agent the account already has, and sets that one up', async () => {
+      const mia = { id: 'a-old', name: 'Support', display_name: 'Mia', is_active: true }
+      agentWithoutWidget.mockResolvedValue(mia)
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Mia, your AI agent')
+      expect(wrapper.text()).not.toContain('An AI agent called')
+      const button = wrapper.find('.connect-actions button')
+      expect(button.text()).toBe('Connect my AI agent')
+      await button.trigger('click')
+      await flushPromises()
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false, mia)
     })
 
     it('cancels back to the plugin', async () => {
@@ -299,6 +317,18 @@ describe('ConnectWordPressView', () => {
       expect(wrapper.find('.connect-actions button').attributes('disabled')).toBeUndefined()
     })
 
+    it('says a missing permission is the reason, not to try again', async () => {
+      enterprise.connectToken!.mockRejectedValue({ response: { status: 403 } })
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('.connect-actions button').trigger('click')
+      await flushPromises()
+
+      expect(assign).not.toHaveBeenCalled()
+      expect(wrapper.find('.connect-error').text()).toContain('needs permission to manage knowledge')
+      expect(wrapper.find('.connect-error').text()).not.toContain('try again')
+    })
+
     it('offers no way to connect without learning: trying again sends the token', async () => {
       enterprise.connectToken!.mockRejectedValueOnce(new Error('503'))
       const wrapper = mountView()
@@ -315,6 +345,7 @@ describe('ConnectWordPressView', () => {
 
     it("teaches a new account's agent the site too, on the managed AI", async () => {
       getWidgets.mockResolvedValue([])
+      agentWithoutWidget.mockResolvedValue(null)
       createSiteWidget.mockResolvedValue({ id: 'w-new-0003', agent: { name: 'Larkfield Goods' } })
       const wrapper = mountView()
       await flushPromises()
@@ -323,7 +354,7 @@ describe('ConnectWordPressView', () => {
       await wrapper.find('.connect-actions button').trigger('click')
       await flushPromises()
 
-      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', true)
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', true, null)
       expect(enterprise.connectToken).toHaveBeenCalledWith('w-new-0003', 'https://shop.example.com/', RETURN)
       expect(returned().searchParams.get('connect_token')).toBe('tok-123')
     })

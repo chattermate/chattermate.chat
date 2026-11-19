@@ -21,11 +21,70 @@ limitations under the License.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import type { LocationQuery } from 'vue-router'
 import { ssoService, type SsoProvider } from '@/services/sso'
+import { isInternalPath } from '@/utils/validators'
 
 // The return leg's markers: read once, then dropped so a reload neither
 // repeats the sign-in nor shows a stale error.
 const RETURN_PARAMS = ['sso', 'sso_error']
+
+// The page to come back to (?redirect=), kept in this tab for the provider round
+// trip. The backend carries only short parameters (they ride in its state
+// cookie), and some links back are longer, like the WordPress plugin's connect page.
+const SAVED_REDIRECT_KEY = 'sso_redirect'
+// A provider sign-in lasts 30 minutes on the backend: an older one is abandoned
+const SAVED_REDIRECT_MS = 30 * 60 * 1000
+// The markers of a return from the provider (login, and the signup page's)
+const RETURN_MARKERS = ['sso', 'sso_error', 'sso_signup']
+
+function first(value: LocationQuery[string]): string | undefined {
+  return (Array.isArray(value) ? value[0] : value) ?? undefined
+}
+
+/** Keep the page's ?redirect= for the round trip; a page without one clears it. */
+function saveRedirect(query: LocationQuery): void {
+  const redirect = first(query.redirect)
+  try {
+    if (isInternalPath(redirect)) sessionStorage.setItem(SAVED_REDIRECT_KEY, JSON.stringify({ redirect, at: Date.now() }))
+    else sessionStorage.removeItem(SAVED_REDIRECT_KEY)
+  } catch {
+    // Storage blocked: the backend still carries a short ?redirect=
+  }
+}
+
+/** Forget the kept page: signed in, or a fresh visit with nothing to come back to. */
+export function forgetSsoRedirect(): void {
+  try {
+    sessionStorage.removeItem(SAVED_REDIRECT_KEY)
+  } catch {
+    // Nothing kept
+  }
+}
+
+/**
+ * The page's query, with the ?redirect= it had before the provider round trip
+ * put back when the backend couldn't carry it. Only on a return from the
+ * provider: a fresh visit forgets anything kept, so an abandoned sign-in never
+ * sends a later one somewhere old. Only ever a page of ours.
+ */
+export function withSsoRedirect(query: LocationQuery): LocationQuery {
+  const returning = RETURN_MARKERS.some((name) => query[name] !== undefined)
+  if (!returning) {
+    if (!first(query.redirect)) forgetSsoRedirect()
+    return query
+  }
+  if (first(query.redirect)) return query
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SAVED_REDIRECT_KEY) || 'null')
+    if (saved && isInternalPath(saved.redirect) && Date.now() - Number(saved.at) <= SAVED_REDIRECT_MS) {
+      return { ...query, redirect: saved.redirect }
+    }
+  } catch {
+    // Nothing usable kept
+  }
+  return query
+}
 
 export interface SsoSignInOptions {
   /** A session now exists: carry on where the login page would. */
@@ -54,6 +113,9 @@ export function useSsoSignIn({ onSignedIn, onError, intent }: SsoSignInOptions) 
   // The providers lead the page (above the form) instead of following it.
   const leads = computed(() => available.value && !passwordLogin.value)
 
+  // A fresh visit with nothing to return to forgets what an abandoned sign-in kept
+  withSsoRedirect(router.currentRoute.value.query)
+
   const redirecting = ref('')   // provider key the browser is being sent to
   const completing = ref(false) // back from the provider, fetching the session
 
@@ -69,11 +131,13 @@ export function useSsoSignIn({ onSignedIn, onError, intent }: SsoSignInOptions) 
     // The backend carries the login page's own parameters (?redirect=, the
     // Shopify flows) through the provider and hands them back with ?sso=ok.
     const query = intent ? { ...router.currentRoute.value.query, intent } : router.currentRoute.value.query
+    saveRedirect(query)
     window.location.href = ssoService.startUrl(provider.key, query)
   }
 
+  // Drops the return markers, and puts back a ?redirect= the backend couldn't carry
   const dropReturnParams = async () => {
-    const query = { ...router.currentRoute.value.query }
+    const query = { ...withSsoRedirect(router.currentRoute.value.query) }
     for (const name of RETURN_PARAMS) delete query[name]
     await router.replace({ query })
   }
@@ -90,6 +154,7 @@ export function useSsoSignIn({ onSignedIn, onError, intent }: SsoSignInOptions) 
       completing.value = true
       await ssoService.completeSignIn()
       onSignedIn?.()
+      forgetSsoRedirect()
     } catch (err) {
       console.error('SSO completion error:', err)
       onError(ssoService.errorMessage(null), null)

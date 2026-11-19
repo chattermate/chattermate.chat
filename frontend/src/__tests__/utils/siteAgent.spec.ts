@@ -39,7 +39,7 @@ vi.mock('@/services/widget', () => ({
 }))
 
 import { ensureAiConfig } from '@/utils/aiConfig'
-import { createSiteWidget, siteAgentName } from '@/utils/siteAgent'
+import { agentWithoutWidget, createSiteWidget, siteAgentName } from '@/utils/siteAgent'
 import { AGENT_TYPE_DEFAULTS } from '@/utils/agentDefaults'
 
 const httpError = (status: number) =>
@@ -107,9 +107,9 @@ describe('createSiteWidget', () => {
     expect(widget).toEqual({ id: 'w-1', agent: { name: 'Larkfield Goods', display_name: 'Larkfield Goods' } })
   })
 
-  it('gives an agent made earlier the widget, not a second agent', async () => {
-    getOrganizationAgents.mockResolvedValue([{ id: 'a-old', name: 'Support', display_name: 'Mia' }])
-    const widget = await createSiteWidget('Larkfield Goods', true)
+  it('gives the agent the page offered the widget, not a second agent', async () => {
+    const offered = { id: 'a-old', name: 'Support', display_name: 'Mia' } as never
+    const widget = await createSiteWidget('Larkfield Goods', true, offered)
 
     expect(createAgent).not.toHaveBeenCalled()
     expect(createAgentWidget).toHaveBeenCalledWith('a-old', 'Mia')
@@ -121,5 +121,22 @@ describe('createSiteWidget', () => {
     expect(await createSiteWidget('Larkfield Goods', false)).toBeNull()
     expect(createAgent).not.toHaveBeenCalled()
     expect(createAgentWidget).not.toHaveBeenCalled()
+  })
+})
+
+describe('agentWithoutWidget', () => {
+  it('offers an active agent the account already has', async () => {
+    getOrganizationAgents.mockResolvedValue([
+      { id: 'a-off', name: 'Old test', is_active: false },
+      { id: 'a-on', name: 'Support', is_active: true },
+    ])
+    expect(await agentWithoutWidget()).toMatchObject({ id: 'a-on' })
+  })
+
+  it('offers none when there are only inactive agents, or none at all', async () => {
+    getOrganizationAgents.mockResolvedValue([{ id: 'a-off', name: 'Old test', is_active: false }])
+    expect(await agentWithoutWidget()).toBeNull()
+    getOrganizationAgents.mockResolvedValue([])
+    expect(await agentWithoutWidget()).toBeNull()
   })
 })

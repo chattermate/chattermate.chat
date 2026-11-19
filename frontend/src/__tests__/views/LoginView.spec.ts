@@ -132,6 +132,7 @@ describe('LoginView', () => {
     // A user with no grants unless a test says otherwise
     currentUser.value = userWithPermissions([])
     ssoProviders.value = []
+    sessionStorage.clear()
     passwordLogin.value = true
     
     wrapper = mount(LoginView, {
@@ -333,6 +334,53 @@ describe('LoginView', () => {
     ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
     await remountAt('/?sso=ok&redirect=%2Fconversations')
     expect(router.currentRoute.value.path).toBe('/conversations')
+  })
+
+  describe('a page to return to that is too long for the backend to carry', () => {
+    // The backend carries ?redirect= only up to 256 characters; the WordPress
+    // plugin's connect page is longer. The page keeps it for the round trip.
+    const LONG = `/conversations?from=${'x'.repeat(300)}`
+
+    const startSignIn = async () => {
+      ssoProviders.value = [{ key: 'google', label: 'Google' }]
+      await remountAt(`/?redirect=${encodeURIComponent(LONG)}`)
+      const original = window.location
+      Object.defineProperty(window, 'location', { value: { ...original, set href(_url: string) {} }, writable: true, configurable: true })
+      try {
+        await wrapper.find('.sso-btn').trigger('click')
+      } finally {
+        Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+      }
+    }
+
+    beforeEach(() => sessionStorage.clear())
+
+    it('still lands on it when the backend comes back without it', async () => {
+      ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+      await startSignIn()
+      await remountAt('/?sso=ok')
+      expect(router.currentRoute.value.fullPath).toBe(LONG)
+      // Used once: a later sign-in starts clean
+      expect(sessionStorage.getItem('sso_redirect')).toBeNull()
+    })
+
+    it('is dropped by a fresh visit, so an abandoned sign-in sends no one there later', async () => {
+      currentUser.value = userWithPermissions(['manage_agents'])
+      ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+      await startSignIn()
+      await remountAt('/?sso_error=cancelled')
+      await remountAt('/')
+      await remountAt('/?sso=ok')
+      expect(router.currentRoute.value.path).toBe('/ai-agents')
+    })
+
+    it('never sends anyone to another site, whatever was kept', async () => {
+      currentUser.value = userWithPermissions(['manage_agents'])
+      ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+      sessionStorage.setItem('sso_redirect', JSON.stringify({ redirect: '//evil.example/x', at: Date.now() }))
+      await remountAt('/?sso=ok')
+      expect(router.currentRoute.value.path).toBe('/ai-agents')
+    })
   })
 
   it('finishes the Shopify install flow after a sign-in that started from it', async () => {
