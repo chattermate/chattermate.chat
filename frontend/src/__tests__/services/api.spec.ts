@@ -38,15 +38,18 @@ vi.mock('@/services/user', () => ({
 vi.mock('@/config/api', () => ({ getApiUrl: () => 'http://api.test/api/v1' }))
 
 // Off by default; the embedded-Shopify tests switch it on before loadApi().
-const shopify = { enterprise: false, app: null as unknown }
+const shopify = { enterprise: false, app: null as unknown, loadDelayMs: 0 }
 const getSessionToken = vi.fn()
 const forgetSessionToken = vi.fn()
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
     hasEnterpriseModule: shopify.enterprise,
-    loadModule: async (name: string) => name === 'bridge'
-      ? { initShopifyApp: () => shopify.app }
-      : { getSessionToken, forgetSessionToken },
+    loadModule: async (name: string) => {
+      if (shopify.loadDelayMs) await new Promise((resolve) => setTimeout(resolve, shopify.loadDelayMs))
+      return name === 'bridge'
+        ? { initShopifyApp: () => shopify.app }
+        : { getSessionToken, forgetSessionToken }
+    },
     moduleImports: { shopifyAppBridgeUtilities: 'utils', shopifyAppBridge: 'bridge' },
   }),
 }))
@@ -424,6 +427,22 @@ describe('api client', () => {
 
       expect(window.location.search).toBe('')
       expect(seen[0].headers?.Authorization).toBe('Bearer shopify-token')
+    })
+
+    // A page can be ready to call before the Shopify modules have loaded
+    it('a call made at once, before the Shopify modules load, still carries the token', async () => {
+      shopify.loadDelayMs = 30
+      try {
+        const { api } = await loadApi()
+        const { adapter, seen } = adapterQueue([200])
+
+        await api.post('/shopify/exchange-token', {}, { adapter })
+
+        expect(seen).toHaveLength(1)
+        expect(seen[0].headers?.Authorization).toBe('Bearer shopify-token')
+      } finally {
+        shopify.loadDelayMs = 0
+      }
     })
 
     it('keeps the bearer token off non-Shopify endpoints', async () => {
