@@ -275,7 +275,7 @@ const disconnect = async (account: ChannelAccount) => {
 .wan-btn-danger {
   background: var(--c-danger);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-danger);
 }
 
 .wan-btn-primary {
