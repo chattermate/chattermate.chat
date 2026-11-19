@@ -155,6 +155,7 @@ class WhatsAppAdapter(MetaBaseAdapter):
             return None
         pricing = status.get("pricing") or {}
         errors = status.get("errors") or []
+        error_code = str(errors[0]["code"]) if errors and errors[0].get("code") is not None else None
         return StatusEvent(
             external_account_id=phone_number_id,
             external_message_id=str(message_id),
@@ -162,7 +163,8 @@ class WhatsAppAdapter(MetaBaseAdapter):
             status=state,
             timestamp=self._timestamp(status.get("timestamp")),
             error=_status_error(errors[0]) if errors else None,
-            error_code=str(errors[0]["code"]) if errors and errors[0].get("code") is not None else None,
+            error_code=error_code,
+            account_blocked=error_code in ACCOUNT_BLOCKING_ERROR_CODES,
             pricing_category=pricing.get("category"),
             pricing_type=pricing.get("type"),
             pricing_model=pricing.get("pricing_model"),
@@ -258,6 +260,12 @@ def _describe_location(location: SharedLocation) -> str:
     place = ", ".join(p for p in (location.name, location.address) if p)
     coordinates = f"{location.latitude}, {location.longitude}"
     return f"Shared location: {place} ({coordinates})" if place else f"Shared location: {coordinates}"
+
+
+# Failed-receipt codes that mean the sending account cannot send at all, as
+# opposed to one message or recipient failing: 131031 account locked,
+# 131042 payment/eligibility problem, 133010 number not registered.
+ACCOUNT_BLOCKING_ERROR_CODES = frozenset({"131031", "131042", "133010"})
 
 
 def _status_error(error: dict) -> str:

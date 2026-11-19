@@ -40,8 +40,8 @@ export { channels, channelsWithButtons, type ButtonChat, type EmailChat, type Ch
 export { TelegramBot, TelegramChat } from './channels/telegram'
 export { hmac, phoneNumber, digits, sendWebhook, type WebhookPayload } from './channels/chat'
 export {
-  connectWhatsAppNumber, deliverMeta, metaSignature, metaToken, metaVerifiesCallback, ownMetaApp, pageChat, pastedCallback,
-  whatsappPayload, whereMetaSends, WhatsAppChat, type MetaWebhook, type OwnMetaApp, type WhatsAppNumber,
+  connectWhatsAppNumber, deliverMeta, deliverWhatsAppReceipt, metaSignature, metaToken, metaVerifiesCallback, ownMetaApp, pageChat, pastedCallback,
+  signUpWhatsAppNumber, whatsappPayload, whereMetaSends, WhatsAppChat, type MetaWebhook, type OwnMetaApp, type WhatsAppNumber,
 } from './channels/meta'
 export { installSlackWorkspace, slackSignature } from './channels/slack'
 export { login, signedInClient } from './api/auth'

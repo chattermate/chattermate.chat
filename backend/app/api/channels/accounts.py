@@ -35,7 +35,7 @@ from app.models.organization import Organization
 from app.models.schemas.channel import ChannelAccountOut
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, AgentChannelConfigRepository
-from app.repositories.channels.accounts import needs_reconnect, registration_failure
+from app.repositories.channels.accounts import needs_reconnect, send_problem
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -84,7 +84,7 @@ def to_account_out(
     out.agent_id = config.agent_id if config and config.is_active else None
     out.webhook_url = channel_webhook_url(account) if include_webhook_url else None
     out.needs_reconnect = needs_reconnect(account)
-    out.registration_error = registration_failure(account)
+    out.send_problem = send_problem(account)
     # Meta asks for this token when the customer points their app at us
     if include_webhook_url and is_own_app(account):
         out.webhook_verify_token = account.webhook_secret

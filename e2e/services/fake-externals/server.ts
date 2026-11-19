@@ -29,6 +29,9 @@
 //                                              that must echo hub.challenge — before
 //                                              accepting it
 //   Meta GET /<node>       id = <node>
+//   Meta oauth/access_token  WhatsApp Embedded Signup's code exchange: a code that is
+//                           itself an `owns:` token comes back as the access token
+//   Meta GET /<waba>/phone_numbers  the token's other owned nodes, as the WABA's numbers
 //   LINE GET /info         userId derived from the channel access token
 //   Slack oauth.v2.access  team id and bot token derived from the OAuth code
 //   HubSpot oauth/v1/token  an access token derived from the code; introspecting it
@@ -225,6 +228,10 @@ async function graph({ action, method, url, headers, body }: Call): Promise<Answ
     }
     return ok({ id: app.id, name: `E2E app ${app.id}` })
   }
+  if (action === 'access_token') {
+    const code = url.searchParams.get('code') ?? ''
+    return ownedNodes(code) ? ok({ access_token: code, token_type: 'bearer' }) : graphError('Invalid verification code format.')
+  }
   if (action === 'debug_token') {
     const inspected = ownedNodes(url.searchParams.get('input_token') ?? '')
     return ok({ data: { is_valid: Boolean(inspected), type: 'PAGE', profile_id: inspected?.[0] ?? '' } })
@@ -235,6 +242,10 @@ async function graph({ action, method, url, headers, body }: Call): Promise<Answ
   const node = url.pathname.split('/').filter(Boolean)[2] ?? ''
   if (owned && claimed.has(node) && !owned.includes(node)) {
     return graphError(`Unsupported request - object with ID '${node}' does not exist, cannot be loaded due to missing permissions, or does not support this operation`)
+  }
+  if (method === 'GET' && action === 'phone_numbers' && owned) {
+    const numbers = owned.filter((id) => id !== node)
+    return ok({ data: numbers.map((id) => ({ id, display_phone_number: `+${id}`, verified_name: `E2E ${id}` })) })
   }
   const webhookConfiguration = body?.webhook_configuration
   if (method === 'POST' && webhookConfiguration && typeof webhookConfiguration === 'object') {

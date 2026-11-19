@@ -22,7 +22,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.channels.base import SendResult
+from app.channels.base import DeliveryState, SendResult, StatusEvent
 from app.models.channels import ChannelAccount, ChannelConversation
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.core.security import decrypt_credentials, encrypt_api_key
@@ -33,9 +33,10 @@ logger = get_logger(__name__)
 # settings key set while the platform rejects the account's credentials:
 # {"error": <platform message>, "at": <ISO time>}. Absent means healthy.
 AUTH_FAILURE_SETTING = "auth_failure"
-# settings key set while a WhatsApp number is connected but Meta refused to
-# register it for sending: {"error": <Meta's message>, "at": <ISO time>}
-REGISTRATION_FAILURE_SETTING = "registration_failure"
+# settings key set while the platform will not let a connected account send
+# (WhatsApp: Meta refused to register the number, or its account is blocked):
+# {"error": <the platform's message>, "at": <ISO time>}
+SEND_PROBLEM_SETTING = "send_problem"
 
 
 class ChannelAccountRepository:
@@ -149,18 +150,27 @@ class ChannelAccountRepository:
             self.record_auth_failure(account, result.error)
         elif result.ok:
             self.clear_auth_failure(account)
-            # A reply got out, so the number can send after all
-            if registration_failure(account):
-                self._update_settings_quietly(account, {}, remove=(REGISTRATION_FAILURE_SETTING,))
 
-    def set_registration_failure(self, account: ChannelAccount, error: Optional[str]) -> None:
-        """Record why Meta would not register the number for sending, or clear
-        an earlier failure when `error` is None (a later register worked)."""
+    def track_receipt(self, account: ChannelAccount, event: StatusEvent) -> None:
+        """Keep the account's send problem in step with delivery receipts.
+
+        Only a receipt proves anything: the send API accepts messages that
+        fail later. A delivered or read message shows the account can send; a
+        failure the platform blames on the account shows it cannot."""
+        if event.account_blocked:
+            if send_problem(account) != event.error:
+                self.set_send_problem(account, event.error or "The platform is blocking this account from sending.")
+        elif event.status in (DeliveryState.DELIVERED, DeliveryState.READ) and send_problem(account):
+            self.set_send_problem(account, None)
+
+    def set_send_problem(self, account: ChannelAccount, error: Optional[str]) -> None:
+        """Record why the platform will not let the account send, or clear an
+        earlier problem when `error` is None."""
         if error:
-            self._update_settings_quietly(account, {REGISTRATION_FAILURE_SETTING: {
+            self._update_settings_quietly(account, {SEND_PROBLEM_SETTING: {
                 "error": error, "at": datetime.now(timezone.utc).isoformat()}})
-        elif registration_failure(account):
-            self._update_settings_quietly(account, {}, remove=(REGISTRATION_FAILURE_SETTING,))
+        elif send_problem(account):
+            self._update_settings_quietly(account, {}, remove=(SEND_PROBLEM_SETTING,))
 
     def record_auth_failure(self, account: ChannelAccount, error: Optional[str]) -> None:
         """Mark the account as needing reconnection after the platform refused
@@ -183,8 +193,8 @@ class ChannelAccountRepository:
         # fail what it describes
         try:
             self.update_settings(account, updates, remove=remove)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not update settings of {account.channel_type} account {account.id}: {e}")
 
     def set_active(self, account: ChannelAccount, is_active: bool) -> ChannelAccount:
         try:
@@ -243,9 +253,9 @@ def needs_reconnect(account: ChannelAccount) -> bool:
     return bool((account.settings or {}).get(AUTH_FAILURE_SETTING))
 
 
-def registration_failure(account: ChannelAccount) -> Optional[str]:
-    """Meta's reason for not registering the number for sending, if it refused."""
-    failure = (account.settings or {}).get(REGISTRATION_FAILURE_SETTING)
+def send_problem(account: ChannelAccount) -> Optional[str]:
+    """The platform's reason the account cannot send, if it cannot."""
+    failure = (account.settings or {}).get(SEND_PROBLEM_SETTING)
     return failure.get("error") if isinstance(failure, dict) else None
 
 

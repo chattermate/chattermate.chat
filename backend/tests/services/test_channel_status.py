@@ -179,6 +179,26 @@ async def test_failed_receipt_marks_the_message_undelivered(db, account, test_or
 
 
 @pytest.mark.asyncio
+async def test_receipts_keep_the_account_send_problem_current(db, account, test_organization,
+                                                              use_test_db, mock_sio, redis):
+    """A failure Meta blames on the account flags it; a later delivery clears it."""
+    from app.repositories.channels.accounts import send_problem
+    _message(db, test_organization.id, "wamid.1")
+    _message(db, test_organization.id, "wamid.2")
+
+    locked = _event(DeliveryState.FAILED, error="Business account has been locked.")
+    locked.account_blocked = True
+    await process_status_event(account.id, locked)
+    db.expire_all()
+    assert send_problem(ChannelAccountRepository(db).get_by_id(account.id)) == \
+        "Business account has been locked."
+
+    await process_status_event(account.id, _event(DeliveryState.DELIVERED, message_id="wamid.2"))
+    db.expire_all()
+    assert send_problem(ChannelAccountRepository(db).get_by_id(account.id)) is None
+
+
+@pytest.mark.asyncio
 async def test_receipt_never_touches_another_organizations_message(db, account, use_test_db,
                                                                   mock_sio, redis):
     other_org = Organization(name="Other", domain="other.example")

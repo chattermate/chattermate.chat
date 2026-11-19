@@ -20,16 +20,16 @@ const accountName = (a: ChannelAccount) => a.display_name || a.external_account_
 
 /** The integration-card warning for accounts that cannot send replies, or
  *  undefined when every account is healthy: ones whose platform stopped
- *  accepting their credentials, and WhatsApp numbers Meta would not register. */
-export const reconnectWarning = (accounts: ChannelAccount[]): string | undefined => {
+ *  accepting their credentials, and numbers the platform won't let send. */
+export const accountWarning = (accounts: ChannelAccount[]): string | undefined => {
   const expired = accounts.filter(a => a.needs_reconnect)
-  const unregistered = accounts.filter(a => !a.needs_reconnect && a.registration_error)
+  const blocked = accounts.filter(a => !a.needs_reconnect && a.send_problem)
   const warnings = [
     expired.length
       ? `Access expired for ${expired.map(accountName).join(', ')} — reconnect to resume replies.`
       : '',
-    unregistered.length
-      ? `${unregistered.map(accountName).join(', ')} can't send replies yet — open it to see why.`
+    blocked.length
+      ? `${blocked.map(accountName).join(', ')} can't send replies — open it to see why.`
       : '',
   ].filter(Boolean)
   return warnings.length ? warnings.join(' ') : undefined
@@ -39,6 +39,6 @@ export const reconnectWarning = (accounts: ChannelAccount[]): string | undefined
  *  card's warning leads to its fix, else the first connected. */
 export const accountToManage = (accounts: ChannelAccount[]): ChannelAccount | null =>
   accounts.find(a => a.needs_reconnect)
-  ?? accounts.find(a => a.registration_error)
+  ?? accounts.find(a => a.send_problem)
   ?? accounts[0]
   ?? null

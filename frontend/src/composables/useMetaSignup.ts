@@ -169,8 +169,8 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     })
     onConnected(account)
     const name = account.display_name || 'WhatsApp'
-    if (account.registration_error) {
-      toast.warning(`Connected ${name}, but WhatsApp can't send replies from it yet`)
+    if (account.send_problem) {
+      toast.warning(`Connected ${name}, but WhatsApp can't send replies from it`)
     } else {
       toast.success(`Connected ${name}`)
     }

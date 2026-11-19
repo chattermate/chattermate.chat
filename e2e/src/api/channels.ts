@@ -20,6 +20,11 @@ export function connectWhatsApp(api: ApiClient, phoneNumberId: string, accessTok
   return connect(api, '/channels/meta/whatsapp', { phone_number_id: phoneNumberId, access_token: accessToken, app_secret: appSecret })
 }
 
+/** Finishes WhatsApp Embedded Signup: the backend trades the code for a token and registers the number. */
+export function connectWhatsAppSignup(api: ApiClient, code: string, wabaId: string, phoneNumberId: string): Promise<ChannelAccount> {
+  return connect(api, '/channels/meta/whatsapp/embedded-signup', { code, waba_id: wabaId, phone_number_id: phoneNumberId })
+}
+
 export function connectMessenger(api: ApiClient, pageId: string, pageAccessToken: string, appSecret?: string): Promise<ChannelAccount> {
   return connect(api, '/channels/meta/messenger', { page_id: pageId, page_access_token: pageAccessToken, app_secret: appSecret })
 }

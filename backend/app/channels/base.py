@@ -124,6 +124,10 @@ class StatusEvent:
     timestamp: Optional[datetime] = None
     error: Optional[str] = None
     error_code: Optional[str] = None        # the platform's code for `error`
+    # The failure is about the sending account, not this message or recipient
+    # (WhatsApp: account locked, payment problem, number not registered):
+    # nothing will send until the customer fixes it on the platform
+    account_blocked: bool = False
     pricing_category: Optional[str] = None  # e.g. marketing, utility, service
     # Per-message pricing: whether this message is charged ("regular") or
     # free ("free_customer_service", "free_entry_point"); `billable` is the

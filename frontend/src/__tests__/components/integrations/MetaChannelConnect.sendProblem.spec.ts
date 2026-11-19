@@ -71,10 +71,10 @@ describe('MetaChannelConnect registration failure', () => {
   afterEach(() => { delete (window as any).FB })
 
   it('signup warns instead of reporting success, and shows Meta\'s reason', async () => {
-    const wrapper = await signUp(number({ registration_error: 'Two step verification PIN Mismatch' }))
+    const wrapper = await signUp(number({ send_problem: 'Two step verification PIN Mismatch' }))
 
     expect(toast.success).not.toHaveBeenCalled()
-    expect(toast.warning).toHaveBeenCalledWith("Connected Acme (+27 76), but WhatsApp can't send replies from it yet")
+    expect(toast.warning).toHaveBeenCalledWith("Connected Acme (+27 76), but WhatsApp can't send replies from it")
     expect(wrapper.find('.meta-reconnect').text()).toContain('Two step verification PIN Mismatch')
   })
 
@@ -90,7 +90,7 @@ describe('MetaChannelConnect registration failure', () => {
     vi.mocked(channelsService.getEmbeddedSignupConfig).mockResolvedValue(
       { enabled: true, app_id: 'APP1', config_id: 'CFG1', graph_version: 'v21.0' } as any)
     const wrapper = mount(MetaChannelConnect, {
-      props: { channel: 'whatsapp', existingAccount: number({ registration_error: 'PIN Mismatch' }) },
+      props: { channel: 'whatsapp', existingAccount: number({ send_problem: 'PIN Mismatch' }) },
       global: { stubs: { 'font-awesome-icon': true } },
     })
     await flushPromises()
@@ -106,7 +106,7 @@ describe('MetaChannelConnect registration failure', () => {
     const wrapper = mount(MetaChannelConnect, {
       props: {
         channel: 'whatsapp',
-        existingAccount: number({ needs_reconnect: true, registration_error: 'PIN Mismatch' }),
+        existingAccount: number({ needs_reconnect: true, send_problem: 'PIN Mismatch' }),
       },
       global: { stubs: { 'font-awesome-icon': true } },
     })

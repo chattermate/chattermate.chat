@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, it, expect } from 'vitest'
-import { accountToManage, reconnectWarning } from '@/utils/channelAccounts'
+import { accountToManage, accountWarning } from '@/utils/channelAccounts'
 import type { ChannelAccount } from '@/services/channels'
 
 const account = (overrides: Partial<ChannelAccount> = {}): ChannelAccount => ({
@@ -23,19 +23,19 @@ const account = (overrides: Partial<ChannelAccount> = {}): ChannelAccount => ({
   display_name: 'Support (+1 555)', is_active: true, ...overrides,
 })
 
-describe('reconnectWarning', () => {
+describe('accountWarning', () => {
   it('is silent when no account needs reconnecting', () => {
-    expect(reconnectWarning([])).toBeUndefined()
-    expect(reconnectWarning([account(), account({ needs_reconnect: false })])).toBeUndefined()
+    expect(accountWarning([])).toBeUndefined()
+    expect(accountWarning([account(), account({ needs_reconnect: false })])).toBeUndefined()
   })
 
   it('names the account that needs reconnecting', () => {
-    expect(reconnectWarning([account({ needs_reconnect: true })]))
+    expect(accountWarning([account({ needs_reconnect: true })]))
       .toBe('Access expired for Support (+1 555) — reconnect to resume replies.')
   })
 
   it('names only the expired ones when several are connected', () => {
-    const warning = reconnectWarning([
+    const warning = accountWarning([
       account({ id: 'a1', display_name: 'Sales', needs_reconnect: true }),
       account({ id: 'a2', display_name: 'Healthy' }),
       account({ id: 'a3', display_name: 'Billing', needs_reconnect: true }),
@@ -44,39 +44,39 @@ describe('reconnectWarning', () => {
   })
 
   it('falls back to the platform id when the account has no name', () => {
-    expect(reconnectWarning([account({ display_name: undefined, needs_reconnect: true })]))
+    expect(accountWarning([account({ display_name: undefined, needs_reconnect: true })]))
       .toContain('Access expired for PN1')
   })
 })
 
-describe('reconnectWarning for numbers Meta would not register', () => {
+describe('accountWarning for numbers that cannot send', () => {
   it('names the number that cannot send', () => {
-    expect(reconnectWarning([account({ registration_error: 'PIN Mismatch' })]))
-      .toBe("Support (+1 555) can't send replies yet — open it to see why.")
+    expect(accountWarning([account({ send_problem: 'PIN Mismatch' })]))
+      .toBe("Support (+1 555) can't send replies — open it to see why.")
   })
 
   it('says both when one account expired and another cannot send', () => {
-    expect(reconnectWarning([
+    expect(accountWarning([
       account({ id: 'a1', display_name: 'Sales', needs_reconnect: true }),
-      account({ id: 'a2', display_name: 'Billing', registration_error: 'PIN Mismatch' }),
-    ])).toBe("Access expired for Sales — reconnect to resume replies. Billing can't send replies yet — open it to see why.")
+      account({ id: 'a2', display_name: 'Billing', send_problem: 'PIN Mismatch' }),
+    ])).toBe("Access expired for Sales — reconnect to resume replies. Billing can't send replies — open it to see why.")
   })
 
   it('an expired account is named once, even if its register also failed', () => {
-    expect(reconnectWarning([account({ needs_reconnect: true, registration_error: 'x' })]))
+    expect(accountWarning([account({ needs_reconnect: true, send_problem: 'x' })]))
       .toBe('Access expired for Support (+1 555) — reconnect to resume replies.')
   })
 })
 
 describe('accountToManage', () => {
   it('opens a number that cannot send before a healthy one', () => {
-    const unregistered = account({ id: 'a2', registration_error: 'PIN Mismatch' })
-    expect(accountToManage([account({ id: 'a1' }), unregistered])).toBe(unregistered)
+    const blocked = account({ id: 'a2', send_problem: 'PIN Mismatch' })
+    expect(accountToManage([account({ id: 'a1' }), blocked])).toBe(blocked)
   })
 
   it('opens an expired account before one that cannot send', () => {
     const expired = account({ id: 'a3', needs_reconnect: true })
-    expect(accountToManage([account({ id: 'a2', registration_error: 'x' }), expired])).toBe(expired)
+    expect(accountToManage([account({ id: 'a2', send_problem: 'x' }), expired])).toBe(expired)
   })
 
   it('opens the account that needs reconnecting, even when it is not first', () => {
