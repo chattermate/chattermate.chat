@@ -76,6 +76,7 @@ type EnterpriseModule = {
 // These should be used with dynamic import() directly, not with glob
 const moduleImports = {
   signupView: '/src/modules/enterprise/views/SignupView.vue',
+  wordpressSignInView: '/src/modules/enterprise/views/WordPressSignInView.vue',
   subscriptionView: '/src/modules/enterprise/views/SubscriptionView.vue',
   billingSetupView: '/src/modules/enterprise/views/BillingSetupView.vue',
   subscriptionStore: '/src/modules/enterprise/composables/useSubscriptionStore.ts',
