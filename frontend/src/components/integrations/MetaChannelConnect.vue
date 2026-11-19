@@ -252,6 +252,13 @@ const saveAgent = async () => {
           <p class="meta-reconnect-text">Meta stopped accepting this account's access. Reconnect to resume replies.</p>
           <button class="meta-btn meta-btn-primary" @click="reconnect">Reconnect</button>
         </div>
+        <div v-else-if="account.registration_error" class="meta-reconnect">
+          <p class="meta-reconnect-text">
+            WhatsApp can't send replies from this number yet. Meta said: “{{ account.registration_error }}”.
+            Fix it in WhatsApp Manager, then reconnect.
+          </p>
+          <button class="meta-btn meta-btn-primary" @click="reconnect">Reconnect</button>
+        </div>
         <p class="meta-intro">
           <strong>{{ account.display_name }}</strong> is connected.
         </p>

@@ -33,6 +33,9 @@ logger = get_logger(__name__)
 # settings key set while the platform rejects the account's credentials:
 # {"error": <platform message>, "at": <ISO time>}. Absent means healthy.
 AUTH_FAILURE_SETTING = "auth_failure"
+# settings key set while a WhatsApp number is connected but Meta refused to
+# register it for sending: {"error": <Meta's message>, "at": <ISO time>}
+REGISTRATION_FAILURE_SETTING = "registration_failure"
 
 
 class ChannelAccountRepository:
@@ -146,6 +149,18 @@ class ChannelAccountRepository:
             self.record_auth_failure(account, result.error)
         elif result.ok:
             self.clear_auth_failure(account)
+            # A reply got out, so the number can send after all
+            if registration_failure(account):
+                self._update_settings_quietly(account, {}, remove=(REGISTRATION_FAILURE_SETTING,))
+
+    def set_registration_failure(self, account: ChannelAccount, error: Optional[str]) -> None:
+        """Record why Meta would not register the number for sending, or clear
+        an earlier failure when `error` is None (a later register worked)."""
+        if error:
+            self._update_settings_quietly(account, {REGISTRATION_FAILURE_SETTING: {
+                "error": error, "at": datetime.now(timezone.utc).isoformat()}})
+        elif registration_failure(account):
+            self._update_settings_quietly(account, {}, remove=(REGISTRATION_FAILURE_SETTING,))
 
     def record_auth_failure(self, account: ChannelAccount, error: Optional[str]) -> None:
         """Mark the account as needing reconnection after the platform refused
@@ -154,17 +169,18 @@ class ChannelAccountRepository:
         if needs_reconnect(account):
             return
         logger.warning(f"{account.channel_type} account {account.id} needs reconnecting: {error}")
-        self._update_auth_failure(account, {AUTH_FAILURE_SETTING: {
+        self._update_settings_quietly(account, {AUTH_FAILURE_SETTING: {
             "error": error, "at": datetime.now(timezone.utc).isoformat()}})
 
     def clear_auth_failure(self, account: ChannelAccount) -> None:
         """A send went through, so the credentials work again."""
         if needs_reconnect(account):
-            self._update_auth_failure(account, {}, remove=(AUTH_FAILURE_SETTING,))
+            self._update_settings_quietly(account, {}, remove=(AUTH_FAILURE_SETTING,))
 
-    def _update_auth_failure(self, account: ChannelAccount, updates: dict,
-                             remove: Iterable[str] = ()) -> None:
-        # Bookkeeping beside a send: failing to record it must not fail the send
+    def _update_settings_quietly(self, account: ChannelAccount, updates: dict,
+                                 remove: Iterable[str] = ()) -> None:
+        # Bookkeeping beside a send or a connect: failing to record it must not
+        # fail what it describes
         try:
             self.update_settings(account, updates, remove=remove)
         except Exception:
@@ -225,6 +241,12 @@ class ChannelAccountRepository:
 
 def needs_reconnect(account: ChannelAccount) -> bool:
     return bool((account.settings or {}).get(AUTH_FAILURE_SETTING))
+
+
+def registration_failure(account: ChannelAccount) -> Optional[str]:
+    """Meta's reason for not registering the number for sending, if it refused."""
+    failure = (account.settings or {}).get(REGISTRATION_FAILURE_SETTING)
+    return failure.get("error") if isinstance(failure, dict) else None
 
 
 def _without_auth_failure(settings: Optional[dict]) -> dict:

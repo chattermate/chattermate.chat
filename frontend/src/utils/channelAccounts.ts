@@ -16,16 +16,29 @@ limitations under the License.
 
 import type { ChannelAccount } from '@/services/channels'
 
-/** The integration-card warning for accounts whose platform stopped accepting
- *  their credentials, or undefined when every account is healthy. */
+const accountName = (a: ChannelAccount) => a.display_name || a.external_account_id
+
+/** The integration-card warning for accounts that cannot send replies, or
+ *  undefined when every account is healthy: ones whose platform stopped
+ *  accepting their credentials, and WhatsApp numbers Meta would not register. */
 export const reconnectWarning = (accounts: ChannelAccount[]): string | undefined => {
   const expired = accounts.filter(a => a.needs_reconnect)
-  if (!expired.length) return undefined
-  const names = expired.map(a => a.display_name || a.external_account_id).join(', ')
-  return `Access expired for ${names} — reconnect to resume replies.`
+  const unregistered = accounts.filter(a => !a.needs_reconnect && a.registration_error)
+  const warnings = [
+    expired.length
+      ? `Access expired for ${expired.map(accountName).join(', ')} — reconnect to resume replies.`
+      : '',
+    unregistered.length
+      ? `${unregistered.map(accountName).join(', ')} can't send replies yet — open it to see why.`
+      : '',
+  ].filter(Boolean)
+  return warnings.length ? warnings.join(' ') : undefined
 }
 
-/** The account a card's Manage opens: one that needs reconnecting first, so
- *  the card's warning leads to its fix, else the first connected. */
+/** The account a card's Manage opens: one that needs fixing first, so the
+ *  card's warning leads to its fix, else the first connected. */
 export const accountToManage = (accounts: ChannelAccount[]): ChannelAccount | null =>
-  accounts.find(a => a.needs_reconnect) ?? accounts[0] ?? null
+  accounts.find(a => a.needs_reconnect)
+  ?? accounts.find(a => a.registration_error)
+  ?? accounts[0]
+  ?? null

@@ -39,6 +39,9 @@ class ChannelAccountOut(BaseModel):
     # The platform refused the account's credentials; replies fail until the
     # account is reconnected
     needs_reconnect: bool = False
+    # WhatsApp: Meta connected the number but refused to register it for
+    # sending (its message); replies fail until that is fixed and it reconnects
+    registration_error: Optional[str] = None
     webhook_verify_token: Optional[str] = None
     # WhatsApp from the customer's own app: whether Meta took our per-number
     # callback (else the customer sets the URL and token by hand)

@@ -656,6 +656,45 @@ class TestEmbeddedSignupConnect:
         account = repo.get_by_external_id("whatsapp", "PN555")
         assert account is not None
         assert "verification_pin" not in repo.get_credentials(account)
+        # Connected, but the dashboard must say the number cannot send
+        assert r.json()["registration_error"] == "already registered"
+
+    def _signup(self, client, register):
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "EAAG-business"}))), \
+             patch("app.api.channels.meta.register_phone_number", register), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.WABA_NUMBERS)), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            return client.post(self.ES, json=self.PAYLOAD)
+
+    def test_registered_number_reports_no_registration_error(self, client):
+        r = self._signup(client, AsyncMock(return_value=(True, {"success": True})))
+
+        assert r.status_code == 200
+        assert r.json()["registration_error"] is None
+
+    def test_registration_error_is_listed_and_cleared_by_a_later_register(self, client):
+        refused = AsyncMock(return_value=(False, {"error": {"message": "PIN mismatch"}}))
+        self._signup(client, refused)
+        listed = client.get("/api/v1/channels/accounts").json()
+        assert [a["registration_error"] for a in listed if a["external_account_id"] == "PN555"] \
+            == ["PIN mismatch"]
+
+        r = self._signup(client, AsyncMock(return_value=(True, {"success": True})))
+
+        assert r.json()["registration_error"] is None
+
+    def test_reconnect_registers_with_the_stored_pin(self, client, db):
+        """Meta refuses a different PIN for a number that already has one, so
+        a reconnect must reuse ours rather than invent a new one."""
+        self._signup(client, AsyncMock(return_value=(True, {"success": True})))
+        repo = ChannelAccountRepository(db)
+        pin = repo.get_credentials(repo.get_by_external_id("whatsapp", "PN555"))["verification_pin"]
+
+        register = AsyncMock(return_value=(True, {"success": True}))
+        self._signup(client, register)
+
+        assert register.await_args.args[2] == pin
 
     def test_rejects_a_number_not_on_the_claimed_waba(self, client, db):
         """The code proves a signup happened, not who owns the number in the

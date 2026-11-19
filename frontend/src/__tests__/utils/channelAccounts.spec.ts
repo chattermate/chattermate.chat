@@ -49,7 +49,36 @@ describe('reconnectWarning', () => {
   })
 })
 
+describe('reconnectWarning for numbers Meta would not register', () => {
+  it('names the number that cannot send', () => {
+    expect(reconnectWarning([account({ registration_error: 'PIN Mismatch' })]))
+      .toBe("Support (+1 555) can't send replies yet — open it to see why.")
+  })
+
+  it('says both when one account expired and another cannot send', () => {
+    expect(reconnectWarning([
+      account({ id: 'a1', display_name: 'Sales', needs_reconnect: true }),
+      account({ id: 'a2', display_name: 'Billing', registration_error: 'PIN Mismatch' }),
+    ])).toBe("Access expired for Sales — reconnect to resume replies. Billing can't send replies yet — open it to see why.")
+  })
+
+  it('an expired account is named once, even if its register also failed', () => {
+    expect(reconnectWarning([account({ needs_reconnect: true, registration_error: 'x' })]))
+      .toBe('Access expired for Support (+1 555) — reconnect to resume replies.')
+  })
+})
+
 describe('accountToManage', () => {
+  it('opens a number that cannot send before a healthy one', () => {
+    const unregistered = account({ id: 'a2', registration_error: 'PIN Mismatch' })
+    expect(accountToManage([account({ id: 'a1' }), unregistered])).toBe(unregistered)
+  })
+
+  it('opens an expired account before one that cannot send', () => {
+    const expired = account({ id: 'a3', needs_reconnect: true })
+    expect(accountToManage([account({ id: 'a2', registration_error: 'x' }), expired])).toBe(expired)
+  })
+
   it('opens the account that needs reconnecting, even when it is not first', () => {
     const healthy = account({ id: 'a1' })
     const expired = account({ id: 'a2', needs_reconnect: true })

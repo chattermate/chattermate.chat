@@ -115,6 +115,8 @@ export interface ChannelAccount {
   webhook_url?: string
   /** The platform refused this account's credentials; replies fail until it is reconnected */
   needs_reconnect?: boolean
+  /** WhatsApp: Meta connected the number but would not register it for sending (its reason) */
+  registration_error?: string
   /** Meta accounts from the customer's own app: the verify token Meta asks for */
   webhook_verify_token?: string
   /** WhatsApp from the customer's own app: whether Meta took our callback */

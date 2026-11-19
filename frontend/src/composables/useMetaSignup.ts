@@ -168,7 +168,12 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
       phone_number_id: session.phone_number_id,
     })
     onConnected(account)
-    toast.success(`Connected ${account.display_name || 'WhatsApp'}`)
+    const name = account.display_name || 'WhatsApp'
+    if (account.registration_error) {
+      toast.warning(`Connected ${name}, but WhatsApp can't send replies from it yet`)
+    } else {
+      toast.success(`Connected ${name}`)
+    }
   }
 
   const connectPickedPage = async (pageId: string) => {
