@@ -21,6 +21,11 @@ import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
 import { createSiteWidget, siteAgentName } from '@/utils/siteAgent'
+import BrandMark from '@/components/common/BrandMark.vue'
+import wordpressLogo from '@/assets/wordpress-logo.svg'
+
+// The WordPress mark is drawn in the heading colour (a mask), so it reads in both themes
+const wordpressMask = { '--wp-logo': `url("${wordpressLogo}")` }
 
 /** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
 interface WidgetWithAgent {
@@ -50,6 +55,9 @@ const creating = ref(false)
 const needsAiProvider = ref(false)
 
 const siteHost = computed(() => request.value?.siteHost ?? '')
+// What a new account's agent is called: the site's own name
+const newAgentName = computed(() => (request.value ? siteAgentName(request.value.siteName, siteHost.value) : ''))
+const busy = computed(() => creating.value || connecting.value)
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
 
 function agentName(widget: WidgetWithAgent): string {
@@ -156,7 +164,15 @@ onMounted(() => {
 <template>
   <main class="connect-page">
     <section class="connect-card" aria-labelledby="connect-title">
-      <p class="connect-eyebrow">WordPress</p>
+      <div class="connect-link" aria-hidden="true">
+        <span class="connect-link__tile"><BrandMark :size="40" /></span>
+        <span class="connect-link__line">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+          </svg>
+        </span>
+        <span class="connect-link__tile"><span class="connect-link__wp" :style="wordpressMask"></span></span>
+      </div>
 
       <template v-if="!request">
         <h1 id="connect-title">This link isn't complete</h1>
@@ -168,18 +184,38 @@ onMounted(() => {
 
       <template v-else>
         <h1 id="connect-title">Connect {{ request.siteName }}</h1>
-        <p v-if="widgets.length" class="connect-lead">
-          Choose the AI agent that answers on <strong>{{ siteHost }}</strong>. We send its Widget ID back to your WordPress
-          admin at <strong>{{ request.returnUrl.host }}</strong>.
+        <p class="connect-site">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+          </svg>
+          {{ siteHost }}
         </p>
 
         <p v-if="loading" class="connect-muted" role="status">Loading your agents…</p>
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
         <template v-else-if="!widgets.length">
-          <p class="connect-lead">
-            You don't have an AI agent yet. We'll create one for <strong>{{ siteHost }}</strong> and connect it.
-          </p>
+          <p class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
+          <ul class="connect-plan">
+            <li>
+              <span class="connect-plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8" /><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M9 14h.01M15 14h.01" /></svg>
+              </span>
+              <span>
+                <strong>An AI agent called {{ newAgentName }}</strong>
+                <span class="connect-muted">It answers your visitors and hands over to your team.</span>
+              </span>
+            </li>
+            <li>
+              <span class="connect-plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></svg>
+              </span>
+              <span>
+                <strong>The chat on every page of {{ siteHost }}</strong>
+                <span class="connect-muted">Choose where it shows from your WordPress admin.</span>
+              </span>
+            </li>
+          </ul>
           <component
             :is="LearnOption"
             v-if="returnsToTheSite(request)"
@@ -194,23 +230,17 @@ onMounted(() => {
           <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
 
           <div class="connect-actions">
-            <button
-              type="button"
-              class="connect-button"
-              :disabled="creating || connecting"
-              @click="createAndConnect"
-            >
-              {{ creating || connecting ? 'Setting up…' : 'Create my AI agent and connect' }}
+            <button type="button" class="connect-button connect-button--wide" :disabled="busy" @click="createAndConnect">
+              <span v-if="busy" class="connect-spinner" aria-hidden="true"></span>
+              {{ busy ? 'Setting up…' : 'Create my AI agent and connect' }}
             </button>
-            <button type="button" class="connect-button connect-button--secondary" :disabled="creating || connecting" @click="cancel">
-              Cancel
-            </button>
+            <button type="button" class="connect-quiet" :disabled="busy" @click="cancel">Cancel</button>
           </div>
         </template>
 
         <template v-else>
           <fieldset class="connect-agents">
-            <legend>AI agent</legend>
+            <legend>Choose the AI agent that answers on {{ siteHost }}</legend>
             <label v-for="widget in widgets" :key="widget.id" class="connect-agent">
               <input v-model="selectedId" type="radio" name="widget" :value="widget.id" />
               <span>
@@ -238,14 +268,20 @@ onMounted(() => {
           <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
 
           <div class="connect-actions">
-            <button type="button" class="connect-button" :disabled="connecting || !selectedId" @click="connect">
+            <button type="button" class="connect-button connect-button--wide" :disabled="connecting || !selectedId" @click="connect">
+              <span v-if="connecting" class="connect-spinner" aria-hidden="true"></span>
               {{ connecting ? 'Connecting…' : 'Connect' }}
             </button>
-            <button type="button" class="connect-button connect-button--secondary" :disabled="connecting" @click="cancel">
-              Cancel
-            </button>
+            <button type="button" class="connect-quiet" :disabled="connecting" @click="cancel">Cancel</button>
           </div>
         </template>
+
+        <p class="connect-foot">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
+          You'll go back to your WordPress admin at {{ request.returnUrl.host }}.
+        </p>
       </template>
     </section>
   </main>
@@ -258,7 +294,9 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
-  background: var(--background-base);
+  background:
+    radial-gradient(60% 50% at 50% 0%, var(--accent-bg-06), transparent 70%),
+    var(--background-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
   box-sizing: border-box;
@@ -266,34 +304,92 @@ onMounted(() => {
 
 .connect-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 480px;
   padding: var(--space-xl);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card-lg);
   background: var(--surface);
   box-shadow: var(--shadow-md);
   box-sizing: border-box;
+  text-align: left;
 }
 
-.connect-eyebrow {
-  margin: 0 0 var(--space-xs);
+/* ChatterMate <-> WordPress */
+.connect-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-lg);
+}
+
+.connect-link__tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--background-soft);
+}
+
+/* The WordPress mark in the heading colour, so it reads in both themes */
+.connect-link__wp {
+  width: 28px;
+  height: 28px;
+  background: var(--text-heading);
+  -webkit-mask: var(--wp-logo) center / contain no-repeat;
+  mask: var(--wp-logo) center / contain no-repeat;
+}
+
+.connect-link__line {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
   color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+}
+
+.connect-link__line::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 2px dashed var(--border-color);
+}
+
+.connect-link__line svg {
+  position: relative;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-sizing: content-box;
 }
 
 h1 {
-  margin: 0 0 var(--space-sm);
+  margin: 0;
   color: var(--text-heading);
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   letter-spacing: var(--tracking-tight);
+  text-align: center;
+}
+
+.connect-site {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-xs) auto var(--space-lg);
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
 }
 
 .connect-lead {
-  margin: 0 0 var(--space-lg);
+  margin: 0 0 var(--space-md);
   color: var(--text-secondary);
   font-size: var(--text-base);
   line-height: 1.5;
@@ -313,6 +409,46 @@ h1 {
   font-size: var(--text-sm);
 }
 
+/* What one click sets up */
+.connect-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+  padding: 0;
+  list-style: none;
+}
+
+.connect-plan li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.connect-plan li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connect-plan strong {
+  color: var(--text-heading);
+  font-weight: var(--font-weight-semibold);
+}
+
+.connect-plan__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--accent-bg-06);
+  color: var(--text-heading);
+}
+
 .connect-agents {
   display: flex;
   flex-direction: column;
@@ -324,8 +460,8 @@ h1 {
 
 .connect-agents legend {
   margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
 }
 
 .connect-agent {
@@ -363,15 +499,17 @@ h1 {
 
 .connect-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
 }
 
 .connect-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  gap: var(--space-sm);
+  min-height: 48px;
   padding: 0 var(--space-lg);
   border: 1px solid transparent;
   border-radius: var(--radius-btn);
@@ -381,6 +519,11 @@ h1 {
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
   cursor: pointer;
+  box-sizing: border-box;
+}
+
+.connect-button--wide {
+  width: 100%;
 }
 
 .connect-button--secondary {
@@ -390,14 +533,65 @@ h1 {
 }
 
 .connect-button:disabled {
-  opacity: 0.6;
+  opacity: 0.7;
   cursor: default;
 }
 
+.connect-quiet {
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.connect-quiet:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.connect-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: connect-spin 0.8s linear infinite;
+}
+
+@keyframes connect-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-spinner { animation: none; }
+}
+
+.connect-foot svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.connect-foot {
+  margin: var(--space-lg) 0 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
 .connect-button:focus-visible,
+.connect-quiet:focus-visible,
 .connect-agent:focus-within,
 .connect-domain:focus-within {
   outline: none;
   box-shadow: var(--ring-focus);
+}
+
+@media (max-width: 480px) {
+  .connect-page { padding: var(--space-md); align-items: flex-start; }
+  .connect-card { padding: var(--space-lg); }
 }
 </style>
