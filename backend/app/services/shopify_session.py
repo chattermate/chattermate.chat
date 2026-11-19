@@ -26,6 +26,10 @@ from app.database import get_db
 
 logger = get_logger(__name__)
 
+# How far apart Shopify's clock and ours may be when judging a session
+# token's exp and nbf (tokens live a minute)
+SESSION_TOKEN_CLOCK_SKEW_SECONDS = 10
+
 SHOP_NOT_LINKED = "Connect your ChatterMate account to this store first."
 
 
@@ -72,17 +76,22 @@ class ShopifySessionService:
                 token,
                 settings.SHOPIFY_API_SECRET,
                 algorithms=["HS256"],
-                audience=settings.SHOPIFY_API_KEY
+                audience=settings.SHOPIFY_API_KEY,
+                leeway=SESSION_TOKEN_CLOCK_SKEW_SECONDS,
             )
-            
-            # Check expiration
+
+            # Shopify's clock and ours differ a little: a token handed out this
+            # instant (the one the app opens with) can read as "not before" a
+            # moment from now here, so both ends get the same leeway as above
+            now = time.time()
             exp = decoded.get('exp')
-            if exp and exp < time.time():
+            if exp and exp + SESSION_TOKEN_CLOCK_SKEW_SECONDS < now:
+                logger.warning("Session token expired (exp %s, now %.0f)", exp, now)
                 raise HTTPException(status_code=401, detail="Session token expired")
-            
-            # Check nbf (not before)
+
             nbf = decoded.get('nbf')
-            if nbf and nbf > time.time():
+            if nbf and nbf - SESSION_TOKEN_CLOCK_SKEW_SECONDS > now:
+                logger.warning("Session token not yet valid (nbf %s, now %.0f)", nbf, now)
                 raise HTTPException(status_code=401, detail="Session token not yet valid")
             
             logger.info(f"Session token validated for shop: {decoded.get('dest')}")

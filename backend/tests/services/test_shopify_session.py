@@ -187,6 +187,35 @@ class TestShopifySessionService:
         assert exc_info.value.status_code == 401
         assert "Invalid session token" in str(exc_info.value.detail)
 
+    @pytest.mark.parametrize("nbf_offset", [1, 5, 9])
+    @patch('app.services.shopify_session.settings')
+    def test_token_from_a_clock_slightly_ahead_is_accepted(self, mock_settings, nbf_offset):
+        """A token Shopify handed out this instant can read as 'not before' a
+        moment from now on our clock; within the leeway it is good."""
+        mock_settings.SHOPIFY_API_SECRET = "test_secret"
+        mock_settings.SHOPIFY_API_KEY = "test_key"
+        now = int(time.time())
+        payload = {
+            'dest': 'https://test-shop.myshopify.com',
+            'aud': 'test_key',
+            'exp': now + nbf_offset + 60,
+            'nbf': now + nbf_offset,
+            'iat': now + nbf_offset,
+        }
+        token = jwt.encode(payload, "test_secret", algorithm="HS256")
+
+        assert ShopifySessionService.validate_session_token(token)['dest'] == 'https://test-shop.myshopify.com'
+
+    @patch('app.services.shopify_session.settings')
+    def test_token_just_past_its_exp_within_the_leeway_is_accepted(self, mock_settings):
+        mock_settings.SHOPIFY_API_SECRET = "test_secret"
+        mock_settings.SHOPIFY_API_KEY = "test_key"
+        now = int(time.time())
+        payload = {'dest': 'https://test-shop.myshopify.com', 'aud': 'test_key', 'exp': now - 3, 'nbf': now - 63, 'iat': now - 63}
+        token = jwt.encode(payload, "test_secret", algorithm="HS256")
+
+        assert ShopifySessionService.validate_session_token(token)['dest'] == 'https://test-shop.myshopify.com'
+
     @patch('app.services.shopify_session.settings')
     def test_validate_session_token_invalid_signature(self, mock_settings):
         """Test validation of token with invalid signature"""
