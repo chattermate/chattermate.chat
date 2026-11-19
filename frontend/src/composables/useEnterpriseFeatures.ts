@@ -67,6 +67,7 @@ type EnterpriseModule = {
   subscriptionGuard?: (to: any, from: any, next: any) => void
   initShopifyApp?: () => any
   getSessionToken?: (app: any) => Promise<string>
+  forgetSessionToken?: () => void
   useShopifyIntegration?: (agentId: string) => any
   setupService?: { getProgress: () => Promise<{ step: string; agent_id: string | null; widget_id: string | null }> }
   wordpressSites?: { connectToken: (widgetId: string, siteUrl: string, returnUrl: string) => Promise<string> }

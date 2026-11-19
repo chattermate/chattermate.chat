@@ -25,6 +25,7 @@ const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures
 
 // Lazy load Shopify dependencies only if enterprise module is available
 let getSessionToken: any = null
+let forgetSessionToken: (() => void) | null = null
 let initShopifyApp: any = null
 
 if (hasEnterpriseModule) {
@@ -36,6 +37,7 @@ if (hasEnterpriseModule) {
       if (appBridgeUtilitiesModule?.getSessionToken) {
         getSessionToken = appBridgeUtilitiesModule.getSessionToken
       }
+      forgetSessionToken = appBridgeUtilitiesModule?.forgetSessionToken ?? null
 
       // Load Shopify app bridge plugin
       const shopifyAppBridgeModule = await loadModule(moduleImports.shopifyAppBridge)
@@ -188,7 +190,16 @@ api.interceptors.response.use(
 
     // Inside Shopify admin the session is Shopify's: the page shows the
     // error (or asks to reopen the app) rather than leaving for our login.
-    if (error.response?.status === 401 && embeddedShopifyApp()) return Promise.reject(error)
+    if (error.response?.status === 401 && embeddedShopifyApp()) {
+      // Session tokens are kept for their minute: one refused (a device clock
+      // far off) is dropped and the request tried once more with a new one
+      if (originalRequest && forgetSessionToken && !originalRequest._shopifyRetry) {
+        originalRequest._shopifyRetry = true
+        forgetSessionToken()
+        return api(originalRequest)
+      }
+      return Promise.reject(error)
+    }
 
     // If error is 401 and we haven't tried to refresh token yet
 
@@ -221,5 +232,6 @@ export default api
 declare module 'axios' {
   export interface AxiosRequestConfig {
     _retry?: boolean
+    _shopifyRetry?: boolean
   }
 }
