@@ -21,7 +21,7 @@ from uuid import UUID
 import enum
 
 from app.core.brand import BRAND_COLORS
-from app.core.s3 import sign_s3_url, strip_s3_signature
+from app.core.s3 import sign_s3_url_stable, strip_s3_signature
 
 # Cap launcher/welcome copy so it can't balloon the widget (the launcher nudge is
 # also clamped to 4 lines client-side). Limits match the frontend input maxlengths
@@ -252,13 +252,13 @@ class CustomizationResponse(CustomizationBase):
 
     @field_serializer('photo_url')
     def _sign_photo_url(self, v: Optional[str]) -> Optional[str]:
-        """Sign on the way out, every response. Signing is a local HMAC (~0.05ms),
-        so there is nothing to gain by caching the result in the database."""
-        return sign_s3_url(v) if v else v
+        """Sign on the way out, every response, never stored signed. The stable
+        signature lets the browser cache the photo across page loads."""
+        return sign_s3_url_stable(v) if v else v
 
     @field_serializer('icon_url')
     def _sign_icon_url(self, v: Optional[str]) -> Optional[str]:
-        return sign_s3_url(v) if v else v
+        return sign_s3_url_stable(v) if v else v
 
     class Config:
         from_attributes = True

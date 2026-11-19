@@ -31,19 +31,16 @@ from app.core.logger import get_logger
 from app.core.outbound_policy import OutboundTargetBlocked, check_outbound_target
 from app.database import SessionLocal
 from app.models.user import User
-from app.services.file_storage import profile_pic_folder, store_upload
+from app.services.avatar_image import store_avatar
+from app.services.file_storage import profile_pic_folder
 from app.services.sso_providers import Provider
 
 logger = get_logger(__name__)
 
 _PHOTO_TIMEOUT = 5.0
 PHOTO_MAX_BYTES = 2 * 1024 * 1024
-_PHOTO_EXTENSIONS = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-}
+# Screened before download is kept; the bytes are judged again when stored.
+_PHOTO_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 
 
 def _open_session():
@@ -73,17 +70,17 @@ async def fetch_provider_photo(provider: Provider, claims: dict, access_token: O
     if response.status_code != 200:
         return None
     content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-    if content_type not in _PHOTO_EXTENSIONS or not response.content or len(response.content) > PHOTO_MAX_BYTES:
+    if content_type not in _PHOTO_CONTENT_TYPES or not response.content or len(response.content) > PHOTO_MAX_BYTES:
         return None
     return response.content, content_type
 
 
 async def store_profile_picture(organization_id, user_id, image: Tuple[bytes, str]) -> str:
-    """Persist a photo where uploaded profile pictures live and return the URL
-    to keep on the user."""
-    content, content_type = image
-    folder = profile_pic_folder(organization_id, user_id)
-    return await store_upload(content, folder, f"profile{_PHOTO_EXTENSIONS[content_type]}", content_type)
+    """Persist a photo the way an uploaded profile picture is stored (shrunk to
+    a small WebP, same folder) and return the URL to keep on the user. Raises
+    AvatarRejected when the provider sent something that isn't a usable image."""
+    content, _content_type = image
+    return await store_avatar(content, profile_pic_folder(organization_id, user_id))
 
 
 def _user_without_picture(user_id) -> Optional[Tuple]:

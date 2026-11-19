@@ -32,8 +32,8 @@ const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpris
 // Setting this up from an AI coding tool instead (enterprise; nothing in open source)
 const AiToolSetupNudge = enterpriseComponent(moduleImports.aiToolSetupNudge)
 
-// Bundled preset avatars (frontend/src/assets/avatars/avatar-*.png)
-const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.png', {
+// Bundled preset avatars (frontend/src/assets/avatars/avatar-*.webp)
+const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.webp', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -180,7 +180,7 @@ const applyAvatar = async (agentId: string) => {
     if (!file && selectedAvatar.value) {
       const res = await fetch(selectedAvatar.value)
       const blob = await res.blob()
-      file = new File([blob], 'avatar.png', { type: blob.type || 'image/png' })
+      file = new File([blob], 'avatar.webp', { type: blob.type || 'image/webp' })
     }
     if (file) return await agentService.uploadAgentPhoto(agentId, file)
   } catch (err) {

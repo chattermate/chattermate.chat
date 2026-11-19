@@ -34,6 +34,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.core.s3 import sign_s3_url_stable
 from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
@@ -214,7 +215,7 @@ def _item(conversation: SessionToAgent, last_at: datetime, first: Optional[ChatH
         'open': is_open,
         'current': conversation.session_id == current_id,
         'resolved_by': {'name': person.full_name,
-                        'avatar_url': public_url(person.profile_pic) if person.profile_pic else None} if person else None,
+                        'avatar_url': sign_s3_url_stable(person.profile_pic) if person.profile_pic else None} if person else None,
     }
 
 

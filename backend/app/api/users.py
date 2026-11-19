@@ -45,9 +45,10 @@ from app.repositories.fcm_token import FCMTokenRepository
 from pydantic import BaseModel
 from app.models.role import Role
 from app.services.chat_scope_roles import resolve_role
-from app.core.s3 import get_s3_signed_url, sign_s3_url, delete_file_from_s3
+from app.core.s3 import sign_s3_url_stable
 from app.core.config import settings
-from app.services.file_storage import local_upload_path, profile_pic_folder, store_upload
+from app.services.avatar_image import AvatarRejected, delete_replaced_avatar, store_avatar
+from app.services.file_storage import profile_pic_folder
 from app.services.feature_gate import feature_limit
 from app.services.shopify_links import link_shop_at_sign_in
 from app.core.params import MAX_DB_INT
@@ -76,7 +77,7 @@ router = APIRouter(
 
 security = HTTPBearer()
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
@@ -98,10 +99,12 @@ def get_file_extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 async def save_upload_file(file: UploadFile, org_id: str, user_id: str) -> str:
-    """Save an uploaded profile picture and return the URL to store"""
-    filename = f"profile{get_file_extension(file.filename)}"
-    content = await file.read()
-    return await store_upload(content, profile_pic_folder(org_id, user_id), filename, file.content_type)
+    """Store an uploaded profile picture, shrunk to a small WebP, and return the
+    URL to keep. Raises 400 when the bytes are not a usable image."""
+    try:
+        return await store_avatar(await file.read(), profile_pic_folder(org_id, user_id))
+    except AvatarRejected:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image file")
 
 @router.post("", response_model=UserResponse)
 async def create_user(
@@ -319,12 +322,7 @@ async def get_team_overview(
             total_active += active
             total_capacity += DEFAULT_AGENT_CAPACITY
 
-            profile_pic = user.profile_pic
-            if settings.S3_FILE_STORAGE and profile_pic:
-                try:
-                    profile_pic = await get_s3_signed_url(profile_pic)
-                except Exception:
-                    pass
+            profile_pic = sign_s3_url_stable(user.profile_pic)
 
             agents.append(TeamAgentStats(
                 id=uid,
@@ -399,7 +397,9 @@ async def get_my_avatar(current_user: User = Depends(get_current_user)):
     if not current_user.profile_pic:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No profile picture")
 
-    location = sign_s3_url(current_user.profile_pic)
+    # Stable: the redirect itself is never cached, but the object it lands on
+    # is, which only helps if the next redirect lands on the same URL.
+    location = sign_s3_url_stable(current_user.profile_pic)
     if not location.startswith(("http://", "https://")):
         # Local storage is served under the API prefix, which is what
         # save_upload_file now stores. Rows written before that normalisation
@@ -800,14 +800,7 @@ async def update_profile(
             current_user.id,
             **fields
         )
-                # Generate signed URL if using S3 and user has a profile picture
-        if settings.S3_FILE_STORAGE and updated_user.profile_pic:
-            signed_url = await get_s3_signed_url(updated_user.profile_pic)
-            # Create a response with both the user data and the signed URL
-            user_dict = updated_user.to_dict()
-            user_dict["profile_pic"] = signed_url
-            return user_dict
-        
+        # profile_pic is signed by UserResponse on serialization.
         return updated_user
         
     except HTTPException:
@@ -900,14 +893,7 @@ async def update_user(
 
         updated_user = user_repo.update_user(user_id, **fields)
 
-        # Generate signed URL if using S3 and user has a profile picture
-        if settings.S3_FILE_STORAGE and updated_user.profile_pic:
-            signed_url = await get_s3_signed_url(updated_user.profile_pic)
-            # Create a response with both the user data and the signed URL
-            user_dict = updated_user.to_dict()
-            user_dict["profile_pic"] = signed_url
-            return user_dict
-            
+        # profile_pic is signed by UserResponse on serialization.
         return updated_user
     except Exception as e:
         logger.error(f"Failed to update user: {str(e)}")
@@ -1027,36 +1013,26 @@ async def upload_profile_pic(
                 detail=f"File size too large. Maximum size: {MAX_FILE_SIZE/1024/1024}MB"
             )
 
-        # Delete old profile picture if it exists
-        if current_user.profile_pic:
-            if settings.S3_FILE_STORAGE:
-                await delete_file_from_s3(current_user.profile_pic)
-            else:
-                old_photo_path = local_upload_path(current_user.profile_pic)
-                if os.path.exists(old_photo_path):
-                    os.remove(old_photo_path)
-        
-        # Save file and update user
+        old_picture = current_user.profile_pic
+
+        # Store the new picture first: a rejected upload must leave the old one working.
         file_path = await save_upload_file(
             file,
             str(current_user.organization_id),
             str(current_user.id)
         )
-        
+
         user_repo = UserRepository(db)
         updated_user = user_repo.update_user(
             current_user.id,
             profile_pic=file_path
         )
-        
-        # Generate signed URL if using S3
-        if settings.S3_FILE_STORAGE and updated_user.profile_pic:
-            signed_url = await get_s3_signed_url(updated_user.profile_pic)
-            # Create a response with both the user data and the signed URL
-            user_dict = updated_user.to_dict()
-            user_dict["profile_pic"] = signed_url
-            return user_dict
-        
+
+        # Only now that nothing points at it.
+        await delete_replaced_avatar(
+            old_picture, profile_pic_folder(current_user.organization_id, current_user.id))
+
+        # profile_pic is signed by UserResponse on serialization.
         return updated_user
         
     except HTTPException:
@@ -1076,19 +1052,16 @@ async def delete_profile_pic(
 ):
     """Delete user profile picture"""
     try:
-        if current_user.profile_pic:
-            if settings.S3_FILE_STORAGE:
-                await delete_file_from_s3(current_user.profile_pic)
-            else:
-                old_photo_path = local_upload_path(current_user.profile_pic)
-                if os.path.exists(old_photo_path):
-                    os.remove(old_photo_path)
+        old_picture = current_user.profile_pic
 
         user_repo = UserRepository(db)
         updated_user = user_repo.update_user(
             current_user.id,
             profile_pic=None
         )
+
+        await delete_replaced_avatar(
+            old_picture, profile_pic_folder(current_user.organization_id, current_user.id))
         
         # Return user data with profile_pic_url set to None for consistency
         if settings.S3_FILE_STORAGE:

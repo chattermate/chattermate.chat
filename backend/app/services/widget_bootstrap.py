@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.core.s3 import get_s3_signed_url
+from app.core.s3 import sign_s3_url_stable
 from app.core.security import create_conversation_token
 from app.models.agent import Agent
 from app.models.widget import Widget
@@ -163,9 +163,7 @@ async def _customization(db: Session, agent: Agent) -> dict:
         defaults['customization_metadata'] = widget_ui.served_metadata(defaults['customization_metadata'])
         return defaults
 
-    photo_url = customization.photo_url
-    if settings.S3_FILE_STORAGE and photo_url:
-        photo_url = await get_s3_signed_url(photo_url)
+    photo_url = sign_s3_url_stable(customization.photo_url)
 
     metadata, logo_url = widget_ui.for_visitors(db, agent)
 

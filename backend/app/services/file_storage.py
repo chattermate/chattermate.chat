@@ -33,6 +33,11 @@ from app.core.s3 import (
 )
 
 
+def agent_photo_folder(organization_id) -> str:
+    """Where an organization's agent photos live, on S3 and on disk alike."""
+    return f"agents/{organization_id}"
+
+
 def profile_pic_folder(organization_id, user_id) -> str:
     """Where a user's profile picture lives: `users/` on S3 and the public
     `user/` mount on disk, as profile pictures have always been stored."""

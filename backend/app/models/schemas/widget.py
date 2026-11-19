@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StringConstraints, field_serializer, fiel
 from typing import Annotated, List, Optional
 from uuid import UUID
 
-from app.core.s3 import sign_s3_url
+from app.core.s3 import sign_s3_url_stable
 
 
 class WidgetBase(BaseModel):
@@ -66,8 +66,9 @@ class AgentCustomizationResponse(BaseModel):
 
     @field_serializer('photo_url')
     def _sign_photo_url(self, v: Optional[str]) -> Optional[str]:
-        """Sign on the way out, every response — never stored signed."""
-        return sign_s3_url(v) if v else v
+        """Sign on the way out, every response — never stored signed. The stable
+        signature lets the browser cache the photo across page loads."""
+        return sign_s3_url_stable(v) if v else v
 
     class Config:
         from_attributes = True
@@ -87,8 +88,9 @@ class HumanAgentResponse(BaseModel):
 
     @field_serializer('human_agent_profile_pic')
     def _sign_profile_pic(self, v: Optional[str]) -> Optional[str]:
-        """Sign on the way out, every response — never stored signed."""
-        return sign_s3_url(v) if v else v
+        """Sign on the way out, every response — never stored signed. The stable
+        signature lets the browser cache the picture across page loads."""
+        return sign_s3_url_stable(v) if v else v
 
     class Config:
         from_attributes = True

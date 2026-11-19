@@ -14,7 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import io
+import os
+
 import pytest
+from PIL import Image as PILImage
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from unittest.mock import patch, MagicMock
@@ -35,6 +39,8 @@ from app.api import users as users_router
 from app.core.auth import get_current_user, require_permissions
 from app.main import app
 from app.core.config import settings
+from app.services.avatar_image import AVATAR_PIXELS
+from app.services.file_storage import local_upload_path, profile_pic_folder
 from app.core.security import get_password_hash, verify_password
 from datetime import datetime, timedelta
 import json
@@ -1123,3 +1129,91 @@ def test_avatar_route_is_not_shadowed_by_the_user_id_route(client: TestClient, t
 def test_get_user_with_malformed_id_is_a_client_error(client: TestClient):
     """A malformed id is the caller's mistake (422), never a server error."""
     assert client.get("/api/v1/users/0").status_code == 422
+
+
+class TestProfilePictureUpload:
+    """POST/DELETE /me/profile-pic with local storage."""
+
+    @staticmethod
+    def _png(size: int = 64) -> bytes:
+        buffer = io.BytesIO()
+        PILImage.new("RGB", (size, size), (30, 90, 200)).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    @staticmethod
+    def _put(folder: str, name: str) -> str:
+        os.makedirs(os.path.join("uploads", folder), exist_ok=True)
+        with open(os.path.join("uploads", folder, name), "wb") as f:
+            f.write(b"old")
+        return f"{settings.API_V1_STR}/uploads/{folder}/{name}"
+
+    @pytest.fixture(autouse=True)
+    def _local_storage(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(settings, "S3_FILE_STORAGE", False)
+
+    @staticmethod
+    def _own_folder(user: User) -> str:
+        return profile_pic_folder(user.organization_id, user.id)
+
+    @staticmethod
+    def _stored(db: Session, user: User):
+        db.expire_all()
+        return db.query(User).filter(User.id == user.id).first().profile_pic
+
+    def _upload(self, client, content: bytes, name: str = "me.png"):
+        return client.post("/api/v1/users/me/profile-pic", files={"file": (name, content, "image/png")})
+
+    def test_a_large_picture_is_stored_as_a_small_webp_and_the_old_one_removed(
+            self, client: TestClient, test_user: User, db: Session):
+        old = self._put(self._own_folder(test_user), "profile.png")
+        test_user.profile_pic = old
+        db.commit()
+
+        response = self._upload(client, self._png(800))
+
+        assert response.status_code == 200
+        stored = self._stored(db, test_user)
+        assert stored.endswith(".webp")
+        picture = PILImage.open(local_upload_path(stored))
+        assert picture.format == "WEBP" and max(picture.size) == AVATAR_PIXELS
+        assert not os.path.exists(local_upload_path(old))
+
+    def test_bytes_that_are_not_an_image_are_refused_and_the_old_picture_kept(
+            self, client: TestClient, test_user: User, db: Session):
+        old = self._put(self._own_folder(test_user), "profile.png")
+        test_user.profile_pic = old
+        db.commit()
+
+        response = self._upload(client, b"<?php echo 1; ?>")
+
+        assert response.status_code == 400
+        assert self._stored(db, test_user) == old
+        assert os.path.exists(local_upload_path(old))
+
+    @pytest.mark.parametrize("method", ["upload", "delete"])
+    def test_a_file_outside_the_users_own_folder_is_never_removed(
+            self, client: TestClient, test_user: User, db: Session, method):
+        # profile_pic is whatever PUT /me last saved: point it at a colleague's file.
+        theirs = self._put(profile_pic_folder(test_user.organization_id, uuid4()), "profile.png")
+        test_user.profile_pic = theirs
+        db.commit()
+
+        if method == "upload":
+            response = self._upload(client, self._png())
+        else:
+            response = client.delete("/api/v1/users/me/profile-pic")
+
+        assert response.status_code == 200
+        assert os.path.exists(local_upload_path(theirs))
+
+    def test_delete_removes_the_users_own_picture(self, client: TestClient, test_user: User, db: Session):
+        mine = self._put(self._own_folder(test_user), "a.webp")
+        test_user.profile_pic = mine
+        db.commit()
+
+        response = client.delete("/api/v1/users/me/profile-pic")
+
+        assert response.status_code == 200
+        assert self._stored(db, test_user) is None
+        assert not os.path.exists(local_upload_path(mine))
