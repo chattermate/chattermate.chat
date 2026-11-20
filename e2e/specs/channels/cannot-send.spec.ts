@@ -36,7 +36,10 @@ test.describe('a WhatsApp number Meta will not let send', () => {
     const warning = integrations.cannotSendFor(number.account.display_name ?? '')
     await integrations.goto()
     await expect(integrations.card('WhatsApp')).toContainText(warning)
+    // The numbers list flags it, and its Manage opens the reason
     await integrations.manage('WhatsApp')
+    await expect(integrations.whatsAppNumber(number.account.display_name ?? '')).toContainText("Can't send replies")
+    await integrations.manageWhatsAppNumber(number.account.display_name ?? '')
     await expect(integrations.cannotSendPrompt()).toBeVisible()
 
     // The customer turns off two-step verification in WhatsApp Manager and signs up again

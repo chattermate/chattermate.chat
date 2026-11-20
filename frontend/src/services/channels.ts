@@ -130,6 +130,12 @@ const channelsService = {
     return response.data
   },
 
+  /** The plan's limit per capped channel ({ whatsapp: 2 }); null = no limit. */
+  async getAccountLimits(): Promise<Partial<Record<ChannelType, number | null>>> {
+    const response = await api.get('/channels/limits')
+    return response.data
+  },
+
   /**
    * The WhatsApp numbers an outbound conversation can be sent FROM.
    *

@@ -39,7 +39,7 @@ from app.api.channels.meta import _seal_signup_pages
 from app.channels.base import SendResult
 from app.repositories.channels import ChannelAccountRepository
 from app.repositories.channels.accounts import needs_reconnect
-from app.services import channel_access
+from app.services import channel_access, channel_limits
 
 BASE = "/api/v1/channels/meta"
 WEBHOOK = "/api/v1/webhooks/meta"
@@ -584,6 +584,85 @@ class TestConnectOnAPlanWithoutChannels:
                 "phone_number_id": whatsapp_account.external_account_id, "access_token": "new"})
 
         assert r.status_code == 200
+
+
+class TestWhatsAppNumberLimit:
+    """The plan's max_whatsapp_numbers caps NEW numbers only: a second number
+    is refused at the cap, a number the org already has can still reconnect,
+    and the settings screen reads the cap from /channels/limits."""
+
+    @pytest.fixture
+    def cap(self, monkeypatch):
+        def set_cap(value):
+            monkeypatch.setattr(channel_limits, "feature_limit", lambda db, org, key: value)
+        return set_cap
+
+    def connect(self, client, phone_number_id):
+        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"verified_name": "Acme"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            return client.post(f"{BASE}/whatsapp", json={"phone_number_id": phone_number_id,
+                                                          "access_token": "T", "waba_id": "W1"})
+
+    def test_a_second_number_connects_under_the_cap(self, client, db, cap, whatsapp_account):
+        cap(2)
+        r = self.connect(client, "PN-second")
+
+        assert r.status_code == 200
+        assert len(ChannelAccountRepository(db).list_by_org(whatsapp_account.organization_id, "whatsapp")) == 2
+
+    def test_a_number_past_the_cap_is_refused_and_nothing_is_stored(self, client, db, cap, whatsapp_account):
+        cap(1)
+        r = self.connect(client, "PN-second")
+
+        assert r.status_code == 403
+        assert r.json()["detail"] == "Your plan includes 1 WhatsApp number. Upgrade to connect another."
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN-second") is None
+
+    def test_a_connected_number_reconnects_at_the_cap(self, client, cap, whatsapp_account):
+        cap(1)
+        r = self.connect(client, whatsapp_account.external_account_id)
+
+        assert r.status_code == 200
+
+    def test_no_cap_means_no_limit(self, client, cap, whatsapp_account):
+        cap(None)
+        assert self.connect(client, "PN-2").status_code == 200
+        assert self.connect(client, "PN-3").status_code == 200
+
+    def test_signup_past_the_cap_is_refused_before_meta_is_asked(self, client, cap, whatsapp_account, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        cap(1)
+        exchange = AsyncMock(return_value=(True, {"access_token": "T"}))
+        register = AsyncMock(return_value=(True, {}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange), \
+             patch("app.api.channels.meta.register_phone_number", register):
+            r = client.post(f"{BASE}/whatsapp/embedded-signup",
+                            json={"code": "C", "waba_id": "W1", "phone_number_id": "PN-second"})
+
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+        register.assert_not_awaited()
+
+    def test_other_channels_are_not_capped(self, client, db, cap, whatsapp_account):
+        cap(1)
+        assert channel_limits.account_cap(db, whatsapp_account.organization_id, "messenger") is None
+
+    def test_limits_endpoint_reports_the_cap(self, client, cap):
+        cap(3)
+        r = client.get("/api/v1/channels/limits")
+
+        assert r.status_code == 200
+        assert r.json() == {"whatsapp": 3}
+
+    def test_limits_endpoint_reports_no_limit_as_null(self, client, cap):
+        cap(None)
+        assert client.get("/api/v1/channels/limits").json() == {"whatsapp": None}
+
+    def test_limits_endpoint_shows_zero_without_a_plan(self, client, monkeypatch):
+        def no_plan(db, org, key):
+            raise HTTPException(status_code=403, detail="No active subscription")
+        monkeypatch.setattr(channel_limits, "feature_limit", no_plan)
+        assert client.get("/api/v1/channels/limits").json() == {"whatsapp": 0}
 
 
 class TestEmbeddedSignupConnect:

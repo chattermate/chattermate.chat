@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, it, expect } from 'vitest'
-import { accountToManage, accountWarning } from '@/utils/channelAccounts'
+import { accountNamesSummary, accountToManage, accountWarning, numberLimitState } from '@/utils/channelAccounts'
 import type { ChannelAccount } from '@/services/channels'
 
 const account = (overrides: Partial<ChannelAccount> = {}): ChannelAccount => ({
@@ -97,5 +97,46 @@ describe('accountToManage', () => {
 
   it('opens nothing when no account is connected', () => {
     expect(accountToManage([])).toBeNull()
+  })
+})
+
+describe('numberLimitState', () => {
+  it('reads as a count when the plan sets no limit', () => {
+    expect(numberLimitState(1, null)).toEqual({ usage: '1 number connected', atLimit: false, limitText: '' })
+    expect(numberLimitState(3, null).usage).toBe('3 numbers connected')
+  })
+
+  it('shows the count against the limit and allows one more below it', () => {
+    expect(numberLimitState(1, 2)).toEqual({
+      usage: '1 of 2 numbers on your plan',
+      atLimit: false,
+      limitText: 'Your plan includes 2 WhatsApp numbers.',
+    })
+  })
+
+  it('is at the limit once the plan is full, or past it after a downgrade', () => {
+    expect(numberLimitState(2, 2).atLimit).toBe(true)
+    expect(numberLimitState(3, 2).atLimit).toBe(true)
+    expect(numberLimitState(3, 2).usage).toBe('3 numbers connected · your plan includes 2')
+    expect(numberLimitState(1, 1).limitText).toBe('Your plan includes 1 WhatsApp number.')
+    expect(numberLimitState(1, 1).usage).toBe('1 of 1 number on your plan')
+  })
+})
+
+describe('accountNamesSummary', () => {
+  const named = (...names: string[]) => names.map((n, i) => account({ id: `a${i}`, display_name: n }))
+
+  it('lists every name while the list is short', () => {
+    expect(accountNamesSummary(named('Sales'))).toBe('Sales')
+    expect(accountNamesSummary(named('Sales', 'Support', 'Billing'))).toBe('Sales, Support, Billing')
+  })
+
+  it('names the first two and counts the rest of a long list', () => {
+    expect(accountNamesSummary(named('Sales', 'Support', 'Billing', 'Returns', 'VIP')))
+      .toBe('Sales, Support and 3 more')
+  })
+
+  it('skips accounts without a name', () => {
+    expect(accountNamesSummary([account({ display_name: undefined }), ...named('Sales')])).toBe('Sales')
   })
 })

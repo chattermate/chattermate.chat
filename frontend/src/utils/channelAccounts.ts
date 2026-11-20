@@ -42,3 +42,37 @@ export const accountToManage = (accounts: ChannelAccount[]): ChannelAccount | nu
   ?? accounts.find(a => a.send_problem)
   ?? accounts[0]
   ?? null
+
+/** The card's line of connected account names: all of them up to `shown`,
+ *  else the first few and how many more ("Sales, Support and 5 more"). */
+export const accountNamesSummary = (accounts: ChannelAccount[], shown = 2): string => {
+  const names = accounts.map(a => a.display_name).filter(Boolean) as string[]
+  if (names.length <= shown + 1) return names.join(', ')
+  return `${names.slice(0, shown).join(', ')} and ${names.length - shown} more`
+}
+
+export interface NumberLimitState {
+  /** "1 of 2 numbers on your plan", or "2 numbers connected" with no limit */
+  usage: string
+  /** Connected as many as the plan allows */
+  atLimit: boolean
+  /** "Your plan includes 2 WhatsApp numbers." (only meaningful at a limit) */
+  limitText: string
+}
+
+/** How a channel's connected count reads against the plan's limit (null = none). */
+export const numberLimitState = (connected: number, limit: number | null): NumberLimitState => {
+  const plural = (n: number) => (n === 1 ? 'number' : 'numbers')
+  if (limit === null) {
+    return { usage: `${connected} ${plural(connected)} connected`, atLimit: false, limitText: '' }
+  }
+  // Past the limit after a downgrade: every number keeps working, none can be added
+  const usage = connected > limit
+    ? `${connected} ${plural(connected)} connected · your plan includes ${limit}`
+    : `${connected} of ${limit} ${plural(limit)} on your plan`
+  return {
+    usage,
+    atLimit: connected >= limit,
+    limitText: `Your plan includes ${limit} WhatsApp ${plural(limit)}.`,
+  }
+}
