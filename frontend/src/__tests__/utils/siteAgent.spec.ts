@@ -39,8 +39,7 @@ vi.mock('@/services/widget', () => ({
 }))
 
 import { ensureAiConfig } from '@/utils/aiConfig'
-import { agentWithoutWidget, createSiteWidget, siteAgentName } from '@/utils/siteAgent'
-import { AGENT_TYPE_DEFAULTS } from '@/utils/agentDefaults'
+import { agentWithoutWidget, createSiteWidget, siteAgentInstructions, siteAgentName } from '@/utils/siteAgent'
 
 const httpError = (status: number) =>
   new AxiosError(String(status), String(status), undefined, undefined, {
@@ -91,15 +90,36 @@ describe('siteAgentName', () => {
   })
 })
 
+describe('siteAgentInstructions', () => {
+  it("names the site and, for a store, the shopping help", () => {
+    const store = siteAgentInstructions('Larkfield Goods', 'larkfield.co.uk', true)
+    expect(store).toContain('the assistant on Larkfield Goods (larkfield.co.uk), an online store')
+    expect(store).toContain('find products')
+    expect(store).toContain('check on their orders')
+    expect(store).toContain('pass it to the team rather than guessing')
+  })
+
+  it('answers from the pages and posts of a site without a store', () => {
+    const site = siteAgentInstructions('Fernbill Studio', 'fernbill.example', false)
+    expect(site).toContain('the assistant on Fernbill Studio (fernbill.example).')
+    expect(site).toContain("site's own pages and posts")
+    expect(site).not.toContain('products')
+  })
+
+  it('names the host alone when the site has no name', () => {
+    expect(siteAgentInstructions('  ', 'fernbill.example', false)).toContain('the assistant on fernbill.example.')
+  })
+})
+
 describe('createSiteWidget', () => {
   it('makes a support agent named after the site, and its widget', async () => {
-    const widget = await createSiteWidget('Larkfield Goods', true)
+    const widget = await createSiteWidget('Larkfield Goods', 'Help on Larkfield Goods.', true)
 
     expect(createAgent).toHaveBeenCalledWith({
       name: 'Larkfield Goods',
       display_name: 'Larkfield Goods',
       agent_type: 'customer_support',
-      instructions: [AGENT_TYPE_DEFAULTS.customer_support],
+      instructions: ['Help on Larkfield Goods.'],
       is_active: true,
       use_workflow: false,
     })
@@ -109,7 +129,7 @@ describe('createSiteWidget', () => {
 
   it('gives the agent the page offered the widget, not a second agent', async () => {
     const offered = { id: 'a-old', name: 'Support', display_name: 'Mia' } as never
-    const widget = await createSiteWidget('Larkfield Goods', true, offered)
+    const widget = await createSiteWidget('Larkfield Goods', 'Help on Larkfield Goods.', true, offered)
 
     expect(createAgent).not.toHaveBeenCalled()
     expect(createAgentWidget).toHaveBeenCalledWith('a-old', 'Mia')
@@ -118,7 +138,7 @@ describe('createSiteWidget', () => {
 
   it('makes nothing when open source still needs an AI provider', async () => {
     getOrganizationConfig.mockRejectedValue(httpError(404))
-    expect(await createSiteWidget('Larkfield Goods', false)).toBeNull()
+    expect(await createSiteWidget('Larkfield Goods', 'Help on Larkfield Goods.', false)).toBeNull()
     expect(createAgent).not.toHaveBeenCalled()
     expect(createAgentWidget).not.toHaveBeenCalled()
   })

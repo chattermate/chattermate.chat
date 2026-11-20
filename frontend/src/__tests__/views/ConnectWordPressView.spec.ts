@@ -38,6 +38,7 @@ vi.mock('@/utils/siteAgent', () => ({
   createSiteWidget: (...args: unknown[]) => createSiteWidget(...args),
   agentWithoutWidget: (...args: unknown[]) => agentWithoutWidget(...args),
   siteAgentName: (siteName: string, siteHost: string) => siteName || siteHost,
+  siteAgentInstructions: (siteName: string, siteHost: string, store: boolean) => `${siteName}|${siteHost}|${store}`,
 }))
 
 // The hosted build's learn option and token service; an empty object is the open-source build
@@ -189,37 +190,54 @@ describe('ConnectWordPressView', () => {
 
   describe('a new account with no agent yet', () => {
     const NEW_WIDGET = { id: 'w-new-0003', agent: { name: 'Larkfield Goods', display_name: 'Larkfield Goods' } }
+    const INSTRUCTIONS = 'Larkfield Goods|shop.example.com|false'
 
     beforeEach(() => {
+      vi.useFakeTimers()
       getWidgets.mockResolvedValue([])
       agentWithoutWidget.mockResolvedValue(null)
       createSiteWidget.mockResolvedValue(NEW_WIDGET)
     })
 
-    it('makes the agent named after the site and sends its widget back, with no click', async () => {
-      mountView()
-      await flushPromises()
+    afterEach(() => {
+      vi.useRealTimers()
+    })
 
-      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false, null)
+    it('makes the agent for the site and sends its widget back, with no click', async () => {
+      mountView()
+      await vi.runAllTimersAsync()
+
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', INSTRUCTIONS, false, null)
       expect(returned().origin + returned().pathname).toBe('https://shop.example.com/wp-admin/admin-post.php')
       expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
       expect(returned().searchParams.get('state')).toBe('nonce12345')
     })
 
-    it('says what it is doing while it sets the agent up, never a list', async () => {
+    it('shows its progress for a few seconds before it goes back, never a list', async () => {
+      const wrapper = mountView()
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(wrapper.find('.connect-progress').exists()).toBe(true)
+      expect(wrapper.find('[role="status"]').text()).toBe('Taking you back to WordPress…')
+      expect(wrapper.find('.connect-agents').exists()).toBe(false)
+      expect(assign).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1600)
+      expect(assign).toHaveBeenCalledTimes(1)
+    })
+
+    it('says which agent it is making while it does', async () => {
       createSiteWidget.mockReturnValue(new Promise(() => {}))
       const wrapper = mountView()
-      await flushPromises()
+      await vi.advanceTimersByTimeAsync(0)
 
-      expect(wrapper.find('[role="status"]').text()).toContain('Setting up your AI agent from shop.example.com')
-      expect(wrapper.find('.connect-agents').exists()).toBe(false)
-      expect(wrapper.find('.connect-actions button').text()).toBe('Setting up…')
+      expect(wrapper.find('[role="status"]').text()).toBe('Creating your AI agent, Larkfield Goods…')
     })
 
     it('asks for an AI provider first in open source, without leaving', async () => {
       createSiteWidget.mockResolvedValue(null)
       const wrapper = mountView()
-      await flushPromises()
+      await vi.runAllTimersAsync()
 
       expect(wrapper.find('[role="alert"]').text()).toContain('needs an AI model first')
       expect(wrapper.find('.connect-actions button').text()).toBe('Create my AI agent and connect')
@@ -229,24 +247,24 @@ describe('ConnectWordPressView', () => {
     it('says so when the agent cannot be made, and the button tries again', async () => {
       createSiteWidget.mockRejectedValueOnce(new Error('500'))
       const wrapper = mountView()
-      await flushPromises()
+      await vi.runAllTimersAsync()
 
       expect(wrapper.find('[role="alert"]').text()).toContain("couldn't create your AI agent")
       expect(assign).not.toHaveBeenCalled()
 
       await wrapper.find('.connect-actions button').trigger('click')
-      await flushPromises()
+      await vi.runAllTimersAsync()
       expect(returned().searchParams.get('widget_id')).toBe('w-new-0003')
     })
 
-    it('sets up an agent the account already has, by itself', async () => {
+    it('sets up an agent the account already has, by itself, keeping its instructions', async () => {
       const mia = { id: 'a-old', name: 'Support', display_name: 'Mia', is_active: true }
       agentWithoutWidget.mockResolvedValue(mia)
       createSiteWidget.mockResolvedValueOnce(null)
       const wrapper = mountView()
-      await flushPromises()
+      await vi.runAllTimersAsync()
 
-      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', false, mia)
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', INSTRUCTIONS, false, mia)
       expect(wrapper.text()).toContain('Mia, your AI agent')
       expect(wrapper.find('.connect-actions button').text()).toBe('Connect my AI agent')
     })
@@ -254,7 +272,7 @@ describe('ConnectWordPressView', () => {
     it('cancels back to the plugin when setting up stops', async () => {
       createSiteWidget.mockResolvedValue(null)
       const wrapper = mountView()
-      await flushPromises()
+      await vi.runAllTimersAsync()
       await wrapper.findAll('.connect-actions button')[1].trigger('click')
 
       expect(returned().searchParams.get('error')).toBe('cancelled')
@@ -339,10 +357,12 @@ describe('ConnectWordPressView', () => {
       getWidgets.mockResolvedValue([])
       agentWithoutWidget.mockResolvedValue(null)
       createSiteWidget.mockResolvedValue({ id: 'w-new-0003', agent: { name: 'Larkfield Goods' } })
+      vi.useFakeTimers()
       mountView()
-      await flushPromises()
+      await vi.runAllTimersAsync()
+      vi.useRealTimers()
 
-      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', true, null)
+      expect(createSiteWidget).toHaveBeenCalledWith('Larkfield Goods', 'Larkfield Goods|shop.example.com|true', true, null)
       expect(enterprise.connectToken).toHaveBeenCalledWith('w-new-0003', 'https://shop.example.com/', RETURN)
       expect(returned().searchParams.get('connect_token')).toBe('tok-123')
     })

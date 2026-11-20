@@ -20,7 +20,7 @@ import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
-import { agentWithoutWidget, createSiteWidget, siteAgentName } from '@/utils/siteAgent'
+import { agentWithoutWidget, createSiteWidget, siteAgentInstructions, siteAgentName } from '@/utils/siteAgent'
 import type { Agent } from '@/types/agent'
 import BrandMark from '@/components/common/BrandMark.vue'
 import wordpressLogo from '@/assets/wordpress-logo.svg'
@@ -63,6 +63,16 @@ const newAgentName = computed(() => (request.value ? siteAgentName(request.value
 const existingAgentName = computed(() => existingAgent.value?.display_name || existingAgent.value?.name || '')
 const busy = computed(() => creating.value || connecting.value)
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
+
+// Setting the agent up by itself: a progress bar and what it is doing, shown
+// for a few seconds at least, so the page doesn't flash past before WordPress
+const SHOW_AT_LEAST_MS = 2500
+const settingUp = ref(false)
+const status = ref('')
+let shownSince = 0
+const hasBeenShown = () => new Promise((resolve) => setTimeout(resolve, Math.max(0, SHOW_AT_LEAST_MS - (Date.now() - shownSince))))
+// Hosted builds teach the agent the site as part of connecting; open source has no such step
+const learnsSite = computed(() => hasEnterpriseModule && !!request.value && returnsToTheSite(request.value))
 
 function agentName(widget: WidgetWithAgent): string {
   return widget.agent?.display_name || widget.agent?.name || 'Unnamed agent'
@@ -125,20 +135,27 @@ async function connect() {
     }
   } catch {
     connecting.value = false
+    settingUp.value = false
     connectError.value = `We couldn't add ${siteHost.value} to this widget's sites. Add it on the agent's Widget tab, or connect without it.`
     return
   }
   let connectToken: string | null
   try {
+    if (learnsSite.value) status.value = `Getting it ready to learn ${siteHost.value}…`
     connectToken = await learnToken(selectedId.value)
   } catch (err) {
     connecting.value = false
+    settingUp.value = false
     // Learning is part of connecting, so say what would get past it: a missing
     // permission won't change by trying again
     connectError.value = (err as { response?: { status?: number } })?.response?.status === 403
       ? `Connecting ${siteHost.value} teaches your AI the site, which needs permission to manage knowledge. Ask an admin to connect it, or to give you that permission.`
       : `We couldn't set up learning for ${siteHost.value}. Please try again in a moment.`
     return
+  }
+  if (settingUp.value) {
+    status.value = 'Taking you back to WordPress…'
+    await hasBeenShown()
   }
   window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
 }
@@ -149,15 +166,27 @@ async function createAndConnect() {
   creating.value = true
   connectError.value = ''
   needsAiProvider.value = false
+  settingUp.value = true
+  shownSince = Date.now()
+  status.value = existingAgent.value
+    ? `Setting up ${existingAgentName.value}, your AI agent…`
+    : `Creating your AI agent, ${newAgentName.value}…`
   try {
-    const widget = await createSiteWidget(newAgentName.value, hasEnterpriseModule, existingAgent.value)
+    const widget = await createSiteWidget(
+        newAgentName.value,
+        siteAgentInstructions(request.value.siteName, siteHost.value, request.value.store),
+        hasEnterpriseModule,
+      existingAgent.value,
+    )
     if (!widget) {
+      settingUp.value = false
       needsAiProvider.value = true
       return
     }
     widgets.value = [widget]
     selectedId.value = widget.id
   } catch {
+    settingUp.value = false
     connectError.value = "We couldn't create your AI agent. Try again, or create one from the dashboard."
     return
   } finally {
@@ -209,11 +238,14 @@ onMounted(() => {
         <p v-if="loading" class="connect-muted" role="status">Loading your agents…</p>
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
+        <template v-else-if="settingUp">
+          <p class="connect-lead">Setting up ChatterMate for {{ siteHost }}. This takes a few seconds.</p>
+          <div class="connect-progress" aria-hidden="true"><span></span></div>
+          <p class="connect-muted connect-status" role="status">{{ status }}</p>
+        </template>
+
         <template v-else-if="!widgets.length">
-          <p v-if="busy" class="connect-lead" role="status">
-            Setting up your AI agent from {{ siteHost }}. You'll be back in WordPress in a moment.
-          </p>
-          <p v-else-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
+          <p v-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
           <p v-else class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
           <ul class="connect-plan">
             <li>
@@ -587,8 +619,36 @@ h1 {
   to { transform: rotate(360deg); }
 }
 
+/* Setting up by itself: a moving bar, and what it is doing under it */
+.connect-progress {
+  height: 4px;
+  margin: 0 0 var(--space-sm);
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
+}
+
+.connect-progress span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-solid);
+  animation: connect-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes connect-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+.connect-status {
+  margin: 0 0 var(--space-md);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .connect-spinner { animation: none; }
+  .connect-progress span { animation: none; width: 100%; }
 }
 
 .connect-foot svg {

@@ -17,7 +17,6 @@ limitations under the License.
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 import { widgetService } from '@/services/widget'
-import { AGENT_TYPE_DEFAULTS } from '@/utils/agentDefaults'
 import { ensureAiConfig } from '@/utils/aiConfig'
 
 /** A widget and the agent that answers on it, as the connect page lists them. */
@@ -36,6 +35,24 @@ export function siteAgentName(siteName: string, siteHost: string): string {
 }
 
 /**
+ * Starting instructions for an agent made for a site: whose site it is, what
+ * it answers from, and, for a store, the shopping help it gives. What it may
+ * talk about comes from what it learns of the site, not from a list here.
+ */
+export function siteAgentInstructions(siteName: string, siteHost: string, store: boolean): string {
+  const name = siteName.trim() || siteHost
+  const where = name === siteHost ? siteHost : `${name} (${siteHost})`
+  return store
+    ? `You are the assistant on ${where}, an online store. Help shoppers find products, compare them and check on ` +
+      `their orders, using the store's own pages and products. Be concise, friendly and empathetic. When the store ` +
+      `doesn't cover something, say so and offer to pass it to the team rather than guessing. Hand refunds, payment ` +
+      `problems and account issues to a person.`
+    : `You are the assistant on ${where}. Answer visitors' questions using the site's own pages and posts. Be ` +
+      `concise, friendly and empathetic. When the site doesn't cover something, say so and offer to pass it to the ` +
+      `team rather than guessing.`
+}
+
+/**
  * For an account with no widget yet: the agent made earlier and left without
  * one (setup stopped half way), which gets the widget rather than a second
  * agent. Only an active agent: an inactive one isn't answering anywhere, so a
@@ -49,16 +66,19 @@ export async function agentWithoutWidget(): Promise<Agent | null> {
 /**
  * The agent's widget for the site being connected, for an account with no
  * widget yet (a new signup from the WordPress plugin): on `existing` when the
- * page offered that agent, else on a new agent named after the site. Null when
+ * page offered that agent (its instructions kept), else on a new agent named
+ * after the site, with `instructions` from siteAgentInstructions(). Null when
  * open source needs the admin's own AI provider first.
  */
-export async function createSiteWidget(name: string, managedAi: boolean, existing: Agent | null = null): Promise<SiteWidget | null> {
+export async function createSiteWidget(
+  name: string, instructions: string, managedAi: boolean, existing: Agent | null = null,
+): Promise<SiteWidget | null> {
   if (!(await ensureAiConfig(managedAi))) return null
   const agent = existing ?? await agentService.createAgent({
     name,
     display_name: name,
     agent_type: 'customer_support',
-    instructions: [AGENT_TYPE_DEFAULTS.customer_support],
+    instructions: [instructions],
     is_active: true,
     use_workflow: false,
   })
