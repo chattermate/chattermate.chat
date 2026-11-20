@@ -594,6 +594,11 @@ function shopify({ action, body, url }: Call): Answer {
     const node = product && { ...product, variants: { ...product.variants, pageInfo: { hasNextPage: false } } }
     return ok({ data: { product: node } })
   }
+  if (query.includes('query StockAlertProduct')) {
+    // Back-in-stock sign-ups: the product's variants and which are sold out
+    const product = shopifyProducts.find((p) => p.id === variables.id) ?? null
+    return ok({ data: { product } })
+  }
   if (query.includes('query SearchProducts')) {
     return ok({ data: { products: { edges: shopifyProducts.map((node) => ({ node })), pageInfo: { hasNextPage: false, endCursor: null } } } })
   }
