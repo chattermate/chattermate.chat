@@ -56,3 +56,8 @@ export function storeOriginalDesignChoice(agentId: string): void {
 export async function enableLeadCapture(api: ApiClient, agentId: string): Promise<void> {
   await api.put(`/agent/${agentId}/lead-capture`, { data: { enabled: true, require_consent: false } })
 }
+
+/** The org's agents as the agent list reads them. */
+export async function listAgents(api: ApiClient): Promise<Array<Agent & { display_name: string | null, instructions: string[] }>> {
+  return api.get('/agent/list')
+}
