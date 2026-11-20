@@ -234,13 +234,6 @@ const allRoutes = hasEnterpriseModule
         component: loadEnterpriseComponent(moduleImports.signupView),
         meta: { requiresAuth: false },
       },
-      {
-        // "Open ChatterMate" in the WordPress plugin: a one-time sign-in link
-        path: '/wordpress/sign-in',
-        name: 'wordpress-sign-in',
-        component: loadEnterpriseComponent(moduleImports.wordpressSignInView),
-        meta: { requiresAuth: false },
-      },
       // Explore is retired and its backend proxy unregistered
       // {
       //   path: '/explore',
