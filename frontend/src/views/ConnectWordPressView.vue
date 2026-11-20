@@ -19,7 +19,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
+import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite, takeJustSignedUp } from '@/utils/wordpressConnect'
+import { agentWithoutWidget, createSiteWidget, siteAgentInstructions, siteAgentName } from '@/utils/siteAgent'
+import type { Agent } from '@/types/agent'
+import BrandMark from '@/components/common/BrandMark.vue'
+import wordpressLogo from '@/assets/wordpress-logo.svg'
+
+// The WordPress mark is drawn in the heading colour (a mask), so it reads in both themes
+const wordpressMask = { '--wp-logo': `url("${wordpressLogo}")` }
 
 /** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
 interface WidgetWithAgent {
@@ -29,11 +36,14 @@ interface WidgetWithAgent {
 
 const route = useRoute()
 const request = computed(() => parseConnectRequest(route.query as Record<string, unknown>))
+// Straight from signing up in the plugin's flow, in this tab: then, and only
+// then, the agent is set up without a click (a link alone never does it)
+const justSignedUp = request.value ? takeJustSignedUp(request.value.state) : false
 
-// Teaching the agent the site (hosted builds): the option renders nothing in open source
-const { enterpriseComponent, loadModule, moduleImports } = useEnterpriseFeatures()
+// Teaching the agent the site (hosted builds) is part of every connect, not a
+// choice: the same link gives the agent the store's tools. Open source has none.
+const { enterpriseComponent, hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 const LearnOption = enterpriseComponent(moduleImports.wordpressLearnOption)
-const learn = ref(true)
 
 const widgets = ref<WidgetWithAgent[]>([])
 const selectedId = ref('')
@@ -44,9 +54,28 @@ const allowedDomains = ref<string[] | null>(null)
 const addDomain = ref(false)
 const connecting = ref(false)
 const connectError = ref('')
+// A new account (from the plugin's "Get started"): no agent yet, so one is made here
+const creating = ref(false)
+const needsAiProvider = ref(false)
+// An agent the account already has, without a widget: it is the one set up here
+const existingAgent = ref<Agent | null>(null)
 
 const siteHost = computed(() => request.value?.siteHost ?? '')
+// What a new account's agent is called: the site's own name
+const newAgentName = computed(() => (request.value ? siteAgentName(request.value.siteName, siteHost.value) : ''))
+const existingAgentName = computed(() => existingAgent.value?.display_name || existingAgent.value?.name || '')
+const busy = computed(() => creating.value || connecting.value)
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
+
+// Setting the agent up by itself: a progress bar and what it is doing, shown
+// for a few seconds at least, so the page doesn't flash past before WordPress
+const SHOW_AT_LEAST_MS = 2500
+const settingUp = ref(false)
+const status = ref('')
+let shownSince = 0
+const hasBeenShown = () => new Promise((resolve) => setTimeout(resolve, Math.max(0, SHOW_AT_LEAST_MS - (Date.now() - shownSince))))
+// Hosted builds teach the agent the site as part of connecting; open source has no such step
+const learnsSite = computed(() => hasEnterpriseModule && !!request.value && returnsToTheSite(request.value))
 
 function agentName(widget: WidgetWithAgent): string {
   return widget.agent?.display_name || widget.agent?.name || 'Unnamed agent'
@@ -63,11 +92,18 @@ async function loadWidgets() {
   try {
     widgets.value = (await widgetService.getWidgets()) as unknown as WidgetWithAgent[]
     selectedId.value = widgets.value[0]?.id ?? ''
+    // No widget yet: name the agent this page would set up, so it says which
+    if (!widgets.value.length) existingAgent.value = await agentWithoutWidget()
   } catch {
     loadError.value = "We couldn't load your agents. Refresh the page to try again."
+    return
   } finally {
     loading.value = false
   }
+  // A new account from the plugin's Create free account has nothing to choose
+  // from: set the agent up from the site and go back, no click needed. If that
+  // stops (no AI model yet, say), the button below tries again.
+  if (justSignedUp && !widgets.value.length) await createAndConnect()
 }
 
 // A widget limited to certain sites must also allow the WordPress site, or the
@@ -84,10 +120,10 @@ watch(selectedId, async (id) => {
   }
 })
 
-/** The token the plugin claims to teach the agent the site; null when not wanted or not offered. */
+/** The token the plugin claims to teach the agent the site; null where it isn't offered. */
 async function learnToken(widgetId: string): Promise<string | null> {
   const req = request.value
-  if (!learn.value || !req?.siteUrl || !returnsToTheSite(req)) return null
+  if (!req?.siteUrl || !returnsToTheSite(req)) return null
   const sites = (await loadModule(moduleImports.wordpressSites))?.wordpressSites
   return sites ? sites.connectToken(widgetId, req.siteUrl, req.returnUrl.toString()) : null
 }
@@ -102,18 +138,66 @@ async function connect() {
     }
   } catch {
     connecting.value = false
+    settingUp.value = false
     connectError.value = `We couldn't add ${siteHost.value} to this widget's sites. Add it on the agent's Widget tab, or connect without it.`
     return
   }
   let connectToken: string | null
   try {
+    if (learnsSite.value) status.value = `Getting it ready to learn ${siteHost.value}…`
     connectToken = await learnToken(selectedId.value)
-  } catch {
+  } catch (err) {
     connecting.value = false
-    connectError.value = `We couldn't set up learning for ${siteHost.value}. Try again, or untick it to connect without it.`
+    settingUp.value = false
+    // Learning is part of connecting, so say what would get past it: a missing
+    // permission won't change by trying again
+    connectError.value = (err as { response?: { status?: number } })?.response?.status === 403
+      ? `Connecting ${siteHost.value} teaches your AI the site, which needs permission to manage knowledge. Ask an admin to connect it, or to give you that permission.`
+      : `We couldn't set up learning for ${siteHost.value}. Please try again in a moment.`
     return
   }
+  if (settingUp.value) {
+    status.value = 'Taking you back to WordPress…'
+    await hasBeenShown()
+  }
   window.location.assign(buildReturnUrl(request.value, { widgetId: selectedId.value, connectToken }))
+}
+
+/** No widget yet: make an agent for this site, then connect it as usual. */
+async function createAndConnect() {
+  if (!request.value) return
+  creating.value = true
+  connectError.value = ''
+  needsAiProvider.value = false
+  settingUp.value = true
+  shownSince = Date.now()
+  status.value = existingAgent.value
+    ? `Setting up ${existingAgentName.value}, your AI agent…`
+    : `Creating your AI agent, ${newAgentName.value}…`
+  try {
+    const widget = await createSiteWidget(
+      newAgentName.value,
+      siteAgentInstructions(newAgentName.value, siteHost.value, request.value.store),
+      hasEnterpriseModule,
+      existingAgent.value,
+      // Known before its widget is made: a retry after a failed widget reuses it
+      (agent) => { existingAgent.value = agent },
+    )
+    if (!widget) {
+      settingUp.value = false
+      needsAiProvider.value = true
+      return
+    }
+    widgets.value = [widget]
+    selectedId.value = widget.id
+  } catch {
+    settingUp.value = false
+    connectError.value = "We couldn't create your AI agent. Try again, or create one from the dashboard."
+    return
+  } finally {
+    creating.value = false
+  }
+  await connect()
 }
 
 function cancel() {
@@ -129,7 +213,15 @@ onMounted(() => {
 <template>
   <main class="connect-page">
     <section class="connect-card" aria-labelledby="connect-title">
-      <p class="connect-eyebrow">WordPress</p>
+      <div class="connect-link" aria-hidden="true">
+        <span class="connect-link__tile"><BrandMark :size="40" /></span>
+        <span class="connect-link__line">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+          </svg>
+        </span>
+        <span class="connect-link__tile"><span class="connect-link__wp" :style="wordpressMask"></span></span>
+      </div>
 
       <template v-if="!request">
         <h1 id="connect-title">This link isn't complete</h1>
@@ -141,22 +233,75 @@ onMounted(() => {
 
       <template v-else>
         <h1 id="connect-title">Connect {{ request.siteName }}</h1>
-        <p class="connect-lead">
-          Choose the AI agent that answers on <strong>{{ siteHost }}</strong>. We send its Widget ID back to your WordPress
-          admin at <strong>{{ request.returnUrl.host }}</strong>.
+        <p class="connect-site">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+          </svg>
+          {{ siteHost }}
         </p>
 
         <p v-if="loading" class="connect-muted" role="status">Loading your agents…</p>
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
+        <template v-else-if="settingUp">
+          <p class="connect-lead">Setting up ChatterMate for {{ siteHost }}. This takes a few seconds.</p>
+          <div class="connect-progress" aria-hidden="true"><span></span></div>
+          <p class="connect-muted connect-status" role="status">{{ status }}</p>
+        </template>
+
         <template v-else-if="!widgets.length">
-          <p class="connect-lead">You don't have an AI agent with a widget yet. Create one, then come back to this page.</p>
-          <router-link class="connect-button" to="/ai-agents">Create an AI agent</router-link>
+          <p v-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
+          <p v-else class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
+          <ul class="connect-plan">
+            <li>
+              <span class="connect-plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8" /><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M9 14h.01M15 14h.01" /></svg>
+              </span>
+              <span>
+                <template v-if="existingAgent">
+                  <strong>{{ existingAgentName }}, your AI agent</strong>
+                  <span class="connect-muted">It answers here with the instructions you gave it.</span>
+                </template>
+                <template v-else>
+                  <strong>An AI agent called {{ newAgentName }}</strong>
+                  <span class="connect-muted">It answers your visitors and hands over to your team.</span>
+                </template>
+              </span>
+            </li>
+            <li>
+              <span class="connect-plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></svg>
+              </span>
+              <span>
+                <strong>The chat on every page of {{ siteHost }}</strong>
+                <span class="connect-muted">Choose where it shows from your WordPress admin.</span>
+              </span>
+            </li>
+          </ul>
+          <component
+            :is="LearnOption"
+            v-if="returnsToTheSite(request)"
+            :site-host="siteHost"
+            :store="request.store"
+          />
+          <p v-if="needsAiProvider" class="connect-error" role="alert">
+            Your agent needs an AI model first.
+            <router-link to="/settings/ai-config">Add your AI provider</router-link>, then come back to this page.
+          </p>
+          <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
+
+          <div class="connect-actions">
+            <button type="button" class="connect-button connect-button--wide" :disabled="busy" @click="createAndConnect">
+              <span v-if="busy" class="connect-spinner" aria-hidden="true"></span>
+              {{ busy ? 'Setting up…' : existingAgent ? 'Connect my AI agent' : 'Create my AI agent and connect' }}
+            </button>
+            <button type="button" class="connect-quiet" :disabled="busy" @click="cancel">Cancel</button>
+          </div>
         </template>
 
         <template v-else>
           <fieldset class="connect-agents">
-            <legend>AI agent</legend>
+            <legend>Choose the AI agent that answers on {{ siteHost }}</legend>
             <label v-for="widget in widgets" :key="widget.id" class="connect-agent">
               <input v-model="selectedId" type="radio" name="widget" :value="widget.id" />
               <span>
@@ -177,21 +322,26 @@ onMounted(() => {
           <component
             :is="LearnOption"
             v-if="returnsToTheSite(request)"
-            v-model="learn"
             :site-host="siteHost"
             :store="request.store"
           />
           <p v-if="connectError" class="connect-error" role="alert">{{ connectError }}</p>
 
           <div class="connect-actions">
-            <button type="button" class="connect-button" :disabled="connecting || !selectedId" @click="connect">
+            <button type="button" class="connect-button connect-button--wide" :disabled="connecting || !selectedId" @click="connect">
+              <span v-if="connecting" class="connect-spinner" aria-hidden="true"></span>
               {{ connecting ? 'Connecting…' : 'Connect' }}
             </button>
-            <button type="button" class="connect-button connect-button--secondary" :disabled="connecting" @click="cancel">
-              Cancel
-            </button>
+            <button type="button" class="connect-quiet" :disabled="connecting" @click="cancel">Cancel</button>
           </div>
         </template>
+
+        <p class="connect-foot">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
+          You'll go back to your WordPress admin at {{ request.returnUrl.host }}.
+        </p>
       </template>
     </section>
   </main>
@@ -204,7 +354,9 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
-  background: var(--background-base);
+  background:
+    radial-gradient(60% 50% at 50% 0%, var(--accent-bg-06), transparent 70%),
+    var(--background-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
   box-sizing: border-box;
@@ -212,34 +364,92 @@ onMounted(() => {
 
 .connect-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 480px;
   padding: var(--space-xl);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card-lg);
   background: var(--surface);
   box-shadow: var(--shadow-md);
   box-sizing: border-box;
+  text-align: left;
 }
 
-.connect-eyebrow {
-  margin: 0 0 var(--space-xs);
+/* ChatterMate <-> WordPress */
+.connect-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-lg);
+}
+
+.connect-link__tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--background-soft);
+}
+
+/* The WordPress mark in the heading colour, so it reads in both themes */
+.connect-link__wp {
+  width: 28px;
+  height: 28px;
+  background: var(--text-heading);
+  -webkit-mask: var(--wp-logo) center / contain no-repeat;
+  mask: var(--wp-logo) center / contain no-repeat;
+}
+
+.connect-link__line {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
   color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+}
+
+.connect-link__line::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 2px dashed var(--border-color);
+}
+
+.connect-link__line svg {
+  position: relative;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-sizing: content-box;
 }
 
 h1 {
-  margin: 0 0 var(--space-sm);
+  margin: 0;
   color: var(--text-heading);
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   letter-spacing: var(--tracking-tight);
+  text-align: center;
+}
+
+.connect-site {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-xs) auto var(--space-lg);
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
 }
 
 .connect-lead {
-  margin: 0 0 var(--space-lg);
+  margin: 0 0 var(--space-md);
   color: var(--text-secondary);
   font-size: var(--text-base);
   line-height: 1.5;
@@ -259,6 +469,46 @@ h1 {
   font-size: var(--text-sm);
 }
 
+/* What one click sets up */
+.connect-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+  padding: 0;
+  list-style: none;
+}
+
+.connect-plan li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.connect-plan li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connect-plan strong {
+  color: var(--text-heading);
+  font-weight: var(--font-weight-semibold);
+}
+
+.connect-plan__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--accent-bg-06);
+  color: var(--text-heading);
+}
+
 .connect-agents {
   display: flex;
   flex-direction: column;
@@ -270,8 +520,8 @@ h1 {
 
 .connect-agents legend {
   margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
 }
 
 .connect-agent {
@@ -309,15 +559,17 @@ h1 {
 
 .connect-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
 }
 
 .connect-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  gap: var(--space-sm);
+  min-height: 48px;
   padding: 0 var(--space-lg);
   border: 1px solid transparent;
   border-radius: var(--radius-btn);
@@ -327,6 +579,11 @@ h1 {
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
   cursor: pointer;
+  box-sizing: border-box;
+}
+
+.connect-button--wide {
+  width: 100%;
 }
 
 .connect-button--secondary {
@@ -336,14 +593,93 @@ h1 {
 }
 
 .connect-button:disabled {
-  opacity: 0.6;
+  opacity: 0.7;
   cursor: default;
 }
 
+.connect-quiet {
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.connect-quiet:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.connect-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: connect-spin 0.8s linear infinite;
+}
+
+@keyframes connect-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Setting up by itself: a moving bar, and what it is doing under it */
+.connect-progress {
+  height: 4px;
+  margin: 0 0 var(--space-sm);
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
+}
+
+.connect-progress span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-solid);
+  animation: connect-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes connect-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+.connect-status {
+  margin: 0 0 var(--space-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-spinner { animation: none; }
+  .connect-progress span { animation: none; width: 100%; }
+}
+
+.connect-foot svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.connect-foot {
+  margin: var(--space-lg) 0 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
 .connect-button:focus-visible,
+.connect-quiet:focus-visible,
 .connect-agent:focus-within,
 .connect-domain:focus-within {
   outline: none;
   box-shadow: var(--ring-focus);
+}
+
+@media (max-width: 480px) {
+  .connect-page { padding: var(--space-md); align-items: flex-start; }
+  .connect-card { padding: var(--space-lg); }
 }
 </style>

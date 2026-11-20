@@ -6777,7 +6777,7 @@ export interface components {
             icon_color: string | null;
             /**
              * Accent Color
-             * @default #f34611
+             * @default #C9F24E
              */
             accent_color: string | null;
             /**
@@ -6855,7 +6855,7 @@ export interface components {
             icon_color: string | null;
             /**
              * Accent Color
-             * @default #f34611
+             * @default #C9F24E
              */
             accent_color: string | null;
             /**

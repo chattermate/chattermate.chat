@@ -151,3 +151,33 @@ function splitHost(value: string): [string, string?] {
 function firstValue(value: unknown): unknown {
   return Array.isArray(value) ? value[0] : value
 }
+
+// Set by the signup page when it sends a new account back here, read once.
+const JUST_SIGNED_UP_KEY = 'cm-wordpress-signup-state'
+
+/**
+ * The signup page made an account for this connect (its page to return to is
+ * `path`): remembered for this tab only, by the connect's state, so the
+ * connect page may set the agent up without a click. A link from anyone else
+ * never carries it, so it always gets the confirm button.
+ */
+export function rememberSignupFor(path: string): void {
+  const state = new URL(path, 'https://dashboard.invalid').searchParams.get('state')
+  if (!state) return
+  try {
+    sessionStorage.setItem(JUST_SIGNED_UP_KEY, state)
+  } catch {
+    // No storage (a private window): the confirm button still works
+  }
+}
+
+/** Whether this tab just signed up for the connect with this state. Forgotten once read. */
+export function takeJustSignedUp(state: string): boolean {
+  try {
+    const remembered = sessionStorage.getItem(JUST_SIGNED_UP_KEY)
+    sessionStorage.removeItem(JUST_SIGNED_UP_KEY)
+    return remembered === state
+  } catch {
+    return false
+  }
+}

@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, expect, it } from 'vitest'
-import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite, parseReturnUrl } from '@/utils/wordpressConnect'
+import { afterEach, describe, expect, it } from 'vitest'
+import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite, parseReturnUrl, rememberSignupFor, takeJustSignedUp } from '@/utils/wordpressConnect'
 
 const RETURN = 'https://shop.example.com/wp-admin/admin-post.php?action=chattermate_connect'
 
@@ -135,5 +135,22 @@ describe('allowsHost', () => {
     expect(allowsHost(['example.com'], 'example.com:8080')).toBe(false)
     expect(allowsHost(['example.com:8080'], 'example.com:8080')).toBe(true)
     expect(allowsHost(['localhost'], 'localhost:8080')).toBe(true)
+  })
+})
+
+describe('the signup the connect page may act on', () => {
+  afterEach(() => sessionStorage.clear())
+
+  it('is the one signed up for, once', () => {
+    rememberSignupFor('/connect/wordpress?return_url=x&state=abc12345&site_name=Shop')
+    expect(takeJustSignedUp('other999')).toBe(false)
+    rememberSignupFor('/connect/wordpress?return_url=x&state=abc12345&site_name=Shop')
+    expect(takeJustSignedUp('abc12345')).toBe(true)
+    expect(takeJustSignedUp('abc12345')).toBe(false)
+  })
+
+  it('is nothing without a state', () => {
+    rememberSignupFor('/connect/wordpress?return_url=x')
+    expect(takeJustSignedUp('')).toBe(false)
   })
 })
