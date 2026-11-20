@@ -83,9 +83,14 @@ async function loadWidgets() {
     if (!widgets.value.length) existingAgent.value = await agentWithoutWidget()
   } catch {
     loadError.value = "We couldn't load your agents. Refresh the page to try again."
+    return
   } finally {
     loading.value = false
   }
+  // Nothing to choose from (a new account, from the plugin's Create free
+  // account): set the agent up from the site and go back, no click needed.
+  // If that stops (no AI model yet, say), the button below tries again.
+  if (!widgets.value.length) await createAndConnect()
 }
 
 // A widget limited to certain sites must also allow the WordPress site, or the
@@ -205,7 +210,10 @@ onMounted(() => {
         <p v-else-if="loadError" class="connect-error" role="alert">{{ loadError }}</p>
 
         <template v-else-if="!widgets.length">
-          <p v-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
+          <p v-if="busy" class="connect-lead" role="status">
+            Setting up your AI agent from {{ siteHost }}. You'll be back in WordPress in a moment.
+          </p>
+          <p v-else-if="existingAgent" class="connect-lead">Your AI agent isn't on a site yet. One click sets it up here:</p>
           <p v-else class="connect-lead">You don't have an AI agent yet. One click sets it up:</p>
           <ul class="connect-plan">
             <li>
