@@ -16,6 +16,7 @@ limitations under the License.
 
 import asyncio
 import traceback
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
@@ -754,6 +755,26 @@ async def save_agent_shopify_config(
         logger.error(f"Failed to save agent Shopify config to DB: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save Shopify configuration to database.")
 
+
+def _uninstalled_shop_domain(headers, payload: dict) -> Optional[str]:
+    """The .myshopify.com domain an app/uninstalled webhook is about.
+
+    Shops are stored by their .myshopify.com domain. Shopify names it in the
+    X-Shopify-Shop-Domain header and in the payload's `myshopify_domain`; the
+    payload's `domain` is the store's primary domain, which is a custom domain
+    (www.example.com) once the merchant has one, so it is only a last resort.
+    """
+    candidates = (
+        headers.get("X-Shopify-Shop-Domain"),
+        payload.get("myshopify_domain"),
+        payload.get("domain"),
+    )
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip().lower()
+    return None
+
+
 @router.post("/webhooks/app-uninstalled")
 async def shopify_app_uninstalled_webhook(
     request: Request,
@@ -787,12 +808,14 @@ async def shopify_app_uninstalled_webhook(
             logger.error(f"Failed to parse webhook payload: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid JSON payload")
         
-        # Extract shop domain from payload
-        # Shopify sends the shop domain in the payload
-        shop_domain = payload.get('domain') or payload.get('myshopify_domain')
-        
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+        shop_domain = _uninstalled_shop_domain(request_headers, payload)
+
         if not shop_domain:
-            logger.error(f"No shop domain in webhook payload: {payload}")
+            # The payload is the shop's details: log its keys, never its values
+            logger.error(f"No shop domain in app/uninstalled webhook (payload keys: {sorted(payload)})")
             raise HTTPException(status_code=400, detail="Missing shop domain in payload")
         
         logger.info(f"Processing app uninstall webhook for shop: {shop_domain}")
