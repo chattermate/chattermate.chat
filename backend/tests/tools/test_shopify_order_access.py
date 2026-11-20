@@ -17,6 +17,7 @@ limitations under the License.
 import pytest
 
 from app.tools.shopify_order_access import (
+    email_written_by_customer,
     EMAIL_REQUIRED,
     INVALID_ORDER_NUMBER,
     ORDER_NUMBER_REQUIRED,
@@ -114,3 +115,16 @@ def test_a_proven_email_need_not_be_typed():
     assert missing_from_chat("jane@acme.com", "1001", ["it's #1001"], verified_email="Jane@Acme.com") is None
     assert missing_from_chat("jane@acme.com", "1001", ["hi"], verified_email="jane@acme.com") is not None
     assert missing_from_chat("other@acme.com", "1001", ["#1001"], verified_email="jane@acme.com") is not None
+
+
+@pytest.mark.parametrize("email, messages, written", [
+    ("maya@example.com", ["Email me at Maya@Example.com please"], True),
+    ("maya@example.com", ["my email is maya@example.com."], True),
+    ("maya@example.com", ["it's x.maya@example.com"], False),        # a longer address
+    ("maya@example.com", ["is the shirt back?"], False),
+    ("maya@example.com", [], False),
+    ("not an email", ["not an email"], False),
+    (None, ["maya@example.com"], False),
+])
+def test_an_email_the_customer_wrote(email, messages, written):
+    assert email_written_by_customer(email, messages) is written
