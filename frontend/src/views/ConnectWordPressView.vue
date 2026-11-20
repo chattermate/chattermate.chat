@@ -19,7 +19,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite } from '@/utils/wordpressConnect'
+import { allowsHost, buildReturnUrl, parseConnectRequest, returnsToTheSite, takeJustSignedUp } from '@/utils/wordpressConnect'
 import { agentWithoutWidget, createSiteWidget, siteAgentInstructions, siteAgentName } from '@/utils/siteAgent'
 import type { Agent } from '@/types/agent'
 import BrandMark from '@/components/common/BrandMark.vue'
@@ -36,6 +36,9 @@ interface WidgetWithAgent {
 
 const route = useRoute()
 const request = computed(() => parseConnectRequest(route.query as Record<string, unknown>))
+// Straight from signing up in the plugin's flow, in this tab: then, and only
+// then, the agent is set up without a click (a link alone never does it)
+const justSignedUp = request.value ? takeJustSignedUp(request.value.state) : false
 
 // Teaching the agent the site (hosted builds) is part of every connect, not a
 // choice: the same link gives the agent the store's tools. Open source has none.
@@ -97,10 +100,10 @@ async function loadWidgets() {
   } finally {
     loading.value = false
   }
-  // Nothing to choose from (a new account, from the plugin's Create free
-  // account): set the agent up from the site and go back, no click needed.
-  // If that stops (no AI model yet, say), the button below tries again.
-  if (!widgets.value.length) await createAndConnect()
+  // A new account from the plugin's Create free account has nothing to choose
+  // from: set the agent up from the site and go back, no click needed. If that
+  // stops (no AI model yet, say), the button below tries again.
+  if (justSignedUp && !widgets.value.length) await createAndConnect()
 }
 
 // A widget limited to certain sites must also allow the WordPress site, or the
@@ -173,10 +176,12 @@ async function createAndConnect() {
     : `Creating your AI agent, ${newAgentName.value}…`
   try {
     const widget = await createSiteWidget(
-        newAgentName.value,
-        siteAgentInstructions(request.value.siteName, siteHost.value, request.value.store),
-        hasEnterpriseModule,
+      newAgentName.value,
+      siteAgentInstructions(newAgentName.value, siteHost.value, request.value.store),
+      hasEnterpriseModule,
       existingAgent.value,
+      // Known before its widget is made: a retry after a failed widget reuses it
+      (agent) => { existingAgent.value = agent },
     )
     if (!widget) {
       settingUp.value = false

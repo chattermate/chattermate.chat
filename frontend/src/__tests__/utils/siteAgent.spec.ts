@@ -113,7 +113,8 @@ describe('siteAgentInstructions', () => {
 
 describe('createSiteWidget', () => {
   it('makes a support agent named after the site, and its widget', async () => {
-    const widget = await createSiteWidget('Larkfield Goods', 'Help on Larkfield Goods.', true)
+    const onAgent = vi.fn()
+    const widget = await createSiteWidget('Larkfield Goods', 'Help on Larkfield Goods.', true, null, onAgent)
 
     expect(createAgent).toHaveBeenCalledWith({
       name: 'Larkfield Goods',
@@ -125,6 +126,9 @@ describe('createSiteWidget', () => {
     })
     expect(createAgentWidget).toHaveBeenCalledWith('a-1', 'Larkfield Goods')
     expect(widget).toEqual({ id: 'w-1', agent: { name: 'Larkfield Goods', display_name: 'Larkfield Goods' } })
+    // Told of the agent before its widget is made, so a retry can reuse it
+    expect(onAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'a-1' }))
+    expect(onAgent.mock.invocationCallOrder[0]).toBeLessThan(createAgentWidget.mock.invocationCallOrder[0])
   })
 
   it('gives the agent the page offered the widget, not a second agent', async () => {

@@ -67,11 +67,13 @@ export async function agentWithoutWidget(): Promise<Agent | null> {
  * The agent's widget for the site being connected, for an account with no
  * widget yet (a new signup from the WordPress plugin): on `existing` when the
  * page offered that agent (its instructions kept), else on a new agent named
- * after the site, with `instructions` from siteAgentInstructions(). Null when
+ * after the site, with `instructions` from siteAgentInstructions(); `onAgent`
+ * hears of the agent before its widget is made. Null when
  * open source needs the admin's own AI provider first.
  */
 export async function createSiteWidget(
   name: string, instructions: string, managedAi: boolean, existing: Agent | null = null,
+  onAgent?: (agent: Agent) => void,
 ): Promise<SiteWidget | null> {
   if (!(await ensureAiConfig(managedAi))) return null
   const agent = existing ?? await agentService.createAgent({
@@ -82,6 +84,8 @@ export async function createSiteWidget(
     is_active: true,
     use_workflow: false,
   })
+  // Told before the widget is made: if that fails, trying again reuses this agent
+  onAgent?.(agent)
   const label = agent.display_name || agent.name
   const widget = await widgetService.createAgentWidget(agent.id, label)
   return { id: widget.id, agent: { name: agent.name, display_name: agent.display_name } }
