@@ -168,7 +168,7 @@ class CustomizationBase(BaseModel):
     chat_bubble_color: Optional[str] = BRAND_COLORS["ink"]
     chat_text_color: Optional[str] = "#212529"
     icon_color: Optional[str] = "#6C757D"
-    accent_color: Optional[str] = "#f34611"
+    accent_color: Optional[str] = BRAND_COLORS["lime"]
     font_family: Optional[str] = "Inter, system-ui, sans-serif"
     custom_css: Optional[str] = None
     customization_metadata: Optional[Dict] = {}

@@ -61,7 +61,7 @@ class AgentCustomization(Base):
     chat_text_color = Column(String, default="#212529")
     icon_url = Column(String)
     icon_color = Column(String, default="#6C757D")
-    accent_color = Column(String, default="#f34611")
+    accent_color = Column(String, default=BRAND_COLORS["lime"])
     font_family = Column(String, default="Inter, system-ui, sans-serif")
     custom_css = Column(Text)
     customization_metadata = Column(JSON, default={})
