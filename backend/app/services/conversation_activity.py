@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.core.logger import get_logger
 from app.models.chat_history import ChatHistory
+from app.services import customer_memory
 from app.services.agent_rooms import emit_to_org_inbox
 
 logger = get_logger(__name__)
@@ -92,6 +93,8 @@ def _message_written(_mapper, _connection, message: ChatHistory) -> None:
 def _committed(session: Session) -> None:
     for session_id, organization_id in session.info.pop(_PENDING, ()):
         _schedule(_announce(session_id, organization_id))
+        # The same commit is when a conversation's memory falls due again
+        customer_memory.note_activity(session_id, organization_id)
 
 
 @event.listens_for(Session, 'after_rollback')

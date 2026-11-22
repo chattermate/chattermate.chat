@@ -2974,4 +2974,13 @@ input:checked + .slider:before {
     }
 }
 
+/* Past phone width the tabs wrap instead of scrolling: the scrollbar is hidden,
+   so tabs past the edge (Widget, Advanced) could not be found with a mouse */
+@media (min-width: 769px) {
+    .tabs-navigation.horizontal {
+        flex-wrap: wrap;
+        overflow-x: visible;
+    }
+}
+
 </style>
