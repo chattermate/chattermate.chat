@@ -69,7 +69,7 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
-from app.services import email_proof
+from app.services import customer_memory, email_proof
 from app.services.visitor_language import preferred_languages
 from app.services.widget_answers import offers_follow_ups
 from app.services import widget_plan
@@ -714,6 +714,11 @@ async def handle_widget_chat(sid, data):
             await emit_bot_typing(session_id)
             logger.debug(f"Initializing chat agent for model {session['ai_config'].model_type}")
             host_actions = offered_actions(db, session)
+            if await customer_memory.prepare_widget(db, session):
+                # Only this key: another handler may have saved the session since it was read
+                latest = await sio.get_session(sid, namespace='/widget')
+                latest[customer_memory.SESSION_KEY] = session[customer_memory.SESSION_KEY]
+                await sio.save_session(sid, latest, namespace='/widget')
             agent_kwargs = widget_agent_kwargs(session, host_actions, step_actions_hint(db, session, host_actions))
             # Everything the model call needs is read: let the connection go
             # rather than hold it through the call

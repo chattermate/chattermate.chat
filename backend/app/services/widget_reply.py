@@ -29,6 +29,7 @@ from app.models.agent_action import AgentAction
 from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services import customer_memory
 from app.services.contact_capture import build_handoff_contact_form
 from app.services.reply_ui import TurnEvents
 from app.services.widget_answers import follow_up_limits, widget_choices
@@ -82,6 +83,9 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         session_id=session['session_id'],
         source=session.get('source'),
         extra_context=_joined(
+            # First: it stays the same every turn, so the prompt's cached prefix
+            # holds. Not beside a continued conversation: that one may be it.
+            None if _continued_context(session) else customer_memory.widget_context(session),
             host_extra_context(session.get('host_context'), bool(actions)),
             journey_hint,
             host_prompt_context(session.get('host_prompt')),

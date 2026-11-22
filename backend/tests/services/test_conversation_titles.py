@@ -29,7 +29,7 @@ import pytest
 from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
-from app.services import conversation_titles as titles
+from app.services import background_ai, conversation_titles as titles
 from app.services import visitor_history as history
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
@@ -110,19 +110,19 @@ class TestPreparing:
 
     def test_a_plan_without_ai_titles(self, db, test_widget, test_customer, test_ai_config, monkeypatch):
         asked = []
-        monkeypatch.setattr(titles, "plan_flag_on", lambda db, org, feature, otherwise: asked.append(feature) or False)
+        monkeypatch.setattr(background_ai, "plan_flag_on", lambda db, org, feature, otherwise: asked.append(feature) or False)
         assert titles.prepare(db, _conversation(db, test_widget, test_customer)) is None
         assert asked == ["conversation_titles"]
 
     def test_the_plan_does_not_allow_ai(self, db, test_widget, test_customer, test_ai_config, monkeypatch):
-        monkeypatch.setattr(titles, "plan_allows_ai", lambda *a, **k: False)
+        monkeypatch.setattr(background_ai, "plan_allows_ai", lambda *a, **k: False)
         assert titles.prepare(db, _conversation(db, test_widget, test_customer)) is None
 
     @pytest.mark.parametrize("remaining,titled", [(0, False), (5, True), (None, True)])
     def test_a_hosted_model_needs_credits_left(self, db, test_widget, test_customer, test_ai_config,
                                                monkeypatch, remaining, titled):
-        monkeypatch.setattr(titles, "model_is_hosted", lambda model_type: True)
-        monkeypatch.setattr(titles, "remaining_message_credits", lambda db, org: remaining)
+        monkeypatch.setattr(background_ai, "model_is_hosted", lambda model_type: True)
+        monkeypatch.setattr(background_ai, "remaining_message_credits", lambda db, org: remaining)
         assert (titles.prepare(db, _conversation(db, test_widget, test_customer)) is not None) is titled
 
     def test_an_already_titled_chat(self, db, test_widget, test_customer, test_ai_config):

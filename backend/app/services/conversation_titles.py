@@ -30,7 +30,7 @@ its first question, as before.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -41,13 +41,10 @@ from sqlalchemy.orm import Session
 from app.agents.guardrail_policy import INJECTION_CLAUSE, visitor_data_block
 from app.channels.constants import WIDGET_CHANNELS
 from app.core.logger import get_logger
-from app.core.security import decrypt_api_key
 from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.ai_config import AIConfigRepository
-from app.services.ai_access import plan_allows_ai
-from app.services.feature_gate import plan_flag_on
-from app.services.usage_metering import model_is_hosted, remaining_message_credits
+from app.services.background_ai import SPEAKERS, build_agent, may_use_ai, model_settings
 from app.services.widget_plan import CONVERSATION_TITLES_FEATURE
 
 logger = get_logger(__name__)
@@ -63,7 +60,6 @@ TRANSCRIPT_CHARS = 4000
 MODEL_MAX_TOKENS = 600
 MODEL_TIMEOUT_SECONDS = 20
 CONTEXT_LABEL = 'CONVERSATION'
-_SPEAKER = {'user': 'Customer', 'bot': 'Assistant', 'assistant': 'Assistant', 'agent': 'Teammate'}
 
 INSTRUCTIONS = [
     INJECTION_CLAUSE,
@@ -81,9 +77,9 @@ class TitleJob:
     session_id: UUID
     transcript: str
     model_type: str
-    api_key: str
-    model_name: str
-    base_url: Optional[str]
+    api_key: str = field(repr=False)
+    model_name: str = ''
+    base_url: Optional[str] = None
 
 
 def claim(db: Session, now: datetime, limit: int = BATCH) -> List[UUID]:
@@ -111,24 +107,12 @@ def _transcript(db: Session, session_id: UUID) -> Optional[str]:
     """The conversation's opening messages for the model, or None when the
     customer never wrote (nothing to name)."""
     rows = db.query(ChatHistory.message_type, ChatHistory.message) \
-        .filter(ChatHistory.session_id == session_id, ChatHistory.message_type.in_(_SPEAKER)) \
+        .filter(ChatHistory.session_id == session_id, ChatHistory.message_type.in_(SPEAKERS)) \
         .order_by(ChatHistory.created_at.asc(), ChatHistory.id.asc()).limit(TRANSCRIPT_MESSAGES).all()
     if not any(kind == 'user' and (text or '').strip() for kind, text in rows):
         return None
-    lines = [f"{_SPEAKER[kind]}: {' '.join(str(text).split())[:600]}" for kind, text in rows if text]
+    lines = [f"{SPEAKERS[kind]}: {' '.join(str(text).split())[:600]}" for kind, text in rows if text]
     return '\n'.join(lines)[:TRANSCRIPT_CHARS]
-
-
-def _may_use_ai(db: Session, organization_id: UUID, config) -> bool:
-    # A Growth plan's (widget_plan.py); a failed plan read writes no title
-    if not plan_flag_on(db, organization_id, CONVERSATION_TITLES_FEATURE, otherwise=False):
-        return False
-    if not plan_allows_ai(db, organization_id, config.model_type):
-        return False
-    if model_is_hosted(config.model_type):
-        remaining = remaining_message_credits(db, organization_id)
-        return remaining is None or remaining > 0
-    return True
 
 
 def prepare(db: Session, session_id: UUID) -> Optional[TitleJob]:
@@ -138,20 +122,13 @@ def prepare(db: Session, session_id: UUID) -> Optional[TitleJob]:
     if conversation is None or conversation.title:
         return None
     config = AIConfigRepository(db).get_active_config(conversation.organization_id)
-    if config is None or not _may_use_ai(db, conversation.organization_id, config):
+    # A Growth plan's (widget_plan.py)
+    if config is None or not may_use_ai(db, conversation.organization_id, config, CONVERSATION_TITLES_FEATURE):
         return None
     transcript = _transcript(db, session_id)
     if transcript is None:
         return None
-    model_type = config.model_type.value if hasattr(config.model_type, 'value') else str(config.model_type)
-    return TitleJob(
-        session_id=session_id,
-        transcript=transcript,
-        model_type=model_type,
-        api_key=decrypt_api_key(config.encrypted_api_key),
-        model_name=config.model_name,
-        base_url=(config.settings or {}).get('base_url'),
-    )
+    return TitleJob(session_id=session_id, transcript=transcript, **model_settings(config))
 
 
 def clean_title(text: Optional[str]) -> Optional[str]:
@@ -166,17 +143,8 @@ def clean_title(text: Optional[str]) -> Optional[str]:
 
 
 def _agent(job: TitleJob):
-    """Blocking: building the model may resolve a custom endpoint's host."""
-    from agno.agent import Agent
-    from app.utils.agno_utils import create_model
-
-    return Agent(
-        name='Conversation Titler',
-        model=create_model(model_type=job.model_type, api_key=job.api_key, model_name=job.model_name,
-                           max_tokens=MODEL_MAX_TOKENS, base_url=job.base_url),
-        instructions=INSTRUCTIONS,
-        markdown=False,
-    )
+    return build_agent('Conversation Titler', INSTRUCTIONS, MODEL_MAX_TOKENS, model_type=job.model_type,
+                       api_key=job.api_key, model_name=job.model_name, base_url=job.base_url)
 
 
 async def write_title(job: TitleJob) -> Optional[str]:

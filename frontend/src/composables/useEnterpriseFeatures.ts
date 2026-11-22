@@ -147,6 +147,8 @@ const moduleImports = {
   agentWordPressSite: '/src/modules/enterprise/components/wordpress/AgentWordPressSite.vue',
   // What the agent may do to a customer's store order (nothing in open source)
   agentOrderActions: '/src/modules/enterprise/components/agent/AgentOrderActions.vue',
+  // The agent's "Remember returning customers" switch (nothing in open source)
+  agentCustomerMemory: '/src/modules/enterprise/components/agent/AgentCustomerMemory.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */

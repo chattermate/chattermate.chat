@@ -19,6 +19,7 @@ import { ref } from 'vue'
 import type { Agent } from '@/types/agent'
 import { agentService } from '@/services/agent'
 import { toast } from 'vue-sonner'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 const props = defineProps<{
   agent: Agent
@@ -30,6 +31,10 @@ const emit = defineEmits<{
 
 // Create a ref for the agent
 const agentRef = ref(props.agent)
+
+// "Remember returning customers" (enterprise; nothing in open source)
+const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const AgentCustomerMemory = enterpriseComponent(moduleImports.agentCustomerMemory)
 
 // Import the composable
 import { useAgentAdvanced } from '@/composables/useAgentAdvanced'
@@ -211,6 +216,8 @@ const updateTokenAuthSetting = async (enabled: boolean) => {
     </div>
 
     <div class="settings-grid">
+      <AgentCustomerMemory :agent-id="agentRef.id" />
+
       <!-- Rate Limiting Card -->
       <div class="settings-card" :class="{ 'loading': isLoading }">
         <div class="card-top">

@@ -43,6 +43,7 @@ from app.repositories.channels import (
     AgentChannelConfigRepository,
 )
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services import customer_memory
 from app.services.app_first_routing import announce_inbound, app_claims
 from app.services.chat_notifications import notify_new_channel_chat_once, team_not_yet_notified
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
@@ -457,7 +458,10 @@ async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
     channel = account.channel_type
     message = reply_text(db, account.id, inbound)
     attributes = inbound_attributes(inbound, channel)
-    extra_context = business_message_context(conversation)
+    memory = await customer_memory.channel_context(db, customer_memory.Conversation(
+        organization_id=str(org_id), agent_id=str(agent_id), customer_id=str(customer_id),
+        session_id=str(session_id), channel=channel))
+    extra_context = "\n\n".join(p for p in (memory, business_message_context(conversation)) if p) or None
     model = dict(
         api_key=decrypt_api_key(ai_config.encrypted_api_key),
         model_name=ai_config.model_name,

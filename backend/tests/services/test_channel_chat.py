@@ -147,6 +147,51 @@ async def test_no_connection_is_held_through_the_model_call(db, routed_account, 
     assert held == [False]
 
 
+
+class _ChannelMemory:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.recalled = []
+
+    def enabled(self, organization_id):
+        return True
+
+    def recall(self, db, conversation):
+        self.recalled.append(conversation)
+        if self.fail:
+            raise RuntimeError('memory store down')
+        return 'MEMORY'
+
+    def note_activity(self, session_id, organization_id):
+        pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fail', [False, True])
+async def test_a_returning_customers_memory_reaches_the_channel_agent(
+        db, routed_account, use_test_db, test_ai_config, test_agent, mock_sio, fail):
+    from app.services import customer_memory
+    provider = _ChannelMemory(fail=fail)
+    customer_memory.install(provider)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=SimpleNamespace(
+        message="hi there", transfer_to_human=False, end_chat=False, request_lead_capture=False))
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+    try:
+        with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)) as create_async, \
+             patch.object(channel_chat, "deliver_to_customer", AsyncMock()) as deliver:
+            await process_channel_message(routed_account.id, make_inbound())
+    finally:
+        customer_memory.install(None)
+
+    asked = provider.recalled[0]
+    session = db.query(SessionToAgent).one()
+    assert (asked.channel, asked.session_id, asked.agent_id) == ("telegram", str(session.session_id), str(test_agent.id))
+    assert asked.customer_id == str(session.customer_id) and asked.conversation_scope is None
+    # A failing memory changes nothing: the customer is still answered
+    assert create_async.await_args.kwargs["extra_context"] == (None if fail else "MEMORY")
+    deliver.assert_awaited_once()
+
 def _agent_persisting_reply(db, text="hi there"):
     """A ChatAgent stub that persists its reply the way the real one does and
     reports the row id, so delivery results land on that row."""
