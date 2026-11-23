@@ -104,9 +104,14 @@ class ChannelEvent:
 
 InboundHandler = Callable[[InboundContext], Awaitable[bool]]
 EventListener = Callable[[ChannelEvent], Awaitable[None]]
+# A message the business answers by itself (a code or keyword the customer
+# sent, like a back-in-stock sign-up): the reply to send, "" for none, or None
+# when the message isn't for it
+TextHandler = Callable[[InboundContext], Awaitable[Optional[str]]]
 
 _inbound_handler: Optional[InboundHandler] = None
 _event_listeners: List[EventListener] = []
+_text_handlers: List[TextHandler] = []
 _extensions_loaded = False
 
 
@@ -126,6 +131,19 @@ def register_inbound_handler(handler: InboundHandler) -> None:
       as an `inbound` event (same event_id), whatever the handler did."""
     global _inbound_handler
     _inbound_handler = handler
+
+
+def register_text_handler(handler: TextHandler) -> None:
+    """Answer messages carrying a code or keyword before anyone else does (the
+    AI, a human holding the chat, or an external app), so they never spend an
+    AI reply. Handlers are asked in order; the first to answer wins. They run
+    for every inbound text, so they must cheaply say None to anything that
+    isn't theirs."""
+    _text_handlers.append(handler)
+
+
+def text_handlers() -> List[TextHandler]:
+    return list(_text_handlers)
 
 
 def register_event_listener(listener: EventListener) -> None:
@@ -174,6 +192,7 @@ def reset() -> None:
     """Forget every registration (tests)."""
     global _inbound_handler, _extensions_loaded
     _inbound_handler = None
+    _text_handlers.clear()
     _event_listeners.clear()
     _extensions_loaded = False
 

@@ -44,7 +44,7 @@ from app.repositories.channels import (
 )
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
-from app.services.app_first_routing import announce_inbound, app_claims
+from app.services.app_first_routing import announce_inbound, app_claims, text_reply
 from app.services.chat_notifications import notify_new_channel_chat_once, team_not_yet_notified
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
@@ -118,6 +118,20 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # can land while we wait, so the customer's message keeps the time it
         # arrived and still sorts before it.
         received_at = datetime.now(timezone.utc)
+        # A code or keyword the business answers itself (no AI reply spent)
+        reply = await text_reply(db, account, session_record, customer_id, inbound, received_at)
+        if reply is not None:
+            stored = _store_customer_message(db, inbound, session_record, agent_id,
+                                             customer_id, org_id, account, created_at=received_at)
+            await relay_stored_message(session_record, stored, USER_MESSAGE)
+            if adapter is not None:
+                await adapter.mark_read(account, inbound.external_message_id)
+            await announce_inbound(account, session_record, customer_id, inbound,
+                                   HandledBy.APP, received_at)
+            if reply:
+                await notify_customer(db, session_record, reply, channels_only=True)
+            return
+
         if await app_claims(db, account, session_record, customer_id, inbound, received_at):
             stored = _store_customer_message(db, inbound, session_record, agent_id,
                                              customer_id, org_id, account, created_at=received_at)

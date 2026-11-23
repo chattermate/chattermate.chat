@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.channels.app_hooks import (
     ChannelEvent, EventKind, HandledBy, InboundContext, emit_channel_event,
-    inbound_event_id, inbound_handler,
+    inbound_event_id, inbound_handler, text_handlers,
 )
 from app.channels.base import InboundMessage
 from app.core.logger import get_logger
@@ -38,6 +38,46 @@ logger = get_logger(__name__)
 # inbox) takes it. The extension answers synchronously, so this is added to
 # every reply the AI then gives — kept short.
 APP_HANDLER_TIMEOUT_SECONDS = 4.0
+# A text handler (a sign-up code) may read the store; past this it's skipped
+TEXT_HANDLER_TIMEOUT_SECONDS = 10.0
+
+
+def _context(account: ChannelAccount, session_record, customer_id: str, inbound: InboundMessage,
+             received_at: datetime) -> InboundContext:
+    return InboundContext(
+        event_id=inbound_event_id(account.id, inbound.external_message_id),
+        organization_id=account.organization_id,
+        channel_account_id=account.id,
+        channel_type=account.channel_type,
+        session_id=str(session_record.session_id),
+        customer_id=customer_id,
+        inbound=inbound,
+        received_at=received_at,
+    )
+
+
+async def text_reply(db: Session, account: ChannelAccount, session_record, customer_id: str,
+                     inbound: InboundMessage, received_at: datetime) -> Optional[str]:
+    """The business's own answer to a code or keyword in the message (see
+    app_hooks.register_text_handler), whoever holds the chat; None when no
+    handler takes it. A failing or slow handler counts as not taking it."""
+    handlers = text_handlers()
+    if not handlers or not (inbound.text or "").strip():
+        return None
+    db.commit()
+    context = _context(account, session_record, customer_id, inbound, received_at)
+    for handler in handlers:
+        try:
+            reply = await asyncio.wait_for(handler(context), TEXT_HANDLER_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(f"Text handler timed out on {inbound.external_message_id}")
+            continue
+        except Exception as e:
+            logger.error(f"Text handler failed on {inbound.external_message_id}: {e}")
+            continue
+        if isinstance(reply, str):
+            return reply
+    return None
 
 
 async def app_claims(db: Session, account: ChannelAccount, session_record, customer_id: str,
@@ -53,16 +93,7 @@ async def app_claims(db: Session, account: ChannelAccount, session_record, custo
         return False
     # Nothing may sit in an open transaction while an outside service thinks
     db.commit()
-    context = InboundContext(
-        event_id=inbound_event_id(account.id, inbound.external_message_id),
-        organization_id=account.organization_id,
-        channel_account_id=account.id,
-        channel_type=account.channel_type,
-        session_id=str(session_record.session_id),
-        customer_id=customer_id,
-        inbound=inbound,
-        received_at=received_at,
-    )
+    context = _context(account, session_record, customer_id, inbound, received_at)
     try:
         # Exactly True: anything else (a stray truthy string, a forgotten
         # await) must not silence the AI
