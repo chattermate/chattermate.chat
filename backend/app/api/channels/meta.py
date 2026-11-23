@@ -234,10 +234,12 @@ SIGNUP_TOKEN_TTL_SECONDS = 600
 PAGE_LIST_MAX_PAGES = 5
 # What the picker needs from each Page, its token included
 SIGNUP_PAGE_FIELDS = "id,name,access_token"
-# The login grants whose Pages the picker offers
-PAGE_GRANT_SCOPES = ("pages_messaging", "pages_show_list")
+# The login grant a Page needs to be offered: without it the Page can't message
+PAGE_GRANT_SCOPE = "pages_messaging"
 # Granted Pages fetched one by one when me/accounts leaves them out
 GRANTED_PAGE_FETCH_LIMIT = 50
+# How many of those fetches run at once, to stay clear of Meta's rate limit
+GRANTED_PAGE_FETCH_CONCURRENCY = 5
 
 
 def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
@@ -302,7 +304,7 @@ async def _granted_page_ids(user_token: str) -> list[str]:
         return []
     ids: list[str] = []
     for grant in info.get("granular_scopes") or []:
-        if grant.get("scope") not in PAGE_GRANT_SCOPES:
+        if grant.get("scope") != PAGE_GRANT_SCOPE:
             continue
         for target in grant.get("target_ids") or []:
             if str(target) not in ids:
@@ -310,8 +312,9 @@ async def _granted_page_ids(user_token: str) -> list[str]:
     return ids
 
 
-async def _granted_page(page_id: str, user_token: str) -> dict | None:
-    ok, page = await graph_get(page_id, user_token, params={"fields": SIGNUP_PAGE_FIELDS})
+async def _granted_page(page_id: str, user_token: str, limit: asyncio.Semaphore) -> dict | None:
+    async with limit:
+        ok, page = await graph_get(page_id, user_token, params={"fields": SIGNUP_PAGE_FIELDS})
     if ok and page.get("id") and page.get("access_token"):
         return page
     logger.warning(f"Could not read granted Page {page_id}: {graph_detail(page, 'no Page token')}")
@@ -330,7 +333,11 @@ async def _signup_pages(user_token: str) -> list[dict]:
     pages = await _list_manageable_pages(user_token, SIGNUP_PAGE_FIELDS)
     listed = {str(p.get("id")) for p in pages}
     missing = [i for i in await _granted_page_ids(user_token) if i not in listed]
-    fetched = await asyncio.gather(*(_granted_page(page_id, user_token)
+    if len(missing) > GRANTED_PAGE_FETCH_LIMIT:
+        logger.warning(f"Signup granted {len(missing)} unlisted Pages; offering the first "
+                       f"{GRANTED_PAGE_FETCH_LIMIT}")
+    limit = asyncio.Semaphore(GRANTED_PAGE_FETCH_CONCURRENCY)
+    fetched = await asyncio.gather(*(_granted_page(page_id, user_token, limit)
                                      for page_id in missing[:GRANTED_PAGE_FETCH_LIMIT]))
     return pages + [page for page in fetched if page]
 

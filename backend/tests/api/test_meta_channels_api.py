@@ -912,8 +912,7 @@ class TestMessengerSignup:
     def test_a_portfolio_page_can_be_connected(self, client, db):
         lookup = AsyncMock(return_value=(True, {
             "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
-        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE", scope="pages_show_list"),
-                                page_lookup=lookup)
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"), page_lookup=lookup)
         with patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
             connected = client.post(self.CONNECT, json={
                 "signup_token": r.json()["signup_token"], "page_id": "BIZPAGE"})
@@ -925,6 +924,15 @@ class TestMessengerSignup:
         lookup = AsyncMock(return_value=(True, {"id": "BIZPAGE", "name": "No token"}))
         r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=lookup)
         assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+
+    def test_a_page_granted_without_messaging_is_not_offered(self, client):
+        """Listed but not messageable: it would connect and never send."""
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE", scope="pages_show_list"),
+                                page_lookup=lookup)
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+        lookup.assert_not_awaited()
 
     def test_pages_still_listed_when_the_grants_cannot_be_read(self, client):
         r, _ = self._list_pages(client, granted=(False, {"error": {"message": "nope"}}))
