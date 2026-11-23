@@ -759,14 +759,16 @@ async def save_agent_shopify_config(
 def _uninstalled_shop_domain(headers, payload: dict) -> Optional[str]:
     """The .myshopify.com domain an app/uninstalled webhook is about.
 
-    Shops are stored by their .myshopify.com domain. Shopify names it in the
-    X-Shopify-Shop-Domain header and in the payload's `myshopify_domain`; the
-    payload's `domain` is the store's primary domain, which is a custom domain
-    (www.example.com) once the merchant has one, so it is only a last resort.
+    Shops are stored by their .myshopify.com domain. The signed payload names
+    it in `myshopify_domain`, so that comes first; the X-Shopify-Shop-Domain
+    header carries it too but sits outside the HMAC, so it only fills in when
+    the payload lacks it. The payload's `domain` is the store's primary domain,
+    a custom domain (www.example.com) once the merchant has one, so it is the
+    last resort.
     """
     candidates = (
-        headers.get("X-Shopify-Shop-Domain"),
         payload.get("myshopify_domain"),
+        headers.get("X-Shopify-Shop-Domain"),
         payload.get("domain"),
     )
     for candidate in candidates:
@@ -874,12 +876,16 @@ async def shopify_app_uninstalled_webhook(
     except Exception as e:
         logger.error(f"Error processing app uninstall webhook: {str(e)}")
         logger.error(traceback.format_exc())
-        # Return 200 to prevent Shopify from retrying
-        # Log the error for investigation
-        return {
-            "success": False,
-            "message": "An internal error occurred while processing the uninstall webhook."
-        }
+        db.rollback()
+        # A 5xx makes Shopify retry; the handler is idempotent, so a retry
+        # finishes the cleanup instead of leaving the store marked installed.
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": "An internal error occurred while processing the uninstall webhook.",
+            },
+        )
 
 # Shopify's mandatory privacy webhooks. The work lives in
 # app.services.shopify_privacy; these only verify, parse and acknowledge.

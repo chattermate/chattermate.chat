@@ -97,7 +97,7 @@ class TestUninstallFindsTheStore:
         assert response.json()["success"] is True
         assert not shop_exists(db)
 
-    def test_the_shop_domain_header_is_used_first(self, client, db):
+    def test_the_shop_domain_header_fills_in_when_the_payload_lacks_it(self, client, db):
         add_shop(db)
 
         response = post(client, shop_payload(myshopify_domain=None),
@@ -166,6 +166,38 @@ class TestWhatUninstallCleansUp:
 
 
 class TestUninstallEdgeCases:
+    def test_a_database_error_is_retried_by_shopify(self, client, db):
+        add_shop(db)
+
+        with patch("app.api.shopify.ShopifyShopRepository.delete_shop", side_effect=RuntimeError("db down")):
+            response = post(client, shop_payload())
+
+        assert response.status_code == 500
+        assert response.json()["success"] is False
+        assert shop_exists(db)
+
+        response = post(client, shop_payload())
+
+        assert response.status_code == 200
+        assert not shop_exists(db)
+
+    def test_a_header_naming_another_store_does_not_override_the_signed_payload(self, client, db):
+        add_shop(db)
+        add_shop(db, domain="victim.myshopify.com")
+
+        post(client, shop_payload(), headers={"X-Shopify-Shop-Domain": "victim.myshopify.com"})
+
+        assert not shop_exists(db)
+        assert shop_exists(db, "victim.myshopify.com")
+
+    def test_a_stored_domain_in_mixed_case_is_still_found(self, client, db):
+        add_shop(db, domain="Kite-Store.myshopify.com")
+
+        response = post(client, shop_payload())
+
+        assert response.status_code == 200
+        assert not shop_exists(db, "Kite-Store.myshopify.com")
+
     def test_an_unknown_store_is_acknowledged(self, client, db):
         response = post(client, shop_payload(myshopify_domain="never-seen.myshopify.com"))
 
@@ -215,9 +247,13 @@ class TestUninstallEdgeCases:
 
 
 class TestUninstalledShopDomain:
-    def test_header_wins_over_the_payload(self):
+    def test_the_signed_myshopify_domain_wins_over_the_header(self):
+        assert _uninstalled_shop_domain({"X-Shopify-Shop-Domain": "b.myshopify.com"},
+                                        shop_payload()) == SHOP
+
+    def test_the_header_wins_over_the_primary_domain(self):
         assert _uninstalled_shop_domain({"X-Shopify-Shop-Domain": SHOP},
-                                        shop_payload(myshopify_domain="b.myshopify.com")) == SHOP
+                                        shop_payload(myshopify_domain=None)) == SHOP
 
     def test_myshopify_domain_wins_over_the_primary_domain(self):
         assert _uninstalled_shop_domain({}, shop_payload()) == SHOP
