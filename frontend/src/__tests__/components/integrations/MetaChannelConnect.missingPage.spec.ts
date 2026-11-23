@@ -37,13 +37,15 @@ vi.mock('@/utils/metaSdk', async (original) => ({
 }))
 
 import channelsService from '@/services/channels'
+import { runBusinessLogin } from '@/utils/metaSdk'
 import MetaChannelConnect from '../../../components/integrations/MetaChannelConnect.vue'
 
 const NOTICE = 'Page BIZ1 was shared, but your Facebook account has no role on it.'
 
-const connectWithOneClick = async () => {
-  vi.mocked(channelsService.getEmbeddedSignupConfig).mockResolvedValue(
-    { enabled: true, app_id: 'APP1', config_id: 'CFG1', graph_version: 'v21.0' } as any)
+const connectWithOneClick = async (businessConfigId: string | null = 'BIZCFG') => {
+  vi.mocked(channelsService.getEmbeddedSignupConfig).mockResolvedValue({
+    enabled: true, app_id: 'APP1', config_id: 'CFG1', business_config_id: businessConfigId, graph_version: 'v21.0',
+  })
   const wrapper = mount(MetaChannelConnect, {
     props: { channel: 'messenger' },
     global: { stubs: { 'font-awesome-icon': true } },
@@ -77,5 +79,30 @@ describe('MetaChannelConnect: a ticked Page Meta would not hand over', () => {
     } as any)
     await connectWithOneClick()
     expect(channelsService.connectMessengerSignup).toHaveBeenCalledWith({ signup_token: 'sealed', page_id: 'PAGE1' })
+  })
+
+  it('with no Page left, shows why and logs in through the business portfolio', async () => {
+    vi.mocked(channelsService.listMessengerSignupPages)
+      .mockResolvedValueOnce({ signup_token: 'sealed', pages: [], unavailable_notice: NOTICE })
+      .mockResolvedValueOnce({ signup_token: 'sealed2', pages: [{ id: 'BIZ1', name: 'Portfolio Page' }], unavailable_notice: null })
+    vi.mocked(channelsService.connectMessengerSignup).mockResolvedValue({
+      id: 'acc1', channel_type: 'messenger', external_account_id: 'BIZ1',
+      display_name: 'Portfolio Page', is_active: true, agent_id: null, needs_reconnect: false,
+    } as any)
+    const wrapper = await connectWithOneClick()
+    expect(wrapper.find('[role="note"]').text()).toContain('Page BIZ1 was shared')
+    await wrapper.find('.page-notice-btn').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(runBusinessLogin).mock.calls.map(([config]) => config.configId)).toEqual(['CFG1', 'BIZCFG'])
+    expect(channelsService.connectMessengerSignup).toHaveBeenCalledWith({ signup_token: 'sealed2', page_id: 'BIZ1' })
+  })
+
+  it('offers no business login where it is not set up', async () => {
+    vi.mocked(channelsService.listMessengerSignupPages).mockResolvedValue({
+      signup_token: 'sealed', pages: [], unavailable_notice: NOTICE,
+    })
+    const wrapper = await connectWithOneClick(null)
+    expect(wrapper.find('[role="note"]').exists()).toBe(true)
+    expect(wrapper.find('.page-notice-btn').exists()).toBe(false)
   })
 })

@@ -156,6 +156,11 @@ class Settings(BaseSettings):
     # META_CONFIG_ID: it requests pages_messaging + pages_show_list and returns a
     # user token, not a WhatsApp signup.
     META_MESSENGER_CONFIG_ID: str = os.getenv("META_MESSENGER_CONFIG_ID", "")
+    # Optional second Login-for-Business config for Messenger that returns a
+    # system-user (business) token. It reaches every Page the business picks,
+    # including Pages its portfolio owns that the person has no role on, which
+    # the user-token config above can't. Offered when a shared Page is missing.
+    META_MESSENGER_BUSINESS_CONFIG_ID: str = os.getenv("META_MESSENGER_BUSINESS_CONFIG_ID", "")
     # Instagram API with Instagram Login: its own app id/secret, separate from
     # the Facebook ones above. This flow needs no Facebook Page — the business
     # signs in with Instagram and we get an Instagram user token.

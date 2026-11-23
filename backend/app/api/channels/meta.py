@@ -331,14 +331,16 @@ async def _granted_page(page_id: str, user_token: str, limit: asyncio.Semaphore)
 
 
 def _no_page_role_message(page_ids: list[str]) -> str:
-    """Why a Page ticked in Meta's popup can't be connected, and the fix."""
-    if len(page_ids) == 1:
-        return (f"Page {page_ids[0]} was shared, but your Facebook account has no role on it. "
-                "Assign yourself to it in Meta Business Settings → Accounts → Pages, "
-                "then connect again.")
-    return (f"Pages {', '.join(page_ids)} were shared, but your Facebook account has no role "
-            "on them. Assign yourself to them in Meta Business Settings → Accounts → Pages, "
-            "then connect again.")
+    """Why a Page ticked in Meta's popup can't be connected, and the fix: the
+    business-portfolio login when it's set up, else a Page role."""
+    one = len(page_ids) == 1
+    shared = (f"Page {page_ids[0]} was shared, but your Facebook account has no role on it."
+              if one else
+              f"Pages {', '.join(page_ids)} were shared, but your Facebook account has no role on them.")
+    if settings.META_MESSENGER_BUSINESS_CONFIG_ID:
+        return f"{shared} Connect through your business portfolio instead."
+    return (f"{shared} Assign yourself to {'it' if one else 'them'} in Meta Business Settings "
+            "→ Accounts → Pages, then connect again.")
 
 
 async def _signup_pages(user_token: str) -> tuple[list[dict], list[str]]:
@@ -474,6 +476,8 @@ async def get_embedded_signup_config(
         enabled=enabled,
         # Instagram Login has no configuration id, only an app id.
         config_id=(_signup_config_id(channel) or None) if enabled else None,
+        business_config_id=(settings.META_MESSENGER_BUSINESS_CONFIG_ID or None)
+        if enabled and channel == ChannelType.MESSENGER.value else None,
         app_id=_signup_app_id(channel) if enabled else None,
         graph_version=settings.META_GRAPH_VERSION,
     )
@@ -656,9 +660,9 @@ async def list_messenger_signup_pages(
     user_token = await _signup_user_token(request)
 
     pages, unavailable = await _signup_pages(user_token)
-    if not pages and unavailable:
-        raise HTTPException(status_code=400, detail=_no_page_role_message(unavailable))
-    if not pages:
+    # Shared but out of reach: an answer with no Pages, so the notice and its
+    # business-portfolio login can show instead of a dead end
+    if not pages and not unavailable:
         raise HTTPException(status_code=400, detail=(
             "No Facebook Pages were shared with ChatterMate. Run the connect "
             "again and tick the Page you want to use."))

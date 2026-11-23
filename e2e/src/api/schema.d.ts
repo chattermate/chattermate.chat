@@ -7228,6 +7228,8 @@ export interface components {
             enabled: boolean;
             /** Config Id */
             config_id?: string | null;
+            /** Business Config Id */
+            business_config_id?: string | null;
             /** App Id */
             app_id?: string | null;
             /** Graph Version */

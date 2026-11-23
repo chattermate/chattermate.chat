@@ -179,6 +179,9 @@ class EmbeddedSignupConfigOut(BaseModel):
     `enabled` is None when it isn't, so nothing leaks to orgs without it."""
     enabled: bool
     config_id: Optional[str] = None
+    # Messenger only: the business-portfolio login, for Pages the person has
+    # no role on (see META_MESSENGER_BUSINESS_CONFIG_ID)
+    business_config_id: Optional[str] = None
     app_id: Optional[str] = None
     graph_version: str
 

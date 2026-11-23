@@ -85,6 +85,8 @@ export interface WhatsAppTemplate {
 export interface EmbeddedSignupConfig {
   enabled: boolean
   config_id: string | null
+  /** Messenger only: the business-portfolio login, for Pages the person has no role on */
+  business_config_id?: string | null
   app_id: string | null
   graph_version: string
 }

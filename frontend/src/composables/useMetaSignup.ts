@@ -24,7 +24,7 @@ limitations under the License.
  * manual credentials form.
  */
 
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiErrorMessage } from '@/utils/apiError'
 import channelsService, {
@@ -78,6 +78,9 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   const showManualForm = ref(false)
 
   const configId = ref('')
+  // Messenger's business-portfolio login (a system-user token), offered when a
+  // shared Page came back out of reach
+  const businessConfigId = ref('')
   const appId = ref('')
   const graphVersion = ref('')
 
@@ -118,6 +121,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
         if (config.enabled && config.app_id && (channel === 'instagram' || config.config_id)) {
           // Empty for Instagram Login, which authorizes with the app id alone.
           configId.value = config.config_id ?? ''
+          businessConfigId.value = config.business_config_id ?? ''
           appId.value = config.app_id
           graphVersion.value = config.graph_version
           signupEnabled.value = true
@@ -193,8 +197,10 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     // Reconnecting: only the same Page puts that account back to work, so no picker
     if (reconnecting) {
       if (!pages.some((page) => page.id === reconnecting.external_account_id)) {
-        signupError.value = signupNotice.value
-          || `That login didn't include ${reconnectName()}. Sign in again and select that Page to reconnect it.`
+        // A missing Page explains itself in the notice, with its own way in
+        if (!signupNotice.value) {
+          signupError.value = `That login didn't include ${reconnectName()}. Sign in again and select that Page to reconnect it.`
+        }
         return
       }
       await connectPickedPage(reconnecting.external_account_id)
@@ -255,11 +261,14 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     }
   }
 
-  // Messenger: Facebook Login for Business, then pick a Page.
-  const startMessengerLogin = () => runPopupConnect(async (redirectUri) => {
+  // Messenger: Facebook Login for Business, then pick a Page. The business
+  // configuration logs the customer's portfolio in rather than the person.
+  const startMessengerLogin = (viaBusiness = false) => runPopupConnect(async (redirectUri) => {
+    signupNotice.value = ''
+    signupPages.value = []
     const code = await runBusinessLogin({
       appId: appId.value,
-      configId: configId.value,
+      configId: viaBusiness ? businessConfigId.value : configId.value,
       graphVersion: graphVersion.value,
       redirectUri,
     })
@@ -303,6 +312,15 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     )
   }
 
+  /** The notice's button: the same login, through the business portfolio. */
+  const startBusinessSignup = () => {
+    if (signingUp.value || !businessConfigId.value) return
+    signupError.value = ''
+    void startMessengerLogin(true)
+  }
+
+  const canUseBusinessLogin = computed(() => channel === 'messenger' && Boolean(businessConfigId.value))
+
   return {
     checkSignup,
     signupChecked,
@@ -315,6 +333,8 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     signupError,
     copy,
     startSignup,
+    startBusinessSignup,
+    canUseBusinessLogin,
     onPageSelected,
   }
 }
