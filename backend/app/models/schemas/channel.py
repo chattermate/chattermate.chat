@@ -161,6 +161,9 @@ class MessengerSignupPagesOut(BaseModel):
     carries their access tokens (encrypted) into step 2."""
     pages: list[MessengerPageOut]
     signup_token: str
+    # Set when a Page ticked in Meta's popup couldn't be offered: which one and
+    # how to fix it, so the picker can say why it's missing
+    unavailable_notice: Optional[str] = None
 
 
 class MessengerSignupConnectRequest(BaseModel):
@@ -176,6 +179,9 @@ class EmbeddedSignupConfigOut(BaseModel):
     `enabled` is None when it isn't, so nothing leaks to orgs without it."""
     enabled: bool
     config_id: Optional[str] = None
+    # Messenger only: the business-portfolio login, for Pages the person has
+    # no role on (see META_MESSENGER_BUSINESS_CONFIG_ID)
+    business_config_id: Optional[str] = None
     app_id: Optional[str] = None
     graph_version: str
 

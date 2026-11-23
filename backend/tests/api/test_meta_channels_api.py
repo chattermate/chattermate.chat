@@ -474,6 +474,14 @@ class TestEmbeddedSignupConfig:
         body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
         assert (body["enabled"], body["config_id"], body["app_id"]) == (True, "MCFG", "APP1")
 
+    def test_business_config_id_only_served_for_messenger(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "META_MESSENGER_BUSINESS_CONFIG_ID", "BIZCFG")
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        assert client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()["business_config_id"] == "BIZCFG"
+        assert client.get(f"{BASE}/embedded-signup-config?channel=whatsapp").json()["business_config_id"] is None
+
     def test_whatsapp_config_id_not_served_to_messenger(self, client, monkeypatch):
         """The WhatsApp config id must not leak on a Messenger request: Messenger
         has its own config, and an unset one means the manual form, not WhatsApp's."""
@@ -924,6 +932,44 @@ class TestMessengerSignup:
         lookup = AsyncMock(return_value=(True, {"id": "BIZPAGE", "name": "No token"}))
         r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=lookup)
         assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+        # The picker says which Page is missing and how to fix it
+        assert "BIZPAGE" in r.json()["unavailable_notice"]
+        assert "no role on it" in r.json()["unavailable_notice"]
+
+    REFUSED = (False, {"error": {
+        "message": "(#100) Object does not exist, cannot be loaded due to missing permission", "code": 100}})
+
+    def test_only_an_unreadable_granted_page_names_it_and_the_fix(self, client):
+        """The portfolio Page Meta won't give a token for, without a Page role:
+        an answer with no Pages and the notice, not 'No Facebook Pages'."""
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        assert r.status_code == 200
+        assert r.json()["pages"] == []
+        notice = r.json()["unavailable_notice"]
+        assert "BIZPAGE" in notice and "Business Settings" in notice
+
+    def test_the_notice_points_to_the_business_login_when_it_is_set_up(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_BUSINESS_CONFIG_ID", "BIZCFG")
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        notice = r.json()["unavailable_notice"]
+        assert "business portfolio" in notice and "Business Settings" not in notice
+
+    def test_a_rate_limited_lookup_is_not_blamed_on_a_missing_role(self, client):
+        limited = AsyncMock(return_value=(False, {"error": {"message": "Too many calls", "code": 4}}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=limited)
+        assert r.status_code == 200
+        assert r.json()["unavailable_notice"] is None
+
+    def test_several_unreadable_pages_are_named_together(self, client):
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZ1", "BIZ2"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        assert r.json()["unavailable_notice"].startswith("Pages BIZ1, BIZ2 were shared")
+
+    def test_no_notice_when_every_granted_page_is_offered(self, client):
+        r, _ = self._list_pages(client, granted=self._granted("PAGE1"))
+        assert r.json()["unavailable_notice"] is None
 
     def test_a_page_granted_without_messaging_is_not_offered(self, client):
         """Listed but not messageable: it would connect and never send."""

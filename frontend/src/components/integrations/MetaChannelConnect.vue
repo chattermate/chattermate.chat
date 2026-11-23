@@ -21,6 +21,7 @@ import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 import MessengerPagePicker from './MessengerPagePicker.vue'
+import MessengerPageNotice from './MessengerPageNotice.vue'
 import MetaOwnAppWebhook from './MetaOwnAppWebhook.vue'
 import { useMetaSignup } from '@/composables/useMetaSignup'
 import { apiErrorMessage } from '@/utils/apiError'
@@ -118,10 +119,13 @@ const {
   signingUp,
   showManualForm,
   signupPages,
+  signupNotice,
   signupError,
   connectingPage,
   copy: signupCopy,
   startSignup,
+  startBusinessSignup,
+  canUseBusinessLogin,
   onPageSelected,
 } = useMetaSignup({
   channel: props.channel,
@@ -201,6 +205,14 @@ const saveAgent = async () => {
       <div v-if="!account" class="meta-modal-body">
         <!-- Login for Business can grant several accounts at once; the customer
              picks which one this channel answers. -->
+        <MessengerPageNotice
+          v-if="signupNotice"
+          class="meta-page-notice"
+          :notice="signupNotice"
+          :can-use-business-login="canUseBusinessLogin"
+          :busy="signingUp"
+          @business-login="startBusinessSignup"
+        />
         <MessengerPagePicker
           v-if="signupPages.length"
           :pages="signupPages"
@@ -219,7 +231,13 @@ const saveAgent = async () => {
         <div v-else-if="signupEnabled && !showManualForm" class="meta-signup">
           <p class="meta-intro">{{ signupCopy.intro }}</p>
           <p v-if="signupError" class="meta-signup-error" role="alert">{{ signupError }}</p>
-          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startSignup">
+          <!-- The notice's business login is the way forward, so this steps back -->
+          <button
+            class="meta-btn meta-signup-btn"
+            :class="{ 'meta-btn-primary': !(signupNotice && canUseBusinessLogin) }"
+            :disabled="signingUp"
+            @click="startSignup"
+          >
             <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
             {{ signingUp ? 'Waiting for Meta…' : signupCopy.cta }}
           </button>
@@ -417,6 +435,10 @@ const saveAgent = async () => {
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
+}
+
+.meta-page-notice {
+  margin-bottom: 12px;
 }
 
 .meta-signup-checking {

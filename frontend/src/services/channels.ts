@@ -85,6 +85,8 @@ export interface WhatsAppTemplate {
 export interface EmbeddedSignupConfig {
   enabled: boolean
   config_id: string | null
+  /** Messenger only: the business-portfolio login, for Pages the person has no role on */
+  business_config_id?: string | null
   app_id: string | null
   graph_version: string
 }
@@ -100,6 +102,8 @@ export interface MessengerSignupPages {
   pages: MessengerSignupPage[]
   /** Opaque blob carrying the Pages' access tokens back to the connect step */
   signup_token: string
+  /** Why a Page ticked in Meta's popup isn't in the list, and the fix */
+  unavailable_notice?: string | null
 }
 
 export interface ChannelAccount {
