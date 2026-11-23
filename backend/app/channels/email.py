@@ -87,7 +87,9 @@ def platform_smtp_config(from_email: str) -> dict:
 
 
 def open_smtp(cfg: dict) -> smtplib.SMTP:
-    """A connected, logged-in SMTP session for a config built above."""
+    """A connected, logged-in SMTP session for a config built above. With
+    `require_tls` set, a server that can't encrypt is refused rather than sent
+    the password in the clear."""
     if cfg["use_ssl"]:
         smtp = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=SMTP_TIMEOUT_SECONDS)
     else:
@@ -95,6 +97,9 @@ def open_smtp(cfg: dict) -> smtplib.SMTP:
         try:
             smtp.starttls()
         except smtplib.SMTPNotSupportedError:
+            if cfg.get("require_tls"):
+                smtp.close()
+                raise
             logger.warning("SMTP server does not support STARTTLS; sending unencrypted")
     if cfg.get("username"):
         smtp.login(cfg["username"], cfg["password"])

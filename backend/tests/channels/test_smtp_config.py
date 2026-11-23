@@ -67,9 +67,25 @@ class FakeSMTP:
     def login(self, username, password):
         self.calls.append(("login", username))
 
+    def close(self):
+        self.calls.append(("close",))
+
 
 def test_platform_without_username_skips_login(platform, monkeypatch):
     """Mailpit: no STARTTLS offered, no credentials configured."""
     platform(1025)
     monkeypatch.setattr(email_channel.smtplib, "SMTP", FakeSMTP)
     assert open_smtp(platform_smtp_config("noreply@example.com")).calls == []
+
+
+def test_a_server_without_starttls_is_refused_when_tls_is_required(monkeypatch):
+    """A merchant's own server: no password goes out in the clear."""
+    made = []
+    monkeypatch.setattr(email_channel.smtplib, "SMTP", lambda *a, **k: made.append(FakeSMTP(*a, **k)) or made[-1])
+    cfg = {**inbox_smtp_config({"smtp_host": "mail.example.com", "smtp_port": 587,
+                                "smtp_username": "u", "smtp_password": "p"}, "a@example.com"),
+           "require_tls": True}
+    with pytest.raises(smtplib.SMTPNotSupportedError):
+        open_smtp(cfg)
+    assert made[0].calls == [("close",)]
+
