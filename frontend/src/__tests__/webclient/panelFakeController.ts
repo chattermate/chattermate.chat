@@ -55,7 +55,6 @@ const baseController = () => ({
     isHandedOverToHuman: ref(false),
     orbStyle: ref<Record<string, string>>({}),
     presence: ref<PresenceLine>({ text: PANEL_PRESENCE_TEXT.ai, online: true }),
-    showBranding: ref(true),
     helpCenterUrl: ref<string | null>(null),
     showCitations: ref(false),
     showAiDisclaimer: ref(true),

@@ -26,7 +26,7 @@ const ctrl = inject(WIDGET_CTX)!
 const preview = inject(WIDGET_PREVIEW, false)
 const {
     messages, newMessage, agentName, quickActions, customization, askAiSubtitle, placeholderText,
-    isMessageInputEnabled, canTypeMessage, loading, showCitations, showAiDisclaimer, showBranding,
+    isMessageInputEnabled, canTypeMessage, loading, showCitations, showAiDisclaimer,
     hostVisible, askAiHotkey, canStartNewChat, startingNewChat, newChatArmed, newChatError,
 } = ctrl
 
@@ -47,7 +47,6 @@ const setDraft = (text: string) => { ctrl.newMessage.value = text }
         :loading="loading"
         :show-citations="showCitations"
         :disclaimer="showAiDisclaimer ? AI_DISCLAIMER_TEXT : ''"
-        :show-branding="showBranding"
         :active="hostVisible"
         :hotkey="askAiHotkey"
         :can-start-new-chat="canStartNewChat"

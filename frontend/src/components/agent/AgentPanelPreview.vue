@@ -32,7 +32,6 @@ const props = defineProps<{
     agentId: string
     agentName: string
     photoUrl: string
-    showBranding: boolean
     windowWidth?: number
     windowHeight?: number
     /** A real test conversation to show instead of the sample */
@@ -48,7 +47,6 @@ provide(WIDGET_CTX, usePreviewController(toRef(props, 'customization'), previewS
     widgetId: computed(() => props.agentId || 'preview'),
     agentName: toRef(props, 'agentName'),
     photoUrl: toRef(props, 'photoUrl'),
-    showBranding: toRef(props, 'showBranding'),
     width,
     height,
 }, props.live))

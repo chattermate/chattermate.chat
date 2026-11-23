@@ -709,7 +709,7 @@ export class ChatWidget {
     return this.frame.locator('.cm-welcome-block .message-bubble')
   }
 
-  /** The "Powered by ChatterMate" link, unless the plan hides the branding. */
+  /** The "Powered by ChatterMate" link, shown on every plan. */
   get poweredBy(): Locator {
     return this.frame.getByRole('link', { name: 'Powered by ChatterMate' })
   }

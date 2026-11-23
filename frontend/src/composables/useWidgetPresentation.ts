@@ -97,9 +97,6 @@ export function useWidgetPresentation({
         PANEL_PRESENCE_TEXT,
     ))
 
-    // The plan decides, so a page with no answer yet keeps the branding.
-    const showBranding = computed(() => !window.__INITIAL_DATA__?.hideBranding)
-
     // The org's live help center, offered on the start state.
     const helpCenterUrl = computed(() => helpCenterLink(window.__INITIAL_DATA__?.helpCenterUrl))
 
@@ -178,7 +175,6 @@ export function useWidgetPresentation({
         acceptTypes: ACCEPT_TYPES,
         isHandedOverToHuman,
         presence,
-        showBranding,
         helpCenterUrl,
         canUploadMore,
         useOrbAvatar,
