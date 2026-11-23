@@ -428,12 +428,38 @@ class TestConnect:
             response = client.post(f"{BASE}/messenger", json={
                 "page_id": "PAGE9", "page_access_token": "EAAG-p", "app_secret": THEIR_SECRET})
         assert response.status_code == 200
+        # Meta lets only the app that issued a token inspect it
+        assert inspect.await_args.kwargs == {"app_id": THEIR_APP_ID, "app_secret": THEIR_SECRET}
         account, _ = _stored(db, "messenger", "PAGE9")
         data = response.json()
         assert data["webhook_url"].endswith(f"/webhooks/meta/{account.id}")
         assert data["webhook_verify_token"] == account.webhook_secret
         assert data["webhook_auto_configured"] is None
         graph_post.assert_not_awaited()  # Meta has no per-Page override
+
+    def test_messenger_with_our_own_apps_token_is_inspected_as_ours(self, client, db):
+        inspect = AsyncMock(return_value=(True, {"type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(False, {}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=(True, {"id": OUR_APP_ID}))):
+            response = client.post(f"{BASE}/messenger", json={"page_id": "PAGE9", "page_access_token": "EAAG-p"})
+        assert response.status_code == 200
+        assert inspect.await_args.kwargs == {"app_id": None, "app_secret": None}
+
+    def test_messenger_with_an_expired_token_says_so(self, client, db):
+        """Asking the token's app comes first now, so a dead token is answered
+        there: as a token to regenerate, not as Meta being unreachable."""
+        expired = (False, {"error": {"message": "Session has expired", "code": 190}})
+        inspect = AsyncMock()
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=expired)):
+            response = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-p", "app_secret": THEIR_SECRET})
+        assert response.status_code == 400
+        assert "Session has expired" in response.json()["detail"]
+        inspect.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9") is None
 
     def test_messenger_with_a_wrong_secret_is_refused(self, client, db):
         with patch("app.api.channels.meta.debug_token", AsyncMock(return_value=(True, {
