@@ -28,7 +28,7 @@ address, unconfirmed: that email names nobody.
 import hashlib
 import hmac
 import time
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import requests
 from sqlalchemy.orm import Session
@@ -163,3 +163,36 @@ def store_verified_email(token_data: Optional[Mapping[str, Any]]) -> Optional[st
         return None
     email = token_data.get('customer_email')
     return email if isinstance(email, str) and email else None
+
+
+# ---- Actions: storefront forms posted through the App Proxy ----
+
+# (db, the installed and linked store, the signed query, the posted fields) ->
+# (HTTP status, JSON body). The store comes only from the signed query.
+ProxyAction = Callable[[Session, ShopifyShop, Dict[str, str], Dict[str, Any]], Tuple[int, dict]]
+_actions: Dict[str, ProxyAction] = {}
+UNAVAILABLE = {'status': 'unavailable'}
+
+
+def register_proxy_action(name: str, action: ProxyAction) -> None:
+    """Answer POST /apps/<subpath>/<name> on the storefront (enterprise
+    features register theirs at start)."""
+    _actions[name] = action
+
+
+def run_proxy_action(db: Session, name: str, query: Sequence[Tuple[str, str]],
+                     fields: Dict[str, Any]) -> Tuple[int, dict]:
+    """A signed storefront post: 404 for no such action, 401 for a bad or stale
+    signature; a store that isn't installed and linked gets `unavailable`.
+    Only the query is signed, so the posted fields are untrusted input."""
+    action = _actions.get(name)
+    if action is None:
+        return 404, {'error': 'not_found'}
+    if not signature_valid(query, settings.SHOPIFY_API_SECRET):
+        return 401, {'error': 'invalid_signature'}
+    params = dict(query)
+    shop = ShopifyShopRepository(db).get_shop_by_domain(params.get('shop') or '')
+    if shop is None or not shop.is_installed or shop.organization_id is None:
+        return 200, dict(UNAVAILABLE)
+    return action(db, shop, params, fields if isinstance(fields, dict) else {})
+

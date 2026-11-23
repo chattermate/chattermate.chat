@@ -228,3 +228,71 @@ class TestStoreVerifiedEmail:
     def test_anything_else_proves_nothing(self, claims):
         assert proxy.store_verified_email(claims) is None
 
+
+
+class TestProxyActions:
+    """Storefront forms posted through the App Proxy (run_proxy_action)."""
+
+    @pytest.fixture
+    def action(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._actions, "notify", lambda db, shop, params, fields: (
+            seen.append((shop.shop_domain, params.get("shop"), fields)) or (200, {"status": "ok"})))
+        return seen
+
+    def test_a_signed_post_reaches_the_action_with_its_store(self, db, store, action):
+        status, body = proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {"email": "a@x.com"})
+        assert (status, body) == (200, {"status": "ok"})
+        assert action == [(store.shop_domain, store.shop_domain, {"email": "a@x.com"})]
+
+    def test_an_unknown_action_is_not_found(self, db, store, action):
+        assert proxy.run_proxy_action(db, "nope", _signed(shop=store.shop_domain), {})[0] == 404
+
+    def test_a_bad_signature_is_refused(self, db, store, action):
+        query = _signed("wrong-secret", shop=store.shop_domain)
+        assert proxy.run_proxy_action(db, "notify", query, {})[0] == 401
+        assert action == []
+
+    def test_the_store_comes_from_the_signed_query_not_the_form(self, db, store, action):
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {"shop": "victim.myshopify.com"})
+        assert action[0][0] == store.shop_domain
+
+    @pytest.mark.parametrize("change", ["uninstalled", "unlinked", "unknown"])
+    def test_a_store_not_installed_and_linked_is_unavailable(self, db, store, action, change):
+        domain = store.shop_domain
+        if change == "uninstalled":
+            store.is_installed = False
+        elif change == "unlinked":
+            store.organization_id = None
+        else:
+            domain = "nobody.myshopify.com"
+        db.commit()
+        assert proxy.run_proxy_action(db, "notify", _signed(shop=domain), {}) == (200, {"status": "unavailable"})
+        assert action == []
+
+    def test_fields_that_arent_an_object_reach_the_action_as_empty(self, db, store, action):
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), ["a@x.com"])
+        assert action[0][2] == {}
+
+    def test_the_route_refuses_big_or_broken_bodies_and_never_caches(self, monkeypatch):
+        from app.api import shopify as shopify_api
+        from app.main import app
+        monkeypatch.setattr(proxy, "run_proxy_action", lambda db, name, query, fields: (200, {"status": "ok"}))
+        client = TestClient(app)
+        ok = client.post("/api/v1/shopify/proxy/notify", json={"email": "a@x.com"})
+        assert ok.status_code == 200 and "no-store" in ok.headers["cache-control"]
+        big = client.post("/api/v1/shopify/proxy/notify", content=b"x" * (shopify_api.PROXY_ACTION_MAX_BYTES + 1))
+        assert big.status_code == 413
+        broken = client.post("/api/v1/shopify/proxy/notify", content=b"{nope",
+                             headers={"Content-Type": "application/json"})
+        assert broken.status_code == 400
+
+    def test_a_failing_action_answers_unavailable(self, monkeypatch):
+        from app.main import app
+
+        def broken(db, name, query, fields):
+            raise RuntimeError("db down")
+        monkeypatch.setattr(proxy, "run_proxy_action", broken)
+        response = TestClient(app).post("/api/v1/shopify/proxy/notify", json={})
+        assert response.status_code == 503 and response.json() == {"error": "unavailable"}

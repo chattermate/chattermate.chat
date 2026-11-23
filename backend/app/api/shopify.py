@@ -935,6 +935,35 @@ async def shopify_shop_redact_webhook(request: Request, db: Session = Depends(ge
 
 # ---- App Proxy: the storefront's signed-in customer (shopify_app_proxy.py) ----
 
+# Storefront forms posted through the App Proxy; the largest body read
+PROXY_ACTION_MAX_BYTES = 4096
+
+
+@router.post("/proxy/{action}")
+async def storefront_proxy_action(action: str, request: Request):
+    """Shopify forwards a storefront POST to /apps/chattermate/<action> here,
+    signed (shopify_app_proxy.run_proxy_action). Never cached."""
+    query = list(request.query_params.multi_items())
+    body = await request.body()
+    if len(body) > PROXY_ACTION_MAX_BYTES:
+        return JSONResponse({'error': 'too_large'}, status_code=413, headers={"Cache-Control": "no-store"})
+    try:
+        fields = json.loads(body) if body else {}
+    except ValueError:
+        return JSONResponse({'error': 'invalid_json'}, status_code=400, headers={"Cache-Control": "no-store"})
+
+    def _work():
+        with SessionLocal() as db:
+            return shopify_app_proxy.run_proxy_action(db, action, query, fields)
+
+    try:
+        status_code, result = await asyncio.to_thread(_work)
+    except Exception as e:
+        logger.error(f"Storefront action {action} failed: {e}")
+        status_code, result = 503, {'error': 'unavailable'}
+    return JSONResponse(result, status_code=status_code, headers={"Cache-Control": "no-store, private"})
+
+
 @router.get("/proxy/identity")
 async def storefront_identity(request: Request):
     """Shopify forwards the storefront's /apps/chattermate/identity here, signed.
