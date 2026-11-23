@@ -23,7 +23,9 @@
 //   Meta tokens `…:app=<id>.<secret>:…`          were issued by the customer's own Meta
 //                                              app: GET /app answers that id and checks
 //                                              appsecret_proof against that secret (any
-//                                              other token is ChatterMate's app)
+//                                              other token is ChatterMate's app). Like
+//                                              Meta, debug_token only inspects a token
+//                                              for the app that issued it
 //   Meta POST /<number> {webhook_configuration}  verifies the override callback the way
 //                                              Meta does — a GET with hub.verify_token
 //                                              that must echo hub.challenge — before
@@ -233,7 +235,11 @@ async function graph({ action, method, url, headers, body }: Call): Promise<Answ
     return ownedNodes(code) ? ok({ access_token: code, token_type: 'bearer' }) : graphError('Invalid verification code format.')
   }
   if (action === 'debug_token') {
-    const inspected = ownedNodes(url.searchParams.get('input_token') ?? '')
+    const input = url.searchParams.get('input_token') ?? ''
+    if (bearer(headers).split('|')[0] !== appOf(input).id) {
+      return graphError('(#100) The App_id in the input_token did not match the Viewing App')
+    }
+    const inspected = ownedNodes(input)
     return ok({ data: { is_valid: Boolean(inspected), type: 'PAGE', profile_id: inspected?.[0] ?? '' } })
   }
   // `/<provider>/v21.0/<node>[/<edge>]`. A token can't reach a page, number or IG

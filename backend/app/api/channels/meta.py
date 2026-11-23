@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 import json
 import secrets
 import time
@@ -47,6 +48,7 @@ from app.services.meta_own_app import (
     AppSecretMismatch,
     AppSecretRequired,
     OwnApp,
+    TokenRefused,
     leave_own_app,
     own_app_token,
     resolve_own_app,
@@ -230,6 +232,12 @@ def check_signup_access(channel: str, user: User) -> None:
 SIGNUP_TOKEN_TTL_SECONDS = 600
 # 500 Pages; an agency ceiling, not a limit a real customer reaches.
 PAGE_LIST_MAX_PAGES = 5
+# What the picker needs from each Page, its token included
+SIGNUP_PAGE_FIELDS = "id,name,access_token"
+# The login grants whose Pages the picker offers
+PAGE_GRANT_SCOPES = ("pages_messaging", "pages_show_list")
+# Granted Pages fetched one by one when me/accounts leaves them out
+GRANTED_PAGE_FETCH_LIMIT = 50
 
 
 def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
@@ -284,6 +292,47 @@ async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
             status_code=400,
             detail=graph_detail(data, "Could not list your Facebook Pages"))
     return data
+
+
+async def _granted_page_ids(user_token: str) -> list[str]:
+    """The Page ids the person ticked in Meta's login popup, in grant order."""
+    ok, info = await debug_token(user_token)
+    if not ok:
+        logger.warning(f"Could not read the signup's granted Pages: {graph_detail(info, 'no detail')}")
+        return []
+    ids: list[str] = []
+    for grant in info.get("granular_scopes") or []:
+        if grant.get("scope") not in PAGE_GRANT_SCOPES:
+            continue
+        for target in grant.get("target_ids") or []:
+            if str(target) not in ids:
+                ids.append(str(target))
+    return ids
+
+
+async def _granted_page(page_id: str, user_token: str) -> dict | None:
+    ok, page = await graph_get(page_id, user_token, params={"fields": SIGNUP_PAGE_FIELDS})
+    if ok and page.get("id") and page.get("access_token"):
+        return page
+    logger.warning(f"Could not read granted Page {page_id}: {graph_detail(page, 'no Page token')}")
+    return None
+
+
+async def _signup_pages(user_token: str) -> list[dict]:
+    """Every Page this signup granted us, each with its own Page access token.
+
+    me/accounts lists only Pages the person has a role on directly. A Page a
+    business portfolio owns, managed through the portfolio, is granted in the
+    popup but missing there, so the granted ids are read from the token and
+    each missing Page is fetched by id, which returns its Page token without
+    business_management.
+    """
+    pages = await _list_manageable_pages(user_token, SIGNUP_PAGE_FIELDS)
+    listed = {str(p.get("id")) for p in pages}
+    missing = [i for i in await _granted_page_ids(user_token) if i not in listed]
+    fetched = await asyncio.gather(*(_granted_page(page_id, user_token)
+                                     for page_id in missing[:GRANTED_PAGE_FETCH_LIMIT]))
+    return pages + [page for page in fetched if page]
 
 
 async def _signup_user_token(request: MessengerSignupRequest) -> str:
@@ -366,6 +415,10 @@ async def _own_app(access_token: str, secret: str | None) -> OwnApp | None:
         raise HTTPException(status_code=400, detail=(
             "That app secret is not the one for the Meta app this token comes from. "
             "Copy it from your app's App settings → Basic.")) from None
+    except TokenRefused as e:
+        raise HTTPException(status_code=400, detail=(
+            f"That token is not valid, generate a fresh one ({e})" if str(e)
+            else "That token is not valid, generate a fresh one")) from None
     except AppCheckUnavailable as e:
         raise ClientSafeHTTPException(
             status_code=502, detail=f"Could not check the app secret with Meta, try again ({e})") from e
@@ -516,10 +569,15 @@ async def connect_messenger(
     db: Session = Depends(get_db),
 ):
     """Connect a Facebook Page for Messenger with a page access token."""
+    # The app first: Meta only lets the app that issued a token inspect it, so
+    # a token from the customer's own app is inspected as that app.
+    own = await _own_app(request.page_access_token, request.app_secret)
     # Inspect the token rather than reading the Page node: `me?fields=id,name`
     # needs pages_read_engagement, which a messaging token has no reason to
     # carry — it would reject a token that sends perfectly well.
-    ok, info = await debug_token(request.page_access_token)
+    ok, info = await debug_token(request.page_access_token,
+                                 app_id=own.app_id if own else None,
+                                 app_secret=own.secret if own else None)
     if not ok or not info.get("is_valid"):
         raise HTTPException(status_code=400, detail=graph_detail(
             info, "That token is not valid — generate a fresh Page access token"))
@@ -534,7 +592,6 @@ async def connect_messenger(
             f"entered. Webhooks are routed by Page ID, so the two must match."))
 
     previous = _previous_account(db, organization, ChannelType.MESSENGER.value, request.page_id)
-    own = await _own_app(request.page_access_token, request.app_secret)
     previous_token = own_app_token(previous)
 
     display_name = request.display_name or await _page_name(
@@ -568,7 +625,7 @@ async def list_messenger_signup_pages(
     check_signup_access(ChannelType.MESSENGER.value, current_user)
     user_token = await _signup_user_token(request)
 
-    pages = await _list_manageable_pages(user_token, "id,name,access_token")
+    pages = await _signup_pages(user_token)
     if not pages:
         raise HTTPException(status_code=400, detail=(
             "No Facebook Pages were shared with ChatterMate. Run the connect "

@@ -36,7 +36,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from app.channels.meta_base import graph_detail, graph_get, graph_post_json
+from app.channels.meta_base import graph_auth_refused, graph_detail, graph_get, graph_post_json
 from app.core.config import settings, webhooks_base_url
 from app.core.logger import get_logger
 from app.models.channels import ChannelAccount, ChannelType
@@ -67,7 +67,11 @@ class AppSecretRequired(Exception):
 
 
 class AppCheckUnavailable(Exception):
-    """Meta couldn't be asked (network, rate limit, an expired token…)."""
+    """Meta couldn't be asked (network, rate limit…)."""
+
+
+class TokenRefused(Exception):
+    """Meta refused the token itself: expired, revoked or never valid."""
 
 
 @dataclass
@@ -103,7 +107,8 @@ async def resolve_own_app(access_token: str, entered_secret: Optional[str]) -> O
     one-click signup, reconnected by hand), so a missing one is checked with
     ChatterMate's own secret: it proves only our app's tokens.
 
-    Raises AppSecretRequired, AppSecretMismatch or AppCheckUnavailable."""
+    Raises AppSecretRequired, AppSecretMismatch, TokenRefused or
+    AppCheckUnavailable."""
     secret = entered_secret or settings.META_APP_SECRET
     params = {"fields": "id"}
     if secret:
@@ -114,6 +119,8 @@ async def resolve_own_app(access_token: str, entered_secret: Optional[str]) -> O
         error = data.get("error") if isinstance(data.get("error"), dict) else {}
         if _PROOF_ERROR in str(error.get("message", "")):
             raise AppSecretMismatch() if entered_secret else AppSecretRequired()
+        if graph_auth_refused(data):
+            raise TokenRefused(graph_detail(data, ""))
         # Meta's own errors carry a code; anything else is ours (a timeout,
         # a socket error) and stays in the log
         logger.warning(f"Could not check an app secret with Meta: {error.get('message')}")

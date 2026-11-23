@@ -870,17 +870,66 @@ class TestMessengerSignup:
         monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
 
     def _list_pages(self, client, pages=None,
-                    long_lived=(True, {"access_token": "LONGLIVED"})):
-        """Drive step 1, returning (response, graph_list_all mock)."""
+                    long_lived=(True, {"access_token": "LONGLIVED"}),
+                    granted=(True, {}), page_lookup=None):
+        """Drive step 1, returning (response, graph_list_all mock).
+
+        granted is debug_token's answer for the user token (its
+        granular_scopes name the Pages ticked in the popup); page_lookup
+        answers a granted Page fetched by id."""
         lister = AsyncMock(return_value=(True, self.TWO_PAGES if pages is None else pages))
         with patch("app.api.channels.meta.exchange_signup_code",
                    AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
              patch("app.api.channels.meta.exchange_for_long_lived_token",
                    AsyncMock(return_value=long_lived)), \
-             patch("app.api.channels.meta.graph_list_all", lister):
+             patch("app.api.channels.meta.graph_list_all", lister), \
+             patch("app.api.channels.meta.debug_token", AsyncMock(return_value=granted)), \
+             patch("app.api.channels.meta.graph_get", page_lookup or AsyncMock(return_value=(False, {}))):
             r = client.post(self.PAGES, json={
                 "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
         return r, lister
+
+    @staticmethod
+    def _granted(*page_ids, scope="pages_messaging"):
+        return (True, {"type": "USER", "is_valid": True, "granular_scopes": [
+            {"scope": scope, "target_ids": list(page_ids)},
+            {"scope": "business_management", "target_ids": ["BIZ1"]},
+        ]})
+
+    def test_a_portfolio_page_left_out_of_me_accounts_is_still_offered(self, client):
+        """me/accounts misses a Page a business portfolio owns. The popup
+        granted it, so it is fetched by id with its own Page token."""
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, granted=self._granted("PAGE1", "BIZPAGE"), page_lookup=lookup)
+        assert r.status_code == 200
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2", "BIZPAGE"]
+        assert "EAAG-biz" not in r.text
+        # Only the missing Page is fetched, with the user token; never a business grant
+        lookup.assert_awaited_once()
+        assert lookup.await_args.args[:2] == ("BIZPAGE", "LONGLIVED")
+
+    def test_a_portfolio_page_can_be_connected(self, client, db):
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE", scope="pages_show_list"),
+                                page_lookup=lookup)
+        with patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            connected = client.post(self.CONNECT, json={
+                "signup_token": r.json()["signup_token"], "page_id": "BIZPAGE"})
+        assert connected.status_code == 200
+        repo = ChannelAccountRepository(db)
+        assert repo.get_credentials(repo.get_by_external_id("messenger", "BIZPAGE"))["access_token"] == "EAAG-biz"
+
+    def test_a_granted_page_meta_will_not_give_a_token_for_is_left_out(self, client):
+        lookup = AsyncMock(return_value=(True, {"id": "BIZPAGE", "name": "No token"}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=lookup)
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+
+    def test_pages_still_listed_when_the_grants_cannot_be_read(self, client):
+        r, _ = self._list_pages(client, granted=(False, {"error": {"message": "nope"}}))
+        assert r.status_code == 200
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
 
     def _signup_token(self, client):
         return self._list_pages(client)[0].json()["signup_token"]
