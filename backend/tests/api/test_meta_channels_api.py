@@ -924,6 +924,35 @@ class TestMessengerSignup:
         lookup = AsyncMock(return_value=(True, {"id": "BIZPAGE", "name": "No token"}))
         r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=lookup)
         assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+        # The picker says which Page is missing and how to fix it
+        assert "BIZPAGE" in r.json()["unavailable_notice"]
+        assert "no role on it" in r.json()["unavailable_notice"]
+
+    def test_only_an_unreadable_granted_page_names_it_and_the_fix(self, client):
+        """The portfolio Page Meta won't give a token for, without a Page role:
+        say so instead of 'No Facebook Pages were shared'."""
+        refused = AsyncMock(return_value=(False, {"error": {
+            "message": "(#100) Object does not exist, cannot be loaded due to missing permission", "code": 100}}))
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"), page_lookup=refused)
+        assert r.status_code == 400
+        detail = r.json()["detail"]
+        assert "BIZPAGE" in detail and "Business Settings" in detail
+        assert "No Facebook Pages" not in detail
+
+    def test_a_rate_limited_lookup_is_not_blamed_on_a_missing_role(self, client):
+        limited = AsyncMock(return_value=(False, {"error": {"message": "Too many calls", "code": 4}}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=limited)
+        assert r.status_code == 200
+        assert r.json()["unavailable_notice"] is None
+
+    def test_several_unreadable_pages_are_named_together(self, client):
+        refused = AsyncMock(return_value=(False, {"error": {"message": "(#100) missing permission", "code": 100}}))
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZ1", "BIZ2"), page_lookup=refused)
+        assert r.json()["detail"].startswith("Pages BIZ1, BIZ2 were shared")
+
+    def test_no_notice_when_every_granted_page_is_offered(self, client):
+        r, _ = self._list_pages(client, granted=self._granted("PAGE1"))
+        assert r.json()["unavailable_notice"] is None
 
     def test_a_page_granted_without_messaging_is_not_offered(self, client):
         """Listed but not messageable: it would connect and never send."""

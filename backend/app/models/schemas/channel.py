@@ -161,6 +161,9 @@ class MessengerSignupPagesOut(BaseModel):
     carries their access tokens (encrypted) into step 2."""
     pages: list[MessengerPageOut]
     signup_token: str
+    # Set when a Page ticked in Meta's popup couldn't be offered: which one and
+    # how to fix it, so the picker can say why it's missing
+    unavailable_notice: Optional[str] = None
 
 
 class MessengerSignupConnectRequest(BaseModel):

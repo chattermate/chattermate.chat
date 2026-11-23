@@ -118,6 +118,7 @@ const {
   signingUp,
   showManualForm,
   signupPages,
+  signupNotice,
   signupError,
   connectingPage,
   copy: signupCopy,
@@ -204,6 +205,7 @@ const saveAgent = async () => {
         <MessengerPagePicker
           v-if="signupPages.length"
           :pages="signupPages"
+          :notice="signupNotice"
           :connecting="connectingPage"
           @select="onPageSelected"
         />

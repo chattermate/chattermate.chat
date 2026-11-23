@@ -240,6 +240,9 @@ PAGE_GRANT_SCOPE = "pages_messaging"
 GRANTED_PAGE_FETCH_LIMIT = 50
 # How many of those fetches run at once, to stay clear of Meta's rate limit
 GRANTED_PAGE_FETCH_CONCURRENCY = 5
+# Graph codes for a Page the person may not read: 100 "does not exist / missing
+# permission", 10 and 200 permission errors
+PAGE_ROLE_REFUSED_CODES = frozenset({10, 100, 200})
 
 
 def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
@@ -312,23 +315,42 @@ async def _granted_page_ids(user_token: str) -> list[str]:
     return ids
 
 
-async def _granted_page(page_id: str, user_token: str, limit: asyncio.Semaphore) -> dict | None:
+async def _granted_page(page_id: str, user_token: str, limit: asyncio.Semaphore) -> dict | bool:
+    """The Page with its token; True when Meta refused it for want of a Page
+    role (a lasting answer to show the customer); False for any other failure,
+    such as a timeout or rate limit, which isn't worth explaining."""
     async with limit:
         ok, page = await graph_get(page_id, user_token, params={"fields": SIGNUP_PAGE_FIELDS})
     if ok and page.get("id") and page.get("access_token"):
         return page
     logger.warning(f"Could not read granted Page {page_id}: {graph_detail(page, 'no Page token')}")
-    return None
+    error = page.get("error") if isinstance(page.get("error"), dict) else {}
+    # Granted with no Page role, or no access_token in the answer: either way
+    # Meta won't give this person a token for it
+    return ok or error.get("code") in PAGE_ROLE_REFUSED_CODES
 
 
-async def _signup_pages(user_token: str) -> list[dict]:
-    """Every Page this signup granted us, each with its own Page access token.
+def _no_page_role_message(page_ids: list[str]) -> str:
+    """Why a Page ticked in Meta's popup can't be connected, and the fix."""
+    if len(page_ids) == 1:
+        return (f"Page {page_ids[0]} was shared, but your Facebook account has no role on it. "
+                "Assign yourself to it in Meta Business Settings → Accounts → Pages, "
+                "then connect again.")
+    return (f"Pages {', '.join(page_ids)} were shared, but your Facebook account has no role "
+            "on them. Assign yourself to them in Meta Business Settings → Accounts → Pages, "
+            "then connect again.")
+
+
+async def _signup_pages(user_token: str) -> tuple[list[dict], list[str]]:
+    """Every Page this signup granted us, each with its own Page access token,
+    and the granted Page ids Meta wouldn't give a token for.
 
     me/accounts lists only Pages the person has a role on directly. A Page a
     business portfolio owns, managed through the portfolio, is granted in the
     popup but missing there, so the granted ids are read from the token and
-    each missing Page is fetched by id, which returns its Page token without
-    business_management.
+    each missing Page is fetched by id. Meta refuses that when the person has
+    no role on the Page itself (seen 2026-11-23 on a portfolio-owned Page), so
+    those ids come back to explain the gap.
     """
     pages = await _list_manageable_pages(user_token, SIGNUP_PAGE_FIELDS)
     listed = {str(p.get("id")) for p in pages}
@@ -337,9 +359,10 @@ async def _signup_pages(user_token: str) -> list[dict]:
         logger.warning(f"Signup granted {len(missing)} unlisted Pages; offering the first "
                        f"{GRANTED_PAGE_FETCH_LIMIT}")
     limit = asyncio.Semaphore(GRANTED_PAGE_FETCH_CONCURRENCY)
-    fetched = await asyncio.gather(*(_granted_page(page_id, user_token, limit)
-                                     for page_id in missing[:GRANTED_PAGE_FETCH_LIMIT]))
-    return pages + [page for page in fetched if page]
+    tried = missing[:GRANTED_PAGE_FETCH_LIMIT]
+    fetched = await asyncio.gather(*(_granted_page(page_id, user_token, limit) for page_id in tried))
+    unavailable = [page_id for page_id, page in zip(tried, fetched) if page is True]
+    return pages + [page for page in fetched if isinstance(page, dict)], unavailable
 
 
 async def _signup_user_token(request: MessengerSignupRequest) -> str:
@@ -632,7 +655,9 @@ async def list_messenger_signup_pages(
     check_signup_access(ChannelType.MESSENGER.value, current_user)
     user_token = await _signup_user_token(request)
 
-    pages = await _signup_pages(user_token)
+    pages, unavailable = await _signup_pages(user_token)
+    if not pages and unavailable:
+        raise HTTPException(status_code=400, detail=_no_page_role_message(unavailable))
     if not pages:
         raise HTTPException(status_code=400, detail=(
             "No Facebook Pages were shared with ChatterMate. Run the connect "
@@ -641,6 +666,7 @@ async def list_messenger_signup_pages(
     return MessengerSignupPagesOut(
         signup_token=_seal_signup_pages(organization.id, pages),
         pages=[MessengerPageOut(id=p["id"], name=p.get("name") or p["id"]) for p in pages],
+        unavailable_notice=_no_page_role_message(unavailable) if unavailable else None,
     )
 
 

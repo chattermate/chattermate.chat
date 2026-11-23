@@ -24,9 +24,9 @@ const PAGES = [
   { id: 'PAGE2', name: 'Acme Sales' },
 ]
 
-const mountPicker = (connecting = false) =>
+const mountPicker = (connecting = false, notice?: string) =>
   mount(MessengerPagePicker, {
-    props: { pages: PAGES, connecting },
+    props: { pages: PAGES, connecting, notice },
     global: { stubs: { 'font-awesome-icon': true } },
   })
 
@@ -42,6 +42,15 @@ describe('MessengerPagePicker', () => {
     const wrapper = mountPicker()
     await wrapper.findAll('.picker-row')[1].trigger('click')
     expect(wrapper.emitted('select')).toEqual([['PAGE2']])
+  })
+
+  it('says why a ticked Page is missing', () => {
+    const wrapper = mountPicker(false, 'Page BIZ1 was shared, but your Facebook account has no role on it.')
+    expect(wrapper.find('[role="note"]').text()).toContain('Page BIZ1 was shared')
+  })
+
+  it('shows no notice when every Page is listed', () => {
+    expect(mountPicker().find('[role="note"]').exists()).toBe(false)
   })
 
   it('locks every row while a connect is in flight', () => {

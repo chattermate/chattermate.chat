@@ -8406,6 +8406,8 @@ export interface components {
             pages: components["schemas"]["MessengerPageOut"][];
             /** Signup Token */
             signup_token: string;
+            /** Unavailable Notice */
+            unavailable_notice?: string | null;
         };
         /**
          * MessengerSignupRequest

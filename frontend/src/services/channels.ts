@@ -100,6 +100,8 @@ export interface MessengerSignupPages {
   pages: MessengerSignupPage[]
   /** Opaque blob carrying the Pages' access tokens back to the connect step */
   signup_token: string
+  /** Why a Page ticked in Meta's popup isn't in the list, and the fix */
+  unavailable_notice?: string | null
 }
 
 export interface ChannelAccount {

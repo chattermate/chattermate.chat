@@ -26,6 +26,8 @@ import type { MessengerSignupPage } from '@/services/channels'
 defineProps<{
   pages: MessengerSignupPage[]
   connecting: boolean
+  /** Why a Page the customer ticked isn't listed */
+  notice?: string
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +46,7 @@ const choose = (pageId: string) => {
 <template>
   <div class="picker">
     <p class="picker-intro">Choose the account to connect:</p>
+    <p v-if="notice" class="picker-notice" role="note">{{ notice }}</p>
     <ul class="picker-list">
       <li v-for="page in pages" :key="page.id">
         <button
@@ -70,6 +73,17 @@ const choose = (pageId: string) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.picker-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .picker-intro {

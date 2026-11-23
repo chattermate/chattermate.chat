@@ -86,6 +86,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
 
   // Facebook Login for Business can grant several Pages; the customer picks one.
   const signupPages = ref<MessengerSignupPage[]>([])
+  const signupNotice = ref('')
   const signupToken = ref('')
   const connectingPage = ref(false)
 
@@ -186,19 +187,22 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   }
 
   const finishMessengerSignup = async (code: string, redirectUri: string) => {
-    const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
+    const { pages, signup_token, unavailable_notice } = await channelsService.listMessengerSignupPages(code, redirectUri)
     signupToken.value = signup_token
+    signupNotice.value = unavailable_notice || ''
     // Reconnecting: only the same Page puts that account back to work, so no picker
     if (reconnecting) {
       if (!pages.some((page) => page.id === reconnecting.external_account_id)) {
-        signupError.value = `That login didn't include ${reconnectName()}. Sign in again and select that Page to reconnect it.`
+        signupError.value = signupNotice.value
+          || `That login didn't include ${reconnectName()}. Sign in again and select that Page to reconnect it.`
         return
       }
       await connectPickedPage(reconnecting.external_account_id)
       return
     }
     // One Page needs no picker — connect it and go straight to agent assignment.
-    if (pages.length === 1) {
+    // A missing Page keeps the picker, so the customer sees why before choosing.
+    if (pages.length === 1 && !signupNotice.value) {
       await connectPickedPage(pages[0].id)
     } else {
       signupPages.value = pages
@@ -306,6 +310,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     signingUp,
     showManualForm,
     signupPages,
+    signupNotice,
     connectingPage,
     signupError,
     copy,
