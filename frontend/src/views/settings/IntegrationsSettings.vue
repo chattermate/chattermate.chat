@@ -23,7 +23,13 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
-import { accountNamesSummary, accountToManage, accountWarning } from '@/utils/channelAccounts'
+import {
+  accountNamesSummary,
+  accountToManage,
+  accountWarning,
+  accountsWithoutAgent,
+  noAgentWarning,
+} from '@/utils/channelAccounts'
 import crmService, { type CrmConnection, type CrmProvider } from '@/services/crm'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
@@ -81,6 +87,8 @@ const metaModalAccount = ref<ChannelAccount | null>(null)
 
 const CREDENTIAL_CHANNELS = ['email', 'sms', 'line']
 const META_CHANNELS = ['whatsapp', 'messenger', 'instagram']
+// Channels whose card manages connected channel accounts
+const MESSAGING_CHANNELS = [...CREDENTIAL_CHANNELS, 'slack', 'telegram', ...META_CHANNELS]
 const CRM_PROVIDERS: CrmProvider[] = ['hubspot', 'pipedrive']
 
 // CRM lead-push connections
@@ -155,28 +163,31 @@ const crmCardWarning = (connection: CrmConnection | null): string | undefined =>
   return undefined
 }
 
+// The connect/manage dialog for one messaging account, at its agent step
+const openAccountDialog = (channelId: string, account: ChannelAccount | null) => {
+  if (CREDENTIAL_CHANNELS.includes(channelId) || channelId === 'slack') {
+    // Slack connects via OAuth; its dialog just picks the answering agent
+    credentialModalAccount.value = account
+    credentialModalChannel.value = channelId as 'email' | 'sms' | 'line' | 'slack'
+  } else if (channelId === 'telegram') {
+    telegramModalAccount.value = account
+    showTelegramModal.value = true
+  } else {
+    metaModalAccount.value = account
+    metaModalChannel.value = channelId as 'whatsapp' | 'messenger' | 'instagram'
+  }
+}
+
 // "Manage" on a connected card: open the right modal for the connected account
 const manageIntegration = (integration: IntegrationCard) => {
   const id = integration.id
-  const acc = accountToManage(accountsFor(id))
-  if (CREDENTIAL_CHANNELS.includes(id)) {
-    credentialModalAccount.value = acc
-    credentialModalChannel.value = id as 'email' | 'sms' | 'line'
-  } else if (id === 'telegram') {
-    telegramModalAccount.value = acc
-    showTelegramModal.value = true
-  } else if (id === 'whatsapp') {
+  if (id === 'whatsapp') {
     // Several numbers: the list says which one to manage, and adds another.
     // The limit is read again: the plan may have changed since the page loaded.
     fetchChannelLimits()
     showWhatsAppNumbers.value = true
-  } else if (META_CHANNELS.includes(id)) {
-    metaModalAccount.value = acc
-    metaModalChannel.value = id as 'whatsapp' | 'messenger' | 'instagram'
-  } else if (id === 'slack') {
-    // Slack connects via OAuth; Manage just picks the answering agent
-    credentialModalAccount.value = acc
-    credentialModalChannel.value = 'slack'
+  } else if (MESSAGING_CHANNELS.includes(id)) {
+    openAccountDialog(id, accountToManage(accountsFor(id)))
   } else if (CRM_PROVIDERS.includes(id as CrmProvider)) {
     // CRM Manage = read-only connectivity check, surfaced as a toast
     testCrm(id as CrmProvider)
@@ -185,6 +196,13 @@ const manageIntegration = (integration: IntegrationCard) => {
     if (id === 'shopify') openShopifyInstallation()
     else integration.connectAction?.()
   }
+}
+
+// "Assign agent" on a card's no-agent warning: straight to the agent picker
+// of the first account no agent answers (for WhatsApp, that number's form)
+const assignAgent = (integration: IntegrationCard) => {
+  const account = accountsWithoutAgent(accountsFor(integration.id))[0]
+  if (account) openAccountDialog(integration.id, account)
 }
 
 const accountsFor = (channelType: string) =>
@@ -423,6 +441,8 @@ interface IntegrationCard {
   color?: string;
   /** Inline warning under the description (expired connection, sync failures). */
   warning?: string;
+  /** A connected account no AI agent answers; the card offers to assign one. */
+  agentWarning?: string;
   connectAction?: () => void;
   disconnectAction?: () => void;
   /** An extra action on the connected card, alongside Manage/Disconnect. */
@@ -481,6 +501,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     connected: accountsFor('slack').length > 0,
     teamName: accountsFor('slack').map(a => a.display_name).filter(Boolean).join(', '),
     warning: accountWarning(accountsFor('slack')),
+    agentWarning: noAgentWarning(accountsFor('slack')),
     isLoading: channelsLoading.value,
     connectAction: connectSlack,
     disconnectAction: handleDisconnectSlack
@@ -495,6 +516,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     connected: telegramAccounts.value.length > 0,
     teamName: telegramAccounts.value.map(a => a.display_name).filter(Boolean).join(', '),
     warning: accountWarning(telegramAccounts.value),
+    agentWarning: noAgentWarning(telegramAccounts.value),
     isLoading: channelsLoading.value,
     connectAction: () => { showTelegramModal.value = true },
     disconnectAction: handleDisconnectTelegram
@@ -522,6 +544,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       connected: accounts.length > 0,
       teamName: accountNamesSummary(accounts),
       warning: accountWarning(accounts),
+      agentWarning: noAgentWarning(accounts),
       isLoading: channelsLoading.value,
       connectAction: () => { metaModalChannel.value = channel },
       disconnectAction: meta.disconnect,
@@ -554,6 +577,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       connected: accounts.length > 0,
       teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
       warning: accountWarning(accounts),
+      agentWarning: noAgentWarning(accounts),
       isLoading: channelsLoading.value,
       connectAction: () => { credentialModalChannel.value = channel },
       disconnectAction: meta.disconnect
@@ -806,6 +830,17 @@ onMounted(async () => {
           </div>
           <div v-if="integration.warning" class="integration-meta">
             <span class="meta-error">⚠️ {{ integration.warning }}</span>
+          </div>
+          <div
+            v-if="integration.connected && integration.agentWarning && !integration.isLoading"
+            class="integration-meta"
+          >
+            <span class="meta-error meta-error-action" :data-testid="`no-agent-${integration.id}`">
+              <span>⚠️ {{ integration.agentWarning }}</span>
+              <button type="button" class="meta-error-btn" @click="assignAgent(integration)">
+                Assign agent
+              </button>
+            </span>
           </div>
 
           <!-- Loading state -->
@@ -1309,6 +1344,25 @@ onMounted(async () => {
   padding: 6px 10px;
   border-radius: var(--radius-md);
   word-break: break-word;
+}
+
+.meta-error-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meta-error-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* Buttons */

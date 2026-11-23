@@ -33,6 +33,7 @@ from app.models.schemas.channel import ChannelAccountOut, EmailConnectRequest
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -118,6 +119,7 @@ async def connect_email(
             credentials=credentials,  # {} => platform SMTP fallback
             display_name=request.display_name or address,
         )
+    assign_sole_agent(db, account)
     out = to_account_out(db, account)
     out.webhook_url = _webhook_url(account)
     return out

@@ -263,6 +263,18 @@ class TestMetaConnect:
         account = ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9")
         assert ChannelAccountRepository(db).get_credentials(account)["access_token"] == "EAAG-x"
 
+    def test_connect_messenger_routes_to_the_only_agent(self, client, test_agent):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE8", "is_valid": True,
+            "scopes": ["pages_messaging"]}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(False, {}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE8", "page_access_token": "EAAG-y"})
+        assert r.status_code == 200
+        assert r.json()["agent_id"] == str(test_agent.id)
+
     def test_connect_messenger_uses_page_name_when_readable(self, client):
         inspect = AsyncMock(return_value=(True, {
             "type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))

@@ -41,6 +41,7 @@ from app.channels.meta_base import (
     GRAPH_INSTAGRAM_BASE,
 )
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.services.channel_limits import check_account_quota
 from app.services.meta_own_app import (
     APP_SECRET_KEY,
@@ -410,16 +411,19 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
         for key in forget:
             merged.pop(key, None)
         repo.update_credentials(existing, merged)
-        return repo.set_active(existing, True)
-    check_channel_access(db, organization.id)
-    check_account_quota(db, organization.id, channel_type)
-    return repo.create_account(
-        organization_id=organization.id,
-        channel_type=channel_type,
-        external_account_id=external_account_id,
-        credentials=credentials,
-        display_name=display_name,
-    )
+        account = repo.set_active(existing, True)
+    else:
+        check_channel_access(db, organization.id)
+        check_account_quota(db, organization.id, channel_type)
+        account = repo.create_account(
+            organization_id=organization.id,
+            channel_type=channel_type,
+            external_account_id=external_account_id,
+            credentials=credentials,
+            display_name=display_name,
+        )
+    assign_sole_agent(db, account)
+    return account
 
 
 def _previous_account(db: Session, organization: Organization, channel_type: str, external_account_id: str):

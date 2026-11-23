@@ -35,11 +35,29 @@ export const accountWarning = (accounts: ChannelAccount[]): string | undefined =
   return warnings.length ? warnings.join(' ') : undefined
 }
 
+/** Copy shown wherever an account has no agent: inbound messages are dropped. */
+export const NO_AGENT_TEXT = "No agent: messages aren't answered."
+
+/** Connected accounts no AI agent answers. */
+export const accountsWithoutAgent = (accounts: ChannelAccount[]): ChannelAccount[] =>
+  accounts.filter(a => !a.agent_id)
+
+/** The card's warning for accounts no agent answers, naming them when the
+ *  card holds several, or undefined when every account has one. */
+export const noAgentWarning = (accounts: ChannelAccount[]): string | undefined => {
+  const missing = accountsWithoutAgent(accounts)
+  if (!missing.length) return undefined
+  if (accounts.length === 1) return NO_AGENT_TEXT
+  return `No agent on ${missing.map(accountName).join(', ')}: messages aren't answered.`
+}
+
 /** The account a card's Manage opens: one that needs fixing first, so the
- *  card's warning leads to its fix, else the first connected. */
+ *  card's warning leads to its fix (credentials, then sending, then a missing
+ *  agent), else the first connected. */
 export const accountToManage = (accounts: ChannelAccount[]): ChannelAccount | null =>
   accounts.find(a => a.needs_reconnect)
   ?? accounts.find(a => a.send_problem)
+  ?? accounts.find(a => !a.agent_id)
   ?? accounts[0]
   ?? null
 
