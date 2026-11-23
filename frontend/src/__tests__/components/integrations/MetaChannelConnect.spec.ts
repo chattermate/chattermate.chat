@@ -59,6 +59,19 @@ describe('MetaChannelConnect reconnect prompt', () => {
     expect(wrapper.text()).toContain('is connected')
   })
 
+  it('says messages are not answered while no agent is assigned', async () => {
+    const wrapper = mountModal({ ...ACCOUNT, channel_type: 'messenger', agent_id: null })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="no-agent-notice"]').text())
+      .toBe("No agent: messages aren't answered. Assign one below.")
+  })
+
+  it('has no agent notice once an agent answers the account', async () => {
+    const wrapper = mountModal(ACCOUNT)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="no-agent-notice"]').exists()).toBe(false)
+  })
+
   it('offers a reconnect when Meta stopped accepting the account', async () => {
     const wrapper = mountModal({ ...ACCOUNT, needs_reconnect: true })
     await flushPromises()

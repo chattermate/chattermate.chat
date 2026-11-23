@@ -37,6 +37,38 @@ export class IntegrationsPage {
     return new RegExp(`${name}[^—]*can't send replies — open it to see why\\.`)
   }
 
+  /**
+   * The card's warning for connected accounts no AI agent answers, when it
+   * names `account` (or stands alone, when it is the card's only account).
+   * Other tests share the org, so a card often lists several.
+   */
+  noAgentFor(account: string): RegExp {
+    const name = escapeRegExp(account)
+    return new RegExp(`No agent(?: on [^:]*${name}[^:]*)?: messages aren't answered\\.`)
+  }
+
+  /** "Assign agent" on the card's no-agent warning: opens the first account without one. */
+  async assignAgentFromCard(name: string): Promise<void> {
+    await step(`Assign an agent from the ${name} card`, async () => {
+      await this.card(name).getByRole('button', { name: 'Assign agent' }).click()
+    })
+  }
+
+  /** A connect/manage dialog's notice that no agent answers the account yet. */
+  noAgentNotice(): Locator {
+    return this.page.getByRole('alert').filter({ hasText: "No agent: messages aren't answered." })
+  }
+
+  /** In an open connect/manage dialog: route the account to `agentName`. */
+  async assignAgentInDialog(agentName: string): Promise<void> {
+    await step(`Assign ${agentName}`, async () => {
+      const dialog = this.page.getByRole('dialog')
+      await dialog.getByLabel('AI agent').selectOption({ label: agentName })
+      await dialog.getByRole('button', { name: 'Assign agent' }).click()
+      await expect(dialog).toHaveCount(0)
+    })
+  }
+
   /** The Manage dialog's explanation of why WhatsApp won't send from a number, quoting Meta. */
   cannotSendPrompt(): Locator {
     return this.page.getByText(/WhatsApp can't send replies from this number\. Meta said:/)
@@ -68,8 +100,9 @@ export class IntegrationsPage {
     return this.whatsAppNumbers().getByRole('button', { name: 'Add number' })
   }
 
-  /** Opens the connect form for one number (Reconnect when its access expired). */
-  async manageWhatsAppNumber(name: string, action: 'Manage' | 'Reconnect' = 'Manage'): Promise<void> {
+  /** Opens the connect form for one number (Reconnect when its access expired,
+   *  Assign agent when no agent answers it). */
+  async manageWhatsAppNumber(name: string, action: 'Manage' | 'Reconnect' | 'Assign agent' = 'Manage'): Promise<void> {
     await step(`${action} WhatsApp number ${name}`, async () => {
       await this.whatsAppNumber(name).getByRole('button', { name: `${action} ${name}` }).click()
     })

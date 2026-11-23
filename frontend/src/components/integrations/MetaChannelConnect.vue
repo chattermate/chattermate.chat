@@ -19,6 +19,7 @@ import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
+import NoAgentNotice from './NoAgentNotice.vue'
 import type { Agent } from '@/types/agent'
 import MessengerPagePicker from './MessengerPagePicker.vue'
 import MetaOwnAppWebhook from './MetaOwnAppWebhook.vue'
@@ -268,6 +269,7 @@ const saveAgent = async () => {
           <strong>{{ account.display_name }}</strong> is connected.
         </p>
         <MetaOwnAppWebhook v-if="account.webhook_url && account.webhook_verify_token" :account="account" />
+        <NoAgentNotice v-if="!account.agent_id" />
         <p class="meta-intro">Choose which AI agent answers its messages:</p>
         <label class="meta-label" for="meta-agent">AI agent</label>
         <select id="meta-agent" v-model="selectedAgentId" class="meta-input">

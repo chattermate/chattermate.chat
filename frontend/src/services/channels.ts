@@ -108,7 +108,7 @@ export interface ChannelAccount {
   external_account_id: string
   display_name?: string
   is_active: boolean
-  agent_id?: string
+  agent_id?: string | null   // null: no agent answers this account
   created_at?: string
   /** For email/SMS/LINE and Meta accounts from the customer's own app: the
    *  webhook URL to configure on the provider */

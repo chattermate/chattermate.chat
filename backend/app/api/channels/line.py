@@ -30,6 +30,7 @@ from app.models.schemas.channel import ChannelAccountOut, LineConnectRequest
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -78,6 +79,7 @@ async def connect_line(
     if not await line_api.set_webhook_endpoint(credentials["channel_access_token"], _webhook_url(account.id)):
         logger.warning(f"LINE webhook auto-set failed for {account.id}; set it manually in the console")
 
+    assign_sole_agent(db, account)
     out = to_account_out(db, account)
     out.webhook_url = _webhook_url(account.id)
     return out

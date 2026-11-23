@@ -34,7 +34,7 @@ vi.mock('@/services/agent', () => ({
 
 const number = (id: string, overrides: Partial<ChannelAccount> = {}): ChannelAccount => ({
   id, channel_type: 'whatsapp', external_account_id: `PN-${id}`,
-  display_name: `Number ${id}`, is_active: true, ...overrides,
+  display_name: `Number ${id}`, is_active: true, agent_id: 'ag-1', ...overrides,
 })
 
 const mountModal = async (accounts: ChannelAccount[], limit: number | null) => {
@@ -56,12 +56,24 @@ describe('WhatsAppNumbersModal', () => {
     const wrapper = await mountModal([
       number('1', { agent_id: 'ag-1' }),
       number('2', { agent_id: 'ag-2' }),
-      number('3'),
+      number('3', { agent_id: null }),
     ], 5)
 
     expect(wrapper.find('[data-testid="whatsapp-number-PN-1"]').text()).toContain('Answered by Support Bot')
     expect(wrapper.find('[data-testid="whatsapp-number-PN-2"]').text()).toContain('Answered by sales')
-    expect(wrapper.find('[data-testid="whatsapp-number-PN-3"]').text()).toContain('No agent assigned')
+    expect(wrapper.find('[data-testid="whatsapp-number-PN-3"]').text()).toContain("No agent: messages aren't answered.")
+  })
+
+  it('leads a number without an agent to its agent picker', async () => {
+    const unassigned = number('3', { agent_id: null })
+    const wrapper = await mountModal([number('1'), unassigned], 5)
+    const assign = wrapper.find('button[aria-label="Assign agent Number 3"]')
+
+    expect(wrapper.find('[data-testid="whatsapp-number-PN-3"] .wan-meta').classes()).toContain('warn')
+    expect(assign.classes()).toContain('wan-btn-primary')
+    await assign.trigger('click')
+    expect(wrapper.emitted('manage')![0]).toEqual([unassigned])
+    expect(wrapper.find('button[aria-label="Manage Number 1"]').exists()).toBe(true)
   })
 
   it('flags a number whose access expired', async () => {

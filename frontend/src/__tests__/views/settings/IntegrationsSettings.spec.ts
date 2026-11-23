@@ -209,3 +209,74 @@ describe('IntegrationsSettings: WhatsApp numbers', () => {
     expect(cardNamed(wrapper, 'WhatsApp')!.text()).not.toContain('Sales')
   })
 })
+
+describe('IntegrationsSettings: accounts no agent answers', () => {
+  const metaStub = defineComponent({
+    name: 'MetaChannelConnect',
+    props: { channel: String, existingAccount: { type: Object, default: null } },
+    setup: () => () => h('div', { class: 'meta-stub' }),
+  })
+  const channelStub = defineComponent({
+    name: 'ChannelConnectModal',
+    props: { channel: String, existingAccount: { type: Object, default: null } },
+    setup: () => () => h('div', { class: 'channel-stub' }),
+  })
+  const page = (id: string, agent_id: string | null, display_name = `Page ${id}`) => ({
+    id, channel_type: 'messenger', external_account_id: `P${id}`, display_name, is_active: true, agent_id,
+  })
+
+  const mountWith = async (accounts: object[]) => {
+    vi.mocked(channelsService.listAccounts).mockResolvedValueOnce(accounts as never)
+    const wrapper = mount(IntegrationsSettings, {
+      global: {
+        stubs: {
+          TelegramConnectModal: stub,
+          MetaChannelConnect: metaStub,
+          WhatsAppTemplateManager: stub,
+          WhatsAppNumbersModal: stub,
+          ChannelConnectModal: channelStub,
+        },
+      },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('warns on the card that messages are not answered', async () => {
+    const wrapper = await mountWith([page('1', null)])
+    expect(wrapper.find('[data-testid="no-agent-messenger"]').text())
+      .toContain("No agent: messages aren't answered.")
+  })
+
+  it('names only the Pages without an agent', async () => {
+    const wrapper = await mountWith([page('1', 'ag1', 'Shop'), page('2', null, 'Demo')])
+    expect(wrapper.find('[data-testid="no-agent-messenger"]').text())
+      .toContain("No agent on Demo: messages aren't answered.")
+  })
+
+  it('Assign agent opens the Page that has none', async () => {
+    const accounts = [page('1', 'ag1'), page('2', null)]
+    const wrapper = await mountWith(accounts)
+    await wrapper.find('[data-testid="no-agent-messenger"] button').trigger('click')
+    await flushPromises()
+
+    const form = wrapper.findComponent(metaStub)
+    expect(form.props('channel')).toBe('messenger')
+    expect(form.props('existingAccount')).toEqual(accounts[1])
+  })
+
+  it('Assign agent on an email inbox opens its agent picker', async () => {
+    const inbox = { id: 'e1', channel_type: 'email', external_account_id: 'help@acme.test',
+      display_name: 'help@acme.test', is_active: true, agent_id: null }
+    const wrapper = await mountWith([inbox])
+    await wrapper.find('[data-testid="no-agent-email"] button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(channelStub).props('existingAccount')).toEqual(inbox)
+  })
+
+  it('shows no warning once every account has an agent', async () => {
+    const wrapper = await mountWith([page('1', 'ag1')])
+    expect(wrapper.find('[data-testid="no-agent-messenger"]').exists()).toBe(false)
+  })
+})

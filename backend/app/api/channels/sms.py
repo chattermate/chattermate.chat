@@ -31,6 +31,7 @@ from app.models.schemas.channel import ChannelAccountOut, SmsConnectRequest, Sms
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -91,6 +92,7 @@ async def connect_sms(
             display_name=f"SMS {phone} ({provider.label})",
             settings={"provider": request.provider},
         )
+    assign_sole_agent(db, account)
     out = to_account_out(db, account)
     out.webhook_url = f"{settings.BACKEND_URL.rstrip('/')}{settings.API_V1_STR}/webhooks/sms/{request.provider}/{account.id}"
     return out

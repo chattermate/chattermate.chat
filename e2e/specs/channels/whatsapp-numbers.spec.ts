@@ -21,7 +21,7 @@ test.describe('several WhatsApp numbers', () => {
     await integrations.manage('WhatsApp')
 
     await expect(integrations.whatsAppNumber(salesName)).toContainText(`Answered by ${agent.name}`)
-    await expect(integrations.whatsAppNumber(supportName)).toContainText('No agent assigned')
+    await expect(integrations.whatsAppNumber(supportName)).toContainText("No agent: messages aren't answered.")
     await expect(integrations.whatsAppNumbersUsage()).toHaveText(/^\d+ numbers connected$/)
 
     // Managing one number opens its own form, with its agent chosen
