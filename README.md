@@ -441,6 +441,8 @@ chattermate-deploy reset                  # Reset and remove all data
 ```
 </details>
 
+Prefer a control panel? ChatterMate is a one-click install in [Panelica](https://panelica.com)'s Docker Manager catalogue. See [one-click install on hosting panels](https://docs.chattermate.chat/deployment/docker#one-click-install-on-hosting-panels).
+
 > ⚠️ **Two different `chattermate` commands — don't mix them up.** The **hosted CLI**
 > (`pip install chattermate-cli`) signs you up and manages agents/knowledge against the
 > ChatterMate API. The **self-host CLI** (`npm install -g chattermate-deploy`) scaffolds and runs
