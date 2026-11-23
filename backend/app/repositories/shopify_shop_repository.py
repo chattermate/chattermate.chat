@@ -16,6 +16,7 @@ limitations under the License.
 
 from typing import List, Optional, Union
 import uuid
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.shopify.shopify_shop import ShopifyShop
 from app.models.schemas.shopify import ShopifyShopCreate, ShopifyShopUpdate
@@ -36,9 +37,15 @@ class ShopifyShopRepository:
     
     def get_shop_by_domain(self, shop_domain: str) -> Optional[ShopifyShop]:
         """
-        Get a shop by domain
+        Get a shop by domain, ignoring case and surrounding spaces
         """
-        return self.db.query(ShopifyShop).filter(ShopifyShop.shop_domain == shop_domain).first()
+        if not shop_domain:
+            return None
+        return (
+            self.db.query(ShopifyShop)
+            .filter(func.lower(ShopifyShop.shop_domain) == shop_domain.strip().lower())
+            .first()
+        )
     
     def list_linked_domains(self) -> List[str]:
         """Domains of the stores that have the app installed and are linked to an
