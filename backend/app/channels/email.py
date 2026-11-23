@@ -20,6 +20,7 @@ import hmac
 import json
 import re
 import smtplib
+import ssl
 from email.message import EmailMessage
 from email.utils import parseaddr, make_msgid
 from typing import ClassVar, List, Optional
@@ -86,16 +87,45 @@ def platform_smtp_config(from_email: str) -> dict:
     }
 
 
+class _PinnedSMTP(smtplib.SMTP):
+    """Dials an address checked beforehand instead of resolving the host name
+    again, while TLS still checks the certificate against the host name."""
+
+    def __init__(self, host: str, port: int, address: str, **kwargs):
+        self._address = address
+        super().__init__(host, port, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        return super()._get_socket(self._address, port, timeout)
+
+
+class _PinnedSMTPSSL(_PinnedSMTP, smtplib.SMTP_SSL):
+    """The same, over implicit TLS (port 465)."""
+
+
+def _connect(cfg: dict, context: Optional[ssl.SSLContext]) -> smtplib.SMTP:
+    host, port, address = cfg["host"], cfg["port"], cfg.get("connect_address")
+    if cfg["use_ssl"]:
+        if address:
+            return _PinnedSMTPSSL(host, port, address, context=context, timeout=SMTP_TIMEOUT_SECONDS)
+        return smtplib.SMTP_SSL(host, port, context=context, timeout=SMTP_TIMEOUT_SECONDS)
+    if address:
+        return _PinnedSMTP(host, port, address, timeout=SMTP_TIMEOUT_SECONDS)
+    return smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT_SECONDS)
+
+
 def open_smtp(cfg: dict) -> smtplib.SMTP:
     """A connected, logged-in SMTP session for a config built above. With
-    `require_tls` set, a server that can't encrypt is refused rather than sent
-    the password in the clear."""
-    if cfg["use_ssl"]:
-        smtp = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=SMTP_TIMEOUT_SECONDS)
-    else:
-        smtp = smtplib.SMTP(cfg["host"], cfg["port"], timeout=SMTP_TIMEOUT_SECONDS)
+    `require_tls` set, the server must encrypt with a certificate valid for its
+    name, or it is refused rather than sent the password. `connect_address`, when
+    set, is the address to dial (one checked as safe), so the name can't be
+    re-pointed between the check and the connection."""
+    # Inboxes connected before stay as they were; new sending insists on a valid certificate
+    context = ssl.create_default_context() if cfg.get("require_tls") else None
+    smtp = _connect(cfg, context)
+    if not cfg["use_ssl"]:
         try:
-            smtp.starttls()
+            smtp.starttls(context=context)
         except smtplib.SMTPNotSupportedError:
             if cfg.get("require_tls"):
                 smtp.close()

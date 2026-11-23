@@ -16,6 +16,7 @@ limitations under the License.
 
 import asyncio
 import traceback
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
@@ -937,6 +938,19 @@ async def shopify_shop_redact_webhook(request: Request, db: Session = Depends(ge
 
 # Storefront forms posted through the App Proxy; the largest body read
 PROXY_ACTION_MAX_BYTES = 4096
+# Proxy answers are about one shopper: never kept by Shopify or a browser
+PROXY_NO_STORE = {"Cache-Control": "no-store, private"}
+
+
+async def _limited_body(request: Request, limit: int) -> Optional[bytes]:
+    """The request body, or None once it passes `limit` bytes: an oversized
+    body is never read whole, whatever its Content-Length says."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
 
 
 @router.post("/proxy/{action}")
@@ -944,13 +958,13 @@ async def storefront_proxy_action(action: str, request: Request):
     """Shopify forwards a storefront POST to /apps/chattermate/<action> here,
     signed (shopify_app_proxy.run_proxy_action). Never cached."""
     query = list(request.query_params.multi_items())
-    body = await request.body()
-    if len(body) > PROXY_ACTION_MAX_BYTES:
-        return JSONResponse({'error': 'too_large'}, status_code=413, headers={"Cache-Control": "no-store"})
+    body = await _limited_body(request, PROXY_ACTION_MAX_BYTES)
+    if body is None:
+        return JSONResponse({'error': 'too_large'}, status_code=413, headers=PROXY_NO_STORE)
     try:
         fields = json.loads(body) if body else {}
     except ValueError:
-        return JSONResponse({'error': 'invalid_json'}, status_code=400, headers={"Cache-Control": "no-store"})
+        return JSONResponse({'error': 'invalid_json'}, status_code=400, headers=PROXY_NO_STORE)
 
     def _work():
         with SessionLocal() as db:
@@ -961,7 +975,7 @@ async def storefront_proxy_action(action: str, request: Request):
     except Exception as e:
         logger.error(f"Storefront action {action} failed: {e}")
         status_code, result = 503, {'error': 'unavailable'}
-    return JSONResponse(result, status_code=status_code, headers={"Cache-Control": "no-store, private"})
+    return JSONResponse(result, status_code=status_code, headers=PROXY_NO_STORE)
 
 
 @router.get("/proxy/identity")
@@ -980,4 +994,4 @@ async def storefront_identity(request: Request):
     except Exception as e:
         logger.error(f"Storefront identity failed: {e}")
         result = None
-    return JSONResponse(result or {"token": None}, headers={"Cache-Control": "no-store, private"})
+    return JSONResponse(result or {"token": None}, headers=PROXY_NO_STORE)

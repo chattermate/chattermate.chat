@@ -28,7 +28,9 @@ falls back to that record.
 
 An installed extension that keeps its own records of a store's shoppers
 registers a redact hook (register_redact_hook): customers/redact and
-shop/redact run every hook in the same transaction as the core erasure.
+shop/redact run every hook in the same transaction as the core erasure. It
+registers a data-request hook (register_data_request_hook) too, so a
+customers/data_request counts what it holds about that customer.
 """
 
 from dataclasses import dataclass, field
@@ -39,6 +41,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.channels.app_hooks import load_extensions
 from app.core.logger import get_logger
 from app.models.session_to_agent import SessionToAgent
 from app.models.shopify.agent_shopify_config import AgentShopifyConfig
@@ -72,9 +75,10 @@ SHOPIFY_CHANNEL = "shopify"
 
 @dataclass
 class RedactRequest:
-    """What a redact hook erases: one customer of a store (email and phone as
-    Shopify sent them), or every shopper of the store when both are None.
-    organization_id is None when the store's organization is unknown."""
+    """The customer a hook acts on: one customer of a store (email and phone as
+    Shopify sent them), or, for shop/redact, every shopper of the store when
+    both are None. organization_id is None when the store's organization is
+    unknown."""
     topic: str
     shop_domain: str
     organization_id: Optional[UUID]
@@ -94,21 +98,40 @@ def register_redact_hook(name: str, hook: RedactHook) -> None:
     _redact_hooks[name] = hook
 
 
+# Counts an extension's rows about the request's customer (read only)
+DataRequestHook = Callable[[Session, RedactRequest], int]
+
+# {name: hook}; the name is what the data request records its count under
+_data_request_hooks: Dict[str, DataRequestHook] = {}
+
+
+def register_data_request_hook(name: str, hook: DataRequestHook) -> None:
+    _data_request_hooks[name] = hook
+
+
 def reset_redact_hooks() -> None:
     """Forget every registration (tests)."""
     _redact_hooks.clear()
+    _data_request_hooks.clear()
 
 
 def _run_redact_hooks(db: Session, request: RedactRequest) -> ErasureResult:
     """Every registered hook. One that fails fails the request, so Shopify
     retries it: an erasure is never recorded as done with rows left behind."""
     # The extension registers its hooks when its hooks module loads
-    from app.channels.app_hooks import load_extensions
     load_extensions()
     result = ErasureResult()
     for name, hook in list(_redact_hooks.items()):
         result.add(name, hook(db, request))
     return result
+
+
+def _held_by_extensions(db: Session, request: RedactRequest) -> Dict[str, int]:
+    """What each extension holds about the customer, by hook name; only
+    hooks that hold something are listed."""
+    load_extensions()
+    held = {name: hook(db, request) for name, hook in list(_data_request_hooks.items())}
+    return {name: count for name, count in held.items() if count}
 
 
 @dataclass
@@ -225,12 +248,18 @@ def handle_data_request(db: Session, payload: Dict[str, Any],
     """
     def work(organization_id: UUID):
         customer = payload.get("customer") or {}
-        customer_ids = customer_erasure.find_customer_ids(
-            db, organization_id, customer.get("email"), customer.get("phone"))
-        found = ErasureResult()  # nothing erased; only the ids are recorded
-        if not customer_ids:
+        email, phone = customer.get("email"), customer.get("phone")
+        customer_ids = customer_erasure.find_customer_ids(db, organization_id, email, phone)
+        held = _held_by_extensions(db, RedactRequest(
+            topic=TOPIC_DATA_REQUEST, shop_domain=payload.get("shop_domain") or "",
+            organization_id=organization_id, email=email, phone=phone))
+        found = ErasureResult()  # nothing erased; only what is held is recorded
+        if not customer_ids and not held:
             return STATUS_NO_MATCH, found
-        found.details["customer_ids"] = sorted(str(cid) for cid in customer_ids)
+        if customer_ids:
+            found.details["customer_ids"] = sorted(str(cid) for cid in customer_ids)
+        if held:
+            found.details["held"] = held
         return STATUS_AWAITING_EXPORT, found
 
     return _run(db, TOPIC_DATA_REQUEST, payload, webhook_id,

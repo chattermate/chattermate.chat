@@ -18,6 +18,7 @@ or the platform account (which local development points at Mailpit).
 """
 
 import smtplib
+import ssl
 
 import pytest
 
@@ -61,7 +62,8 @@ class FakeSMTP:
     def __init__(self, host, port, timeout=None):
         self.calls = []
 
-    def starttls(self):
+    def starttls(self, context=None):
+        self.context = context
         raise smtplib.SMTPNotSupportedError("STARTTLS extension not supported by server.")
 
     def login(self, username, password):
@@ -89,3 +91,28 @@ def test_a_server_without_starttls_is_refused_when_tls_is_required(monkeypatch):
         open_smtp(cfg)
     assert made[0].calls == [("close",)]
 
+
+
+class TlsSMTP(FakeSMTP):
+    def starttls(self, context=None):
+        self.context = context
+
+
+def test_required_tls_checks_the_certificate_and_its_name(monkeypatch):
+    """Required TLS uses a verifying context, so a stranger's certificate is refused."""
+    made = []
+    monkeypatch.setattr(email_channel.smtplib, "SMTP", lambda *a, **k: made.append(TlsSMTP(*a, **k)) or made[-1])
+    cfg = {**inbox_smtp_config({"smtp_host": "mail.example.com", "smtp_port": 587}, "a@example.com"), "require_tls": True}
+    open_smtp(cfg)
+    assert made[0].context.verify_mode == ssl.CERT_REQUIRED and made[0].context.check_hostname
+
+
+def test_a_pinned_connection_dials_the_checked_address_but_keeps_the_name(monkeypatch):
+    """The name can't be re-pointed after the check: the socket goes to the
+    checked address, and TLS still checks the certificate for the name."""
+    dialled = []
+    monkeypatch.setattr(smtplib.socket, "create_connection",
+                        lambda address, *a, **k: dialled.append(address) or (_ for _ in ()).throw(OSError("stop")))
+    with pytest.raises(OSError):
+        email_channel._PinnedSMTP("mail.example.com", 587, "203.0.113.7", timeout=1)
+    assert dialled == [("203.0.113.7", 587)]

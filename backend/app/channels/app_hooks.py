@@ -139,7 +139,8 @@ def register_text_handler(handler: TextHandler) -> None:
     AI reply. Handlers are asked in order; the first to answer wins. They run
     for every inbound text, so they must cheaply say None to anything that
     isn't theirs."""
-    _text_handlers.append(handler)
+    if handler not in _text_handlers:
+        _text_handlers.append(handler)
 
 
 def text_handlers() -> List[TextHandler]:

@@ -17,6 +17,8 @@ limitations under the License.
 Redact hooks (shopify_privacy.register_redact_hook): an extension's own
 records of a store's shoppers are erased with the core's, in the same
 transaction, on customers/redact and shop/redact, and never on a data request.
+Data-request hooks (register_data_request_hook) count what an extension holds
+about the customer, so a data request covers it.
 """
 
 import pytest
@@ -31,7 +33,7 @@ SHOP = "ada-store.myshopify.com"
 @pytest.fixture(autouse=True)
 def hooks(monkeypatch):
     """Registered hooks and what each was asked; no extension loads in these tests."""
-    monkeypatch.setattr("app.channels.app_hooks.load_extensions", lambda: None)
+    monkeypatch.setattr(shopify_privacy, "load_extensions", lambda: None)
     shopify_privacy.reset_redact_hooks()
     asked = []
 
@@ -111,6 +113,25 @@ def test_a_data_request_never_erases(db, shop, hooks):
 
 def test_the_extension_is_loaded_before_the_hooks_run(db, shop, monkeypatch):
     loaded = []
-    monkeypatch.setattr("app.channels.app_hooks.load_extensions", lambda: loaded.append(True))
+    monkeypatch.setattr(shopify_privacy, "load_extensions", lambda: loaded.append(True))
     shopify_privacy.handle_shop_redact(db, {"shop_domain": SHOP}, "wh-8")
     assert loaded == [True]
+
+
+def test_a_data_request_counts_what_extensions_hold(db, shop, hooks, test_organization):
+    """A shopper known only to an extension (no core customer) still has data to export."""
+    asked = []
+    shopify_privacy.register_data_request_hook("extension_rows", lambda db, request: asked.append(request) or 3)
+    shopify_privacy.register_data_request_hook("nothing_here", lambda db, request: 0)
+    outcome = shopify_privacy.handle_data_request(db, customer_payload(), "wh-dr-1")
+    [request] = asked
+    assert (request.topic, request.shop_domain, request.email) == ("customers/data_request", SHOP, "maya@example.com")
+    assert outcome.status == shopify_privacy.STATUS_AWAITING_EXPORT
+    assert outcome.result["held"] == {"extension_rows": 3}
+    assert hooks == []  # nothing is erased on a data request
+
+
+def test_a_data_request_with_nothing_held_matches_nothing(db, shop):
+    shopify_privacy.register_data_request_hook("extension_rows", lambda db, request: 0)
+    outcome = shopify_privacy.handle_data_request(db, customer_payload(), "wh-dr-2")
+    assert outcome.status == shopify_privacy.STATUS_NO_MATCH
