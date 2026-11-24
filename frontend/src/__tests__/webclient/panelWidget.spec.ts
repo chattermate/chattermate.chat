@@ -138,14 +138,12 @@ describe('the panel shell', () => {
         expect(wrapper!.attributes('style')).toContain('border-radius: 0')
     })
 
-    it('links "Powered by ChatterMate" unless the plan hides it', async () => {
+    it('links "Powered by ChatterMate", with or without the AI disclosure', async () => {
         panel()
-        const link = wrapper!.get('.cm-footer a')
-        expect(link.text().replace(/\s+/g, ' ')).toBe('Powered by ChatterMate')
-        ctrl.showBranding.value = false
+        expect(wrapper!.get('.cm-footer a').text().replace(/\s+/g, ' ')).toBe('Powered by ChatterMate')
         ctrl.showAiDisclaimer.value = false
         await nextTick()
-        expect(wrapper!.find('.cm-footer').exists()).toBe(false)
+        expect(wrapper!.get('.cm-footer a').text().replace(/\s+/g, ' ')).toBe('Powered by ChatterMate')
     })
 
     it('asks before a new chat ends this one', async () => {

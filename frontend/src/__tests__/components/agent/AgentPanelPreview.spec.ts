@@ -38,7 +38,6 @@ const mountPreview = (chat_style: string) => mount(AgentPanelPreview, {
         agentId: 'agent-1',
         agentName: 'Ada',
         photoUrl: '',
-        showBranding: true,
     },
     attachTo: document.body,
 })

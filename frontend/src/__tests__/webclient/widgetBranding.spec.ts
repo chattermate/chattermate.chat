@@ -32,8 +32,7 @@ const templateOf = (source: string) =>
     source.slice(source.indexOf('<template>'), source.lastIndexOf('</template>'))
 
 /**
- * "Powered by ChatterMate" comes off only when the server says the plan removes
- * it. A page with no answer, such as an older bootstrap, keeps it.
+ * "Powered by ChatterMate" shows on every plan, in the chat panel and in Ask AI.
  */
 
 vi.mock('@/composables/useWidgetSocket', async () => (await import('./widgetHarness')).socketModule())
@@ -46,11 +45,6 @@ afterEach(() => {
 })
 
 describe('the widget footer', () => {
-    const mountWith = async (hideBranding?: boolean) => {
-        wrapper = (await mountWidget({ initialData: { hideBranding } })).wrapper
-        return wrapper
-    }
-
     beforeEach(() => {
         vi.unstubAllGlobals()
         resetSocket()
@@ -60,25 +54,15 @@ describe('the widget footer', () => {
     const brandLink = () => wrapper.findAll('a[href="https://chattermate.chat"]')
         .find((link: any) => link.text().replace(/\s+/g, ' ').includes('Powered by ChatterMate'))
 
-    it('keeps the branding by default', async () => {
-        await mountWith(undefined)
+    it('shows the branding', async () => {
+        wrapper = (await mountWidget()).wrapper
         expect(brandLink()).toBeDefined()
-    })
-
-    it('keeps the branding when the plan does not remove it', async () => {
-        await mountWith(false)
-        expect(brandLink()).toBeDefined()
-    })
-
-    it('drops the footer when the plan removes it', async () => {
-        await mountWith(true)
-        expect(brandLink()).toBeUndefined()
     })
 
     // The chat, the workflow screens and the unavailable screen each draw the footer,
     // and one mount only reaches one of them. The link lives in PanelFooter alone,
-    // behind the check, so whatever screen is added next gets the check with it.
-    it('has no branded footer outside the check, on any screen', () => {
+    // with nothing hiding it, so every screen shows it.
+    it('draws the link from PanelFooter only, unconditionally', () => {
         const withLink = Object.entries(panelSources)
             .filter(([, source]) => templateOf(source).includes('href="https://chattermate.chat"'))
             .map(([name]) => name)
@@ -87,12 +71,12 @@ describe('the widget footer', () => {
         const template = templateOf(panelSources['PanelFooter.vue'])
         const links = template.match(/<a\b[^>]*href="https:\/\/chattermate\.chat"[^>]*>/g) ?? []
         expect(links.length).toBeGreaterThan(0)
-        links.forEach(link => expect(link).toContain('v-if="showBranding"'))
+        links.forEach(link => expect(link).not.toContain('v-if'))
     })
 })
 
 describe('the Ask AI footer', () => {
-    const panel = (showBranding: boolean, disclaimer = '') => (wrapper = mount(AskAiPanel, {
+    const panel = (disclaimer = '') => (wrapper = mount(AskAiPanel, {
         props: {
             messages: [],
             draft: '',
@@ -103,7 +87,6 @@ describe('the Ask AI footer', () => {
             loading: false,
             showCitations: false,
             disclaimer,
-            showBranding,
             active: false,
             hotkey: false,
             citationLabel: () => '',
@@ -114,16 +97,12 @@ describe('the Ask AI footer', () => {
     }))
 
     it('shows the branding', () => {
-        expect(panel(true).find('.askai__brand').exists()).toBe(true)
+        expect(panel().find('.askai__brand').exists()).toBe(true)
     })
 
-    it('keeps the disclaimer without the branding', () => {
-        const footed = panel(false, 'AI can make mistakes')
-        expect(footed.find('.askai__brand').exists()).toBe(false)
-        expect(footed.find('.askai__foot').text()).toBe('AI can make mistakes')
-    })
-
-    it('leaves no empty footer behind', () => {
-        expect(panel(false).find('.askai__foot').exists()).toBe(false)
+    it('shows the disclaimer beside the branding', () => {
+        const footed = panel('AI can make mistakes')
+        expect(footed.find('.askai__brand').exists()).toBe(true)
+        expect(footed.find('.askai__foot').text()).toContain('AI can make mistakes')
     })
 })

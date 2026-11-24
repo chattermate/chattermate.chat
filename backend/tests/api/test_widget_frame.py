@@ -305,14 +305,6 @@ class TestDataPageEmbedding:
 
 
 class TestBootstrap:
-    def test_the_plan_decides_on_the_branding(self, client, test_widget, monkeypatch):
-        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: True)
-        assert bootstrap(client, test_widget).json()["hideBranding"] is True
-
-    def test_branding_stays_by_default(self, client, test_widget, monkeypatch):
-        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: False)
-        assert bootstrap(client, test_widget).json()["hideBranding"] is False
-
     def test_the_live_help_center_is_offered(self, client, test_widget, monkeypatch):
         monkeypatch.setattr(widget_bootstrap, "help_center_url", lambda *a: "https://help.acme.example")
         assert bootstrap(client, test_widget).json()["helpCenterUrl"] == "https://help.acme.example"
@@ -375,7 +367,7 @@ class TestBootstrap:
         data = response.json()
         assert set(data) == {
             "widgetId", "agentName", "customization", "customerId", "initialToken",
-            "customer", "workflow", "allowAttachments", "presence", "hideBranding",
+            "customer", "workflow", "allowAttachments", "presence",
             "helpCenterUrl", "planFeatures", "widgetData",
         }
         # Community install: every widget feature is on

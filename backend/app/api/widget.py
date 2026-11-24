@@ -191,7 +191,6 @@ def get_widget_html(data: dict, request: Optional[Request] = None) -> str:
                     workflow: {str(data['workflow']).lower()},
                     allowAttachments: {str(data['allowAttachments']).lower()},
                     presence: {script_json(data['presence'])},
-                    hideBranding: {str(data['hideBranding']).lower()},
                     helpCenterUrl: {script_json(data.get('helpCenterUrl'))},
                     planFeatures: {script_json(data.get('planFeatures'))}
                 }};

@@ -79,29 +79,7 @@ describe('AgentChatPreviewPanel', () => {
     wrapper.unmount()
   })
 
-  it('drops "Powered by" when the plan includes custom branding, like the live widget', async () => {
-    onPlan({ custom_branding: true })
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.text()).not.toContain('Powered by')
-    wrapper.unmount()
-  })
-
-  it('keeps it on a plan without custom branding, and with no plan cached', async () => {
-    onPlan({ custom_branding: false })
-    const plain = render()
-    await flushPromises()
-    expect(plain.text()).toContain('Powered by')
-    plain.unmount()
-    state.currentPlan = null
-    const uncached = render()
-    await flushPromises()
-    expect(uncached.text()).toContain('Powered by')
-    uncached.unmount()
-  })
-
-  it('always shows it in the open-source build', async () => {
-    state.hasEnterpriseModule = false
+  it('shows "Powered by" on every plan, like the live widget', async () => {
     onPlan({ custom_branding: true })
     const wrapper = render()
     await flushPromises()

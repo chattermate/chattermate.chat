@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 What a plan switches on and off while the agent runs: workflows, MCP tools,
-lead capture and the ChatterMate branding.
+and lead capture.
 """
 
 from types import SimpleNamespace
@@ -30,7 +30,6 @@ from app.services.feature_gate import (
     MCP_TOOLS_FEATURE,
     WORKFLOW_FEATURE,
     plan_feature_on,
-    plan_hides_branding,
 )
 from app.services.lead_capture import record_lead_from_response
 from app.tools import mcp_manager
@@ -75,21 +74,6 @@ class TestPlanFeatureOn:
         monkeypatch.setattr(feature_gate, "feature_on", None, raising=False)
         assert plan_feature_on(MagicMock(), "org", WORKFLOW_FEATURE) is True
         assert feature_gate.HAS_ENTERPRISE is True
-
-
-class TestPlanHidesBranding:
-    def test_community_installs_keep_it(self, monkeypatch):
-        community_install(monkeypatch)
-        assert plan_hides_branding(MagicMock(), "org") is False
-
-    @pytest.mark.parametrize("answer", [True, False])
-    def test_the_plan_decides(self, monkeypatch, answer):
-        enterprise_says(monkeypatch, answer)
-        assert plan_hides_branding(MagicMock(), "org") is answer
-
-    def test_a_failed_lookup_keeps_it(self, monkeypatch):
-        enterprise_says(monkeypatch, RuntimeError("redis down"))
-        assert plan_hides_branding(MagicMock(), "org") is False
 
 
 class TestWorkflowMayRun:
