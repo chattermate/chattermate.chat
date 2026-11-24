@@ -13,8 +13,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-WhatsApp numbers and Messenger Pages that live in the customer's own Meta
-app (connected with manual credentials) rather than in ChatterMate's.
+WhatsApp numbers, Messenger Pages and Instagram accounts (through their
+linked Page) that live in the customer's own Meta app (connected with manual
+credentials) rather than in ChatterMate's.
 
 Meta signs their webhooks with the customer's app secret, which the shared
 /webhooks/meta endpoint can't check. So each such account gets its own
@@ -25,8 +26,8 @@ numbers), never for anyone else's: a payload signed with a secret someone
 chose themselves can't reach another organization.
 
 A WhatsApp number is pointed at its address with a per-number callback
-override; Messenger has no override, so the customer pastes the address and
-verify token into their app.
+override; Messenger and Instagram have none, so the customer pastes the
+address and verify token into their app.
 """
 
 import hashlib
@@ -51,7 +52,7 @@ APP_SECRET_KEY = "app_secret"
 # accepted our per-number callback for it
 APP_ID_SETTING = "meta_app_id"
 AUTO_WEBHOOK_SETTING = "webhook_auto_configured"
-OWN_APP_CHANNELS = (ChannelType.WHATSAPP.value, ChannelType.MESSENGER.value)
+OWN_APP_CHANNELS = (ChannelType.WHATSAPP.value, ChannelType.MESSENGER.value, ChannelType.INSTAGRAM.value)
 
 # Meta's answer to an appsecret_proof made with another app's secret
 _PROOF_ERROR = "appsecret_proof"

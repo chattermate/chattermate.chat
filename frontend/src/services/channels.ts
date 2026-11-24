@@ -233,7 +233,11 @@ const channelsService = {
   },
 
   /** Connect an Instagram professional account (via its linked page token) */
-  async connectInstagram(payload: { ig_id: string; page_access_token: string }): Promise<ChannelAccount> {
+  async connectInstagram(payload: {
+    ig_id: string
+    page_access_token: string
+    app_secret?: string
+  }): Promise<ChannelAccount> {
     const response = await api.post('/channels/meta/instagram', payload)
     return response.data
   },

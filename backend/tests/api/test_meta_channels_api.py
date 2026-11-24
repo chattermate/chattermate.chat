@@ -315,13 +315,55 @@ class TestMetaConnect:
         assert r.status_code == 400
         assert "Session has expired" in r.json()["detail"]
 
+    def _connect_instagram(self, client, inspect=None, lookup=(True, {"id": "IG7", "username": "acme"}),
+                           subscribe=True, ig_id="IG7"):
+        inspect = inspect or (True, {"type": "PAGE", "profile_id": "PAGE7", "is_valid": True})
+        subscribe_app = AsyncMock(return_value=subscribe)
+        with patch("app.api.channels.meta.debug_token", AsyncMock(return_value=inspect)), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=lookup)), \
+             patch("app.api.channels.meta.subscribe_app", subscribe_app):
+            response = client.post(f"{BASE}/instagram", json={
+                "ig_id": ig_id, "page_access_token": "EAAG-x"})
+        return response, subscribe_app
+
     def test_connect_instagram_success(self, client, db):
-        graph = AsyncMock(return_value=(True, {"id": "IG7", "username": "acme"}))
-        with patch("app.api.channels.meta.graph_get", graph):
-            r = client.post(f"{BASE}/instagram", json={
-                "ig_id": "IG7", "page_access_token": "EAAG-x"})
+        r, subscribe_app = self._connect_instagram(client)
         assert r.status_code == 200
         assert r.json()["display_name"] == "@acme"
+        account = ChannelAccountRepository(db).get_by_external_id("instagram", "IG7")
+        # A Page token: sends go through the Facebook graph, as that Page
+        assert account.settings["page_id"] == "PAGE7"
+        # DMs reach the app only once the linked Page subscribes it
+        assert subscribe_app.await_args.args[:2] == ("PAGE7", "EAAG-x")
+
+    def test_connect_instagram_rejects_a_user_token(self, client, db):
+        r, _ = self._connect_instagram(client, inspect=(True, {"type": "USER", "is_valid": True}))
+        assert r.status_code == 400
+        assert "Page access token" in r.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG7") is None
+
+    def test_connect_instagram_rejects_an_expired_token(self, client, db):
+        r, _ = self._connect_instagram(client, inspect=(True, {
+            "is_valid": False, "error": {"message": "Session has expired"}}))
+        assert r.status_code == 400
+        assert "Session has expired" in r.json()["detail"]
+
+    def test_connect_instagram_says_why_the_account_cant_be_read(self, client, db):
+        r, _ = self._connect_instagram(client, lookup=(False, {"error": {
+            "message": "(#10) Application does not have permission for this action", "code": 10}}))
+        assert r.status_code == 400
+        assert "does not have permission" in r.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG7") is None
+
+    def test_connect_instagram_refuses_a_page_id(self, client, db):
+        r, _ = self._connect_instagram(client, lookup=(True, {"id": "PAGE7"}), ig_id="PAGE7")
+        assert r.status_code == 200  # the node answers with its own id, so it matches
+        r, _ = self._connect_instagram(client, lookup=(True, {"id": "PAGE7"}), ig_id="IG8")
+        assert r.status_code == 400
+
+    def test_connect_instagram_survives_a_failed_page_subscribe(self, client, db):
+        r, _ = self._connect_instagram(client, subscribe=False)
+        assert r.status_code == 200
 
     def test_reconnect_other_org_409(self, client, db, whatsapp_account):
         whatsapp_account.organization_id = uuid4()

@@ -379,7 +379,13 @@ export interface paths {
         put?: never;
         /**
          * Connect Instagram
-         * @description Connect an Instagram professional account (via its linked page token).
+         * @description Connect an Instagram professional account with its linked Facebook
+         *     Page's token, from ChatterMate's app or the customer's own.
+         *
+         *     Instagram DMs come through the Page: the Page must subscribe the app, and
+         *     the token only works on the Facebook graph (see PAGE_ID_SETTING). A token
+         *     from the customer's own app also needs that app's secret, since Meta signs
+         *     its webhooks with it (see meta_own_app).
          */
         post: operations["connect_instagram_api_v1_channels_meta_instagram_post"];
         delete?: never;
@@ -7702,8 +7708,14 @@ export interface components {
          * @enum {string}
          */
         InboxView: "mine" | "mentions" | "waiting" | "open" | "ai" | "resolved_by_ai" | "closed" | "negative" | "snoozed";
-        /** InstagramConnectRequest */
+        /**
+         * InstagramConnectRequest
+         * @description An Instagram professional account through its linked Facebook Page's
+         *     token, from ChatterMate's app or the customer's own.
+         */
         InstagramConnectRequest: {
+            /** App Secret */
+            app_secret?: string | null;
             /** Ig Id */
             ig_id: string;
             /** Page Access Token */

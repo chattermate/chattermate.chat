@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
+from app.channels.instagram import PAGE_ID_SETTING
 from app.channels.meta_base import (
     debug_token,
     exchange_for_long_lived_token,
@@ -759,14 +760,19 @@ async def connect_instagram_login(
     # any account — silently, with no error. Prefer the authoritative one.
     account_id = str((profile.get("user_id") if ok else None) or user_id)
 
+    previous_token = own_app_token(_previous_account(db, organization, ChannelType.INSTAGRAM.value, account_id))
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,
         external_account_id=account_id,
         credentials={"access_token": access_token},
         display_name=request.display_name or ("@" + (username or account_id)),
+        forget=(APP_SECRET_KEY,),
     )
+    # Was it connected by hand before? It now holds an Instagram Login token
+    ChannelAccountRepository(db).update_settings(account, {}, remove=(PAGE_ID_SETTING,))
     if not await subscribe_instagram_app(access_token):
         logger.warning(f"Instagram webhook subscribe failed for {account_id}; DMs may not arrive")
+    await sync_own_app(db, account, None, access_token, previous_token)
     return to_account_out(db, account)
 
 
@@ -777,12 +783,33 @@ async def connect_instagram(
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):
-    """Connect an Instagram professional account (via its linked page token)."""
+    """Connect an Instagram professional account with its linked Facebook
+    Page's token, from ChatterMate's app or the customer's own.
+
+    Instagram DMs come through the Page: the Page must subscribe the app, and
+    the token only works on the Facebook graph (see PAGE_ID_SETTING). A token
+    from the customer's own app also needs that app's secret, since Meta signs
+    its webhooks with it (see meta_own_app)."""
+    own = await _own_app(request.page_access_token, request.app_secret)
+    ok, info = await debug_token(request.page_access_token,
+                                 app_id=own.app_id if own else None,
+                                 app_secret=own.secret if own else None)
+    if not ok or not info.get("is_valid"):
+        raise HTTPException(status_code=400, detail=graph_detail(
+            info, "That token is not valid — generate a fresh Page access token"))
+    if info.get("type") != "PAGE":
+        raise HTTPException(status_code=400, detail=(
+            f"That is a {str(info.get('type', 'user')).lower()} access token, not a Page "
+            f"access token. Use the token of the Facebook Page your Instagram account is linked to."))
+    page_id = str(info.get("profile_id"))
+
     ok, data = await graph_get(request.ig_id, request.page_access_token,
                                params={"fields": "id,username"})
     if not ok:
-        raise HTTPException(status_code=400,
-                            detail=f"Could not verify Instagram credentials: {data.get('error', {}).get('message', 'invalid token or account id')}")
+        raise HTTPException(status_code=400, detail=graph_detail(data, (
+            "Could not read that Instagram account with this token. Check the account is "
+            "linked to the token's Facebook Page and the token has instagram_basic and "
+            "instagram_manage_messages.")))
     # Webhook routing matches entry.id against this value, so reject anything
     # that isn't the actual IG business-account id (e.g. a pasted Page id —
     # the page token can read that node too, so ok=True alone isn't enough).
@@ -790,12 +817,20 @@ async def connect_instagram(
         raise HTTPException(status_code=400,
                             detail="The ID entered is not an Instagram professional account ID")
 
+    previous_token = own_app_token(_previous_account(db, organization, ChannelType.INSTAGRAM.value, request.ig_id))
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,
         external_account_id=request.ig_id,
-        credentials={"access_token": request.page_access_token},
+        credentials={"access_token": request.page_access_token, **_own_app_credentials(own)},
         display_name=request.display_name or f"@{data.get('username', request.ig_id)}",
+        forget=() if own else (APP_SECRET_KEY,),
     )
+    ChannelAccountRepository(db).update_settings(account, {PAGE_ID_SETTING: page_id})
+    # Instagram DMs reach the app through the Page's subscription
+    if not await subscribe_app(page_id, request.page_access_token,
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
+        logger.warning(f"Page subscribe failed for {page_id} (Instagram {request.ig_id}); DMs may not arrive")
+    await sync_own_app(db, account, own, request.page_access_token, previous_token)
     return to_account_out(db, account)
 
 

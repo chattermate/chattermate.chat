@@ -73,11 +73,12 @@ const META_FORMS = {
   },
   instagram: {
     title: 'Connect Instagram',
-    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token, from ',
-    introAfter: ' → Instagram.',
+    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. From your Meta app (',
+    introAfter: '), generate an access token for that Page with instagram_basic and instagram_manage_messages, and copy the app secret from App settings → Basic.',
     fields: [
       { key: 'ig_id', label: 'Instagram account ID', placeholder: '17841400000000000', secret: false },
       { key: 'page_access_token', label: 'Linked page access token', placeholder: 'EAAG…', secret: true },
+      APP_SECRET_FIELD,
     ],
   },
 } as const
