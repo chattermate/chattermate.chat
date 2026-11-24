@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from app.models.schemas.channel import (
     InstagramConnectRequest,
     LineConnectRequest,
+    SmsConnectRequest,
     MessengerConnectRequest,
     WhatsAppConnectRequest,
 )
@@ -77,3 +78,21 @@ def test_line_credentials_are_checked():
     assert "channel access token" in _error(exc.value)
     assert LineConnectRequest(
         channel_secret=" abc ", channel_access_token="tok").channel_secret == "abc"
+
+
+def test_whitespace_only_token_is_refused_as_missing():
+    with pytest.raises(ValidationError) as exc:
+        WhatsAppConnectRequest(phone_number_id="1", access_token="   ")
+
+    assert "access token is required" in _error(exc.value)
+
+
+def test_sms_credentials_are_trimmed_and_checked():
+    request = SmsConnectRequest(provider="twilio", phone_number="+1",
+                                credentials={"account_sid": " AC1 ", "auth_token": "", "port": 5})
+    assert request.credentials == {"account_sid": "AC1", "auth_token": "", "port": 5}
+
+    with pytest.raises(ValidationError) as exc:
+        SmsConnectRequest(provider="twilio", phone_number="+1",
+                          credentials={"auth_token": "abc\u2019"})
+    assert "auth token contains a character" in _error(exc.value)

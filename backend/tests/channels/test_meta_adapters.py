@@ -559,6 +559,15 @@ class TestGraphHelpers:
         assert graph_client.calls == []
 
     @pytest.mark.asyncio
+    async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, graph_client):
+        result = await graph_post("PHONE1/messages", "EAAG\u2019abc", {})
+
+        assert result.ok is False
+        assert result.auth_failed is True
+        assert result.error == NON_ASCII_TOKEN_MESSAGE
+        assert graph_client.calls == []
+
+    @pytest.mark.asyncio
     async def test_network_error_is_reported_not_raised(self, graph_client):
         graph_client.error = RuntimeError("connection reset")
 

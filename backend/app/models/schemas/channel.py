@@ -21,6 +21,7 @@ from uuid import UUID
 from pydantic import BaseModel, field_validator
 
 from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
+from app.channels.credentials import fits_in_header, stray_character_message
 
 
 class ChannelAccountOut(BaseModel):
@@ -55,20 +56,15 @@ class TelegramConnectRequest(BaseModel):
     bot_token: str
 
 
-def pasted_credential(value: str, label: str) -> str:
-    """A token or secret pasted from a provider's console, trimmed.
-
-    Credentials are plain ASCII, so anything else (a smart quote, a
-    zero-width space or an ellipsis picked up while copying) means the paste
-    went wrong. Sent on, it fails inside the HTTP client with an encoding
-    error the customer can't act on; refused here, they're told what to fix.
-    """
+def pasted_credential(value: str, label: str, required: bool = True) -> str:
+    """A token or secret pasted from a provider's console, trimmed, and
+    refused by name when copying dragged in a character that can't be part
+    of it (see fits_in_header) or left nothing but spaces."""
     value = value.strip()
-    if not value.isascii():
-        raise ValueError(
-            f"The {label} contains a character that isn't part of it. "
-            "Copy it again, without any extra characters, and paste it here."
-        )
+    if not fits_in_header(value):
+        raise ValueError(stray_character_message(label))
+    if required and not value:
+        raise ValueError(f"The {label} is required.")
     return value
 
 
@@ -82,7 +78,7 @@ class OwnMetaAppSecret(BaseModel):
     @field_validator("app_secret")
     @classmethod
     def _blank_is_none(cls, value: Optional[str]) -> Optional[str]:
-        return pasted_credential(value or "", "app secret") or None
+        return pasted_credential(value or "", "app secret", required=False) or None
 
 
 class WhatsAppConnectRequest(OwnMetaAppSecret):
@@ -259,6 +255,15 @@ class SmsConnectRequest(BaseModel):
     provider: str                      # 'twilio' | 'vonage' | 'messagebird' | ...
     phone_number: str                  # sender number / id
     credentials: dict = {}             # provider-specific secrets
+
+    @field_validator("credentials")
+    @classmethod
+    def _check_credentials(cls, value: dict) -> dict:
+        # Provider SDKs send these as Basic auth or headers too; blanks stay
+        # for the provider's own required-field check
+        return {key: pasted_credential(secret, key.replace("_", " "), required=False)
+                if isinstance(secret, str) else secret
+                for key, secret in value.items()}
 
 
 class SmsProviderInfo(BaseModel):
