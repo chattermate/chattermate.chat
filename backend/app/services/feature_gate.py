@@ -110,12 +110,6 @@ def plan_flag_on(db: Session, organization_id: UUID | str, feature: str, otherwi
     return plan_flags(db, organization_id, (feature,), otherwise)[feature]
 
 
-def plan_hides_branding(db: Session, organization_id: UUID | str) -> bool:
-    """Only a plan removes the branding, so community installs and a failed
-    lookup keep it."""
-    return _plan_says(db, organization_id, CUSTOM_BRANDING_FEATURE, otherwise=False)
-
-
 def check_feature_access(db: Session, organization_id: UUID, feature: str, upgrade_message: str) -> None:
     """Raising check for authenticated admin endpoints: 403 with the feature's
     upgrade message when the plan lacks the flag (subscription-level errors

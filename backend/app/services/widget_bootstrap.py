@@ -35,7 +35,7 @@ from app.models.widget import Widget
 from app.repositories.widget import WidgetRepository
 from app.services import conversation_token, launcher, widget_plan, widget_ui
 from app.services.widget_help_center import help_center_url
-from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
+from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
 from app.utils.business_hours import is_within_business_hours
 
 logger = get_logger(__name__)
@@ -65,7 +65,6 @@ class WidgetSession:
     token: str
     presence: dict
     runs_workflow: bool
-    hide_branding: bool
 
 
 def agent_runs_workflow(db: Session, agent: Agent) -> bool:
@@ -152,8 +151,7 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
         token = mint_widget_token(widget.id, conversation_key(token_payload), source=source)
 
     return WidgetSession(widget=widget, agent=agent, customer_id=customer_id, token=token, presence=_presence(agent),
-                         runs_workflow=agent_runs_workflow(db, agent),
-                         hide_branding=plan_hides_branding(db, agent.organization_id))
+                         runs_workflow=agent_runs_workflow(db, agent))
 
 
 async def _customization(db: Session, agent: Agent) -> dict:
@@ -206,7 +204,6 @@ async def initial_data(db: Session, session: WidgetSession) -> dict:
         "workflow": session.runs_workflow,
         "allowAttachments": bool(agent.allow_attachments),
         "presence": session.presence,
-        "hideBranding": session.hide_branding,
         "helpCenterUrl": help_center_url(db, agent.organization_id),
         # What the page hides on this plan (the server refuses it as well)
         "planFeatures": widget_plan.features(db, agent.organization_id, widget_plan.PAGE_FEATURES),

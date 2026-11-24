@@ -33,8 +33,6 @@ export interface PreviewContext {
     agentName: Readonly<Ref<string>>
     /** The agent's photo, or the dashboard's orb stand-in. */
     photoUrl: Readonly<Ref<string>>
-    /** The plan's branding, as the server decides it for the live widget. */
-    showBranding: Readonly<Ref<boolean>>
     /** The preview box, px. */
     width: Readonly<Ref<number>>
     height: Readonly<Ref<number>>
@@ -173,7 +171,6 @@ export function usePreviewController(
         useOrbAvatar: presentation.useOrbAvatar,
         orbStyle: presentation.orbStyle,
         presence: presentation.presence,
-        showBranding: context.showBranding,
         helpCenterUrl: context.helpCenterUrl ?? ref(null),
         showCitations: presentation.showCitations,
         showAiDisclaimer: presentation.showAiDisclaimer,

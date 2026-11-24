@@ -87,7 +87,6 @@ export interface WidgetLook {
     useOrbAvatar: Shown<boolean>
     orbStyle: Shown<CssStyle>
     presence: Shown<PresenceLine>
-    showBranding: Shown<boolean>
     /** The org's live help center (http(s) only), or null. */
     helpCenterUrl: Shown<string | null>
     showCitations: Shown<boolean>
