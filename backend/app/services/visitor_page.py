@@ -103,12 +103,15 @@ def page_context(page: Optional[dict]) -> Optional[str]:
         return None
     lines = [f"Title: {page['title']}"] if page.get('title') else []
     lines.append(f"URL: {page['url']}")
+    # The handle is the visitor's text too: it stays in the fence, and only the
+    # fixed hint about using it goes outside
+    handle = product_handle(page['url'])
+    if handle:
+        lines.append(f"Product handle: {handle}")
     text = ("The customer is viewing this page of the website while they chat. When they ask "
             "about \"this\" or \"it\" without naming anything, they mean what this page shows.\n"
             + visitor_data_block(PAGE_LABEL, "\n".join(lines)))
-    handle = product_handle(page['url'])
     if handle:
-        # Matched from a closed character set, so safe outside the fence
-        text += (f"\nThe page is the store's product page for handle {handle}. With a product "
-                 f"search tool, search for handle:{handle} to find this product.")
+        text += ("\nThe page is one of the store's product pages. With a product search tool, search "
+                 "for handle: followed by the product handle above to find this product.")
     return text

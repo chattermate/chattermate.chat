@@ -42,7 +42,7 @@ class TestPageContext:
 
         context = create_async.await_args.kwargs["extra_context"]
         assert "Title: Blue Hoodie\nURL: https://shop.example.com/products/blue-hoodie" in context
-        assert "handle:blue-hoodie" in context
+        assert "Product handle: blue-hoodie" in context
 
     async def test_a_bad_page_is_left_out(self, sio):  # noqa: F811
         create_async = await send({"message": "hi", "page": {"url": "javascript:alert(1)", "title": "x"}})
