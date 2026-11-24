@@ -80,6 +80,26 @@ export const setHostPageUrl = (url: unknown, title?: unknown): void => {
   }
 }
 
+export interface HostPage { url: string; title: string | null }
+
+/**
+ * The page the visitor is on, as far as the widget can tell: what the loader
+ * reported, else a same-origin parent's own (older srcdoc embeds), else the
+ * referrer. Null when nothing embeds the widget.
+ */
+export const currentHostPage = (): HostPage | null => {
+  if (hostPageUrl) return { url: hostPageUrl, title: hostPage.value.title }
+  if (window.parent === window) return null
+  try {
+    if (window.parent.location?.href) {
+      return { url: window.parent.location.href, title: window.parent.document?.title || null }
+    }
+  } catch {
+    // A cross-origin parent: only the referrer says where we are
+  }
+  return document.referrer ? { url: document.referrer, title: null } : null
+}
+
 /** Where the widget keeps its token in this mode. */
 export const tokenStoreFor = (widgetId: string): TokenStore => {
   if (!boot) return localTokenStore()

@@ -86,6 +86,7 @@ from app.services.widget_reply import (
 )
 from app.services.journey_runtime import step_actions_hint
 from app.services.host_prompt import clean_host_prompt, store_host_prompt
+from app.services.visitor_page import PAGE_SESSION_KEY, clean_page
 from app.services.reply_limits import refuse_over_reply_limit
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
@@ -655,6 +656,12 @@ async def handle_widget_chat(sid, data):
             session['host_prompt'] = host_prompt
         else:
             session.pop('host_prompt', None)
+        # The page the visitor is on as they send this message, for this reply only
+        page = clean_page(data.get('page'))
+        if page:
+            session[PAGE_SESSION_KEY] = page
+        else:
+            session.pop(PAGE_SESSION_KEY, None)
 
         # A human-only agent answers nothing: no model, no workflow, and no
         # transfer either — the chat was never with the AI, so there is nothing
