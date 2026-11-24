@@ -42,6 +42,7 @@ from app.channels.meta_base import (
     GRAPH_BASE,
     GRAPH_INSTAGRAM_BASE,
     WINDOW_HOURS,
+    NON_ASCII_TOKEN_MESSAGE,
 )
 from app.core.config import settings
 
@@ -547,6 +548,24 @@ class TestGraphHelpers:
         assert body["error"]["message"] == "not found"
         assert graph_client.calls[0]["method"] == "GET"
         assert graph_client.calls[0]["params"] == {"fields": "name"}
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_token_is_refused_with_a_readable_message(self, graph_client):
+        # A curly quote picked up while copying: an HTTP header can't carry it
+        ok, body = await graph_get("777777777777", "EAAG\u2019abc")
+
+        assert ok is False
+        assert body["error"]["message"] == NON_ASCII_TOKEN_MESSAGE
+        assert graph_client.calls == []
+
+    @pytest.mark.asyncio
+    async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, graph_client):
+        result = await graph_post("PHONE1/messages", "EAAG\u2019abc", {})
+
+        assert result.ok is False
+        assert result.auth_failed is True
+        assert result.error == NON_ASCII_TOKEN_MESSAGE
+        assert graph_client.calls == []
 
     @pytest.mark.asyncio
     async def test_network_error_is_reported_not_raised(self, graph_client):

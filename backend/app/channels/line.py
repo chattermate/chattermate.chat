@@ -23,6 +23,7 @@ from typing import ClassVar, List, Optional
 
 import httpx
 
+from app.channels.credentials import fits_in_header, stray_character_message
 from app.channels.base import ChannelAdapter, InboundMessage, SendResult
 from app.channels.registry import register_adapter
 from app.core.security import decrypt_api_key
@@ -130,10 +131,15 @@ class LineAdapter(ChannelAdapter):
         return messages
 
     async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
+        token = credentials(account)["channel_access_token"]
+        if not fits_in_header(token):
+            # Saved before connect refused such tokens: flag for reconnecting
+            return SendResult(ok=False, auth_failed=True,
+                              error=stray_character_message("channel access token"))
         try:
             response = await _get_http_client().post(
                 f"{LINE_API_BASE}/message/push",
-                headers={"Authorization": f"Bearer {credentials(account)['channel_access_token']}"},
+                headers={"Authorization": f"Bearer {token}"},
                 json={
                     "to": conversation.external_conversation_id,
                     "messages": [{"type": "text", "text": text}],

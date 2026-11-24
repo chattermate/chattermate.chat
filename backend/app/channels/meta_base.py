@@ -23,6 +23,7 @@ from typing import ClassVar, Iterable, Optional
 import httpx
 
 from app.channels.base import ChannelAdapter, SendResult, WindowStatus
+from app.channels.credentials import fits_in_header, stray_character_message
 from app.core.config import settings
 from app.core.security import decrypt_credentials
 from app.models.channels import ChannelAccount, ChannelConversation
@@ -42,6 +43,7 @@ SEND_RETRIES = 2
 # Graph error codes meaning the access token is unusable: 190 expired or
 # invalidated token, 102 expired session, 0 WhatsApp's "Authentication Error"
 GRAPH_AUTH_ERROR_CODES = frozenset({0, 102, 190})
+NON_ASCII_TOKEN_MESSAGE = stray_character_message("access token")
 # Meta customer-service window: free-form replies allowed for 24h after the
 # customer's last inbound message (applies to WhatsApp, Messenger and Instagram).
 WINDOW_HOURS = 24
@@ -112,6 +114,10 @@ async def graph_post(path: str, access_token: str, payload: dict,
     retried up to SEND_RETRIES times. `base` selects the host — Instagram Login
     accounts send via graph.instagram.com, everything else via graph.facebook.com.
     """
+    if not fits_in_header(access_token):
+        # Saved before connect refused such tokens: nothing sends until the
+        # customer pastes it again, so flag the account for reconnecting
+        return SendResult(ok=False, error=NON_ASCII_TOKEN_MESSAGE, auth_failed=True)
     url = graph_url(path, base)
     headers = {"Authorization": f"Bearer {access_token}"}
     last_error = "unknown error"
@@ -147,6 +153,8 @@ async def _graph_request(method: str, path: str, access_token: Optional[str],
     are management calls, not sends, so a failure surfaces to the caller
     instead of being retried.
     """
+    if access_token and not fits_in_header(access_token):
+        return (False, {"error": {"message": NON_ASCII_TOKEN_MESSAGE}})
     try:
         response = await _get_http_client().request(
             method,

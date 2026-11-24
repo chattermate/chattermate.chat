@@ -21,6 +21,7 @@ from uuid import UUID
 from pydantic import BaseModel, field_validator
 
 from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
+from app.channels.credentials import fits_in_header, stray_character_message
 
 
 class ChannelAccountOut(BaseModel):
@@ -55,6 +56,18 @@ class TelegramConnectRequest(BaseModel):
     bot_token: str
 
 
+def pasted_credential(value: str, label: str, required: bool = True) -> str:
+    """A token or secret pasted from a provider's console, trimmed, and
+    refused by name when copying dragged in a character that can't be part
+    of it (see fits_in_header) or left nothing but spaces."""
+    value = value.strip()
+    if not fits_in_header(value):
+        raise ValueError(stray_character_message(label))
+    if required and not value:
+        raise ValueError(f"The {label} is required.")
+    return value
+
+
 class OwnMetaAppSecret(BaseModel):
     """The secret of the customer's own Meta app, for manual credentials:
     Meta signs that app's webhooks with it, so a token from the customer's
@@ -65,7 +78,7 @@ class OwnMetaAppSecret(BaseModel):
     @field_validator("app_secret")
     @classmethod
     def _blank_is_none(cls, value: Optional[str]) -> Optional[str]:
-        return (value or "").strip() or None
+        return pasted_credential(value or "", "app secret", required=False) or None
 
 
 class WhatsAppConnectRequest(OwnMetaAppSecret):
@@ -75,17 +88,32 @@ class WhatsAppConnectRequest(OwnMetaAppSecret):
     waba_id: Optional[str] = None
     display_name: Optional[str] = None
 
+    @field_validator("access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "access token")
+
 
 class MessengerConnectRequest(OwnMetaAppSecret):
     page_id: str
     page_access_token: str
     display_name: Optional[str] = None
 
+    @field_validator("page_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "Page access token")
+
 
 class InstagramConnectRequest(BaseModel):
     ig_id: str
     page_access_token: str
     display_name: Optional[str] = None
+
+    @field_validator("page_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "Page access token")
 
 
 class TemplateSendRequest(BaseModel):
@@ -228,6 +256,15 @@ class SmsConnectRequest(BaseModel):
     phone_number: str                  # sender number / id
     credentials: dict = {}             # provider-specific secrets
 
+    @field_validator("credentials")
+    @classmethod
+    def _check_credentials(cls, value: dict) -> dict:
+        # Provider SDKs send these as Basic auth or headers too; blanks stay
+        # for the provider's own required-field check
+        return {key: pasted_credential(secret, key.replace("_", " "), required=False)
+                if isinstance(secret, str) else secret
+                for key, secret in value.items()}
+
 
 class SmsProviderInfo(BaseModel):
     name: str
@@ -238,3 +275,13 @@ class SmsProviderInfo(BaseModel):
 class LineConnectRequest(BaseModel):
     channel_secret: str
     channel_access_token: str
+
+    @field_validator("channel_secret")
+    @classmethod
+    def _check_secret(cls, value: str) -> str:
+        return pasted_credential(value, "channel secret")
+
+    @field_validator("channel_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "channel access token")
