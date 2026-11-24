@@ -42,6 +42,10 @@ SEND_RETRIES = 2
 # Graph error codes meaning the access token is unusable: 190 expired or
 # invalidated token, 102 expired session, 0 WhatsApp's "Authentication Error"
 GRAPH_AUTH_ERROR_CODES = frozenset({0, 102, 190})
+NON_ASCII_TOKEN_MESSAGE = (
+    "The access token contains a character that isn't part of it. "
+    "Copy it again from Meta, without any extra characters."
+)
 # Meta customer-service window: free-form replies allowed for 24h after the
 # customer's last inbound message (applies to WhatsApp, Messenger and Instagram).
 WINDOW_HOURS = 24
@@ -147,6 +151,10 @@ async def _graph_request(method: str, path: str, access_token: Optional[str],
     are management calls, not sends, so a failure surfaces to the caller
     instead of being retried.
     """
+    if access_token and not access_token.isascii():
+        # An HTTP header can't carry it: the client would fail with an
+        # encoding error that means nothing to the customer
+        return (False, {"error": {"message": NON_ASCII_TOKEN_MESSAGE}})
     try:
         response = await _get_http_client().request(
             method,

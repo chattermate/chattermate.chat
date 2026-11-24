@@ -55,6 +55,23 @@ class TelegramConnectRequest(BaseModel):
     bot_token: str
 
 
+def pasted_credential(value: str, label: str) -> str:
+    """A token or secret pasted from a provider's console, trimmed.
+
+    Credentials are plain ASCII, so anything else (a smart quote, a
+    zero-width space or an ellipsis picked up while copying) means the paste
+    went wrong. Sent on, it fails inside the HTTP client with an encoding
+    error the customer can't act on; refused here, they're told what to fix.
+    """
+    value = value.strip()
+    if not value.isascii():
+        raise ValueError(
+            f"The {label} contains a character that isn't part of it. "
+            "Copy it again, without any extra characters, and paste it here."
+        )
+    return value
+
+
 class OwnMetaAppSecret(BaseModel):
     """The secret of the customer's own Meta app, for manual credentials:
     Meta signs that app's webhooks with it, so a token from the customer's
@@ -65,7 +82,7 @@ class OwnMetaAppSecret(BaseModel):
     @field_validator("app_secret")
     @classmethod
     def _blank_is_none(cls, value: Optional[str]) -> Optional[str]:
-        return (value or "").strip() or None
+        return pasted_credential(value or "", "app secret") or None
 
 
 class WhatsAppConnectRequest(OwnMetaAppSecret):
@@ -75,17 +92,32 @@ class WhatsAppConnectRequest(OwnMetaAppSecret):
     waba_id: Optional[str] = None
     display_name: Optional[str] = None
 
+    @field_validator("access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "access token")
+
 
 class MessengerConnectRequest(OwnMetaAppSecret):
     page_id: str
     page_access_token: str
     display_name: Optional[str] = None
 
+    @field_validator("page_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "Page access token")
+
 
 class InstagramConnectRequest(BaseModel):
     ig_id: str
     page_access_token: str
     display_name: Optional[str] = None
+
+    @field_validator("page_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "Page access token")
 
 
 class TemplateSendRequest(BaseModel):
@@ -238,3 +270,13 @@ class SmsProviderInfo(BaseModel):
 class LineConnectRequest(BaseModel):
     channel_secret: str
     channel_access_token: str
+
+    @field_validator("channel_secret")
+    @classmethod
+    def _check_secret(cls, value: str) -> str:
+        return pasted_credential(value, "channel secret")
+
+    @field_validator("channel_access_token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        return pasted_credential(value, "channel access token")
