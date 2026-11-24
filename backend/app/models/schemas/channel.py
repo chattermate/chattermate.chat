@@ -105,7 +105,9 @@ class MessengerConnectRequest(OwnMetaAppSecret):
         return pasted_credential(value, "Page access token")
 
 
-class InstagramConnectRequest(BaseModel):
+class InstagramConnectRequest(OwnMetaAppSecret):
+    """An Instagram professional account through its linked Facebook Page's
+    token, from ChatterMate's app or the customer's own."""
     ig_id: str
     page_access_token: str
     display_name: Optional[str] = None

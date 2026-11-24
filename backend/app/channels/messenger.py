@@ -102,6 +102,10 @@ class MessengerAdapter(MetaBaseAdapter):
                 ))
         return messages
 
+    def graph_base_for(self, account: ChannelAccount) -> str:
+        """The Graph host this account's token is accepted on."""
+        return self.graph_base
+
     async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
         return await self._send(account, conversation, {"text": text})
 
@@ -130,7 +134,7 @@ class MessengerAdapter(MetaBaseAdapter):
                 **self.send_extras,
                 "message": message,
             },
-            base=self.graph_base,
+            base=self.graph_base_for(account),
         )
 
     async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
@@ -143,7 +147,7 @@ class MessengerAdapter(MetaBaseAdapter):
                     "recipient": {"id": conversation.external_conversation_id},
                     "sender_action": "typing_on",
                 },
-                base=self.graph_base,
+                base=self.graph_base_for(account),
             )
             if not result.ok:
                 logger.debug(f"{self.channel_type} typing_on failed (non-critical): {result.error}")
@@ -164,7 +168,7 @@ class MessengerAdapter(MetaBaseAdapter):
         """
         ok, data = await graph_get(external_user_id, self.access_token(account),
                                    params={"fields": self.profile_fields},
-                                   base=self.graph_base)
+                                   base=self.graph_base_for(account))
         if not ok:
             return {}
         name = self._display_name(data)
