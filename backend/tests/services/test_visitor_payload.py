@@ -102,3 +102,8 @@ def test_visitor_error_uses_the_given_fallback():
 @pytest.mark.parametrize('key', ['quick_replies', 'handover', 'visitor_feedback'])
 def test_the_redesigned_widget_restores_its_answer_extras(key):
     assert visitor_attributes({key: 'x', 'transfer_description': 'internal'}) == {key: 'x'}
+
+
+def test_a_canned_line_says_so_without_saying_who_wrote_it():
+    assert visitor_attributes({'source': 'system', 'handover_notice': True}) == {'system_notice': True}
+    assert visitor_attributes({'source': 'journey'}) == {}

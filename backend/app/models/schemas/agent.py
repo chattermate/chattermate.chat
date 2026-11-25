@@ -86,6 +86,10 @@ class AgentBase(BaseModel):
         default=None, max_length=OFFLINE_MESSAGE_MAX,
         description="Sent once per conversation while the agent is Offline. Null sends the default."
     )
+    offline_ask_email: bool = Field(
+        default=True,
+        description="After the offline message, ask website visitors for an email we don't have."
+    )
 
 
 class AgentCreate(AgentBase):
@@ -123,6 +127,7 @@ class AgentUpdate(BaseModel):
     guardrail_prompt: Optional[str] = Field(default=None, max_length=GUARDRAIL_PROMPT_MAX)
     guardrail_enabled: Optional[bool] = None
     offline_message: Optional[str] = Field(default=None, max_length=OFFLINE_MESSAGE_MAX)
+    offline_ask_email: Optional[bool] = None
 
     @field_validator('name')
     @classmethod
@@ -198,6 +203,7 @@ class AgentResponse(BaseModel):
     guardrail_prompt: Optional[str] = None
     guardrail_enabled: bool = True
     offline_message: Optional[str] = None
+    offline_ask_email: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

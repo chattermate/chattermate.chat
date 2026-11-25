@@ -84,6 +84,22 @@ export class AgentsPage {
     return this.page.getByText('to write your own offline message.')
   }
 
+  /** The switch that asks website visitors for an email after the offline message. */
+  get offlineAskEmail(): Locator {
+    return this.page.getByRole('checkbox', { name: 'Ask for their email' })
+  }
+
+  async setOfflineAskEmail(on: boolean): Promise<void> {
+    await step(`${on ? 'Ask' : 'Do not ask'} for an email after the offline message`, async () => {
+      if ((await this.offlineAskEmail.isChecked()) !== on) {
+        // The input sits under its slider: the switch's label takes the click
+        await this.offlineAskEmail.locator('..').click()
+      }
+      await this.page.getByRole('button', { name: 'Save Changes' }).click()
+      await expect(this.page.getByText('Agent updated successfully')).toBeVisible()
+    })
+  }
+
   async setOfflineMessage(text: string): Promise<void> {
     await step("Write the agent's own offline message", async () => {
       await this.offlineMessage.fill(text)

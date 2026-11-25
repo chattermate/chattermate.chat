@@ -460,6 +460,8 @@ async def test_human_only_agent_never_runs_the_bot(db, routed_account, use_test_
         # One acknowledgement so the number doesn't look dead, nothing more.
         assert ack.await_count == 1
         assert ack.await_args.args[2]['message'] == reply
+        # A canned line, marked so the widget offers no feedback on it
+        assert ack.await_args.args[2]['system_notice'] is True
 
     # A follow-up message is not acknowledged again.
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()), \

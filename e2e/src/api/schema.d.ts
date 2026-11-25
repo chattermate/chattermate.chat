@@ -6049,6 +6049,12 @@ export interface components {
              * @description Sent once per conversation while the agent is Offline. Null sends the default.
              */
             offline_message?: string | null;
+            /**
+             * Offline Ask Email
+             * @description After the offline message, ask website visitors for an email we don't have.
+             * @default true
+             */
+            offline_ask_email: boolean;
             /** Organization Id */
             organization_id?: string | null;
         };
@@ -6286,6 +6292,8 @@ export interface components {
             guardrail_enabled?: boolean | null;
             /** Offline Message */
             offline_message?: string | null;
+            /** Offline Ask Email */
+            offline_ask_email?: boolean | null;
         };
         /** AgentWithCustomizationResponse */
         AgentWithCustomizationResponse: {
@@ -6390,6 +6398,11 @@ export interface components {
             guardrail_enabled: boolean;
             /** Offline Message */
             offline_message?: string | null;
+            /**
+             * Offline Ask Email
+             * @default true
+             */
+            offline_ask_email: boolean;
             /** Created At */
             created_at?: string | null;
             /** Updated At */

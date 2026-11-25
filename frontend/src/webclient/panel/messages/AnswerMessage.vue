@@ -34,7 +34,7 @@ import { agentFace } from '../agent-face'
 import { renderMarkdown } from '../../markdown'
 import { decorateAnswerLinks, type AnswerSource } from '../../answer-links'
 import { hostOrigin } from '../../host-bridge'
-import { feedbackOf, followUpsOf } from '../answer-extras'
+import { feedbackOf, followUpsOf, isSystemNotice } from '../answer-extras'
 import { uiLayer } from '../../ui-layer'
 import { PANEL_COPY } from '../../copy'
 import type { WidgetMessage } from '../../../types/widget'
@@ -69,7 +69,8 @@ const followUps = computed(() => (isLatest.value && !streaming.value ? followUps
 // A tapped choice is a tap like a step's reply buttons: it sends, and every button
 // waits until its reply has typed out (useHostPrompt)
 const pickChoice = (text: string) => ctrl.onPageChip({ label: text, kind: 'text', value: text })
-const showActions = computed(() => inConversation.value && !streaming.value && !!props.message.message)
+const showActions = computed(() =>
+    inConversation.value && !streaming.value && !!props.message.message && !isSystemNotice(props.message))
 const canRate = computed(() => typeof props.message.id === 'number')
 
 const body = ref<InstanceType<typeof AnswerBody> | null>(null)

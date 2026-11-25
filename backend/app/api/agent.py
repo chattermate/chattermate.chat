@@ -194,6 +194,7 @@ async def create_agent(
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             knowledge=[],
             groups=[]
         )
@@ -375,6 +376,7 @@ async def update_agent(
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             knowledge=[{
                 "id": k.id,
                 "name": k.source,
@@ -514,6 +516,7 @@ async def get_organization_agents(
                 guardrail_prompt=agent.guardrail_prompt,
                 guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
                 offline_message=agent.offline_message,
+                offline_ask_email=agent.offline_ask_email is not False,
                 knowledge=[{
                     "id": k.id,
                     "name": k.source,
@@ -716,6 +719,7 @@ async def update_agent_groups(
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             groups=agent.groups,
             knowledge=[{
                 "id": k.id,

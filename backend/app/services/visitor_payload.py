@@ -26,9 +26,14 @@ import json
 import logging
 from typing import Any, Mapping, Optional, Union
 
+from app.channels.constants import MessageSource
 from app.services import reply_ui
 
 logger = logging.getLogger(__name__)
+
+# Marks a canned line the business sent (offline, handover and limit notices),
+# live (human_routing.notify_customer) and restored, for the widget
+SYSTEM_NOTICE_KEY = 'system_notice'
 
 # Keys the widget reads from a restored message's attributes (WidgetBuilder.vue,
 # useWidgetSocket.ts). The end-chat reason and description are notes for the
@@ -75,7 +80,12 @@ def visitor_attributes(attributes: AttributesInput) -> dict:
     source = _as_mapping(attributes)
     # And what the chat UI layer drew on the reply (reply_ui.py)
     allowed = VISITOR_ATTRIBUTE_KEYS | reply_ui.payload_keys()
-    return {key: value for key, value in source.items() if key in allowed}
+    visible = {key: value for key, value in source.items() if key in allowed}
+    # Who wrote a message stays with the team; the widget only learns that a
+    # line was canned, to offer no feedback on it
+    if source.get('source') == MessageSource.SYSTEM.value:
+        visible[SYSTEM_NOTICE_KEY] = True
+    return visible
 
 
 def visitor_error(error: Optional[str], fallback: str = GENERIC_ERROR) -> str:

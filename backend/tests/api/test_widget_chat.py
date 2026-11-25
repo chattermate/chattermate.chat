@@ -525,6 +525,32 @@ async def test_switching_offline_mid_chat_tells_the_visitor_once(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("ask_email", [True, False])
+async def test_the_offline_message_asks_for_an_email_when_the_agent_does(
+    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch, ask_email
+):
+    """With its switch on, the offline message is followed by the email-only
+    contact form (which asks only if we have no email); off, nothing follows."""
+    from app.api import widget_chat
+    from app.models.agent import Agent
+
+    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
+    agent.is_active = False
+    agent.offline_ask_email = ask_email
+    db.commit()
+    _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch)
+
+    with patch("app.api.widget_chat.send_handoff_contact_form", AsyncMock()) as form:
+        await widget_chat.handle_widget_chat("test_sid", {"message": "hello"})
+        await widget_chat.handle_widget_chat("test_sid", {"message": "hello?"})
+    if ask_email:
+        form.assert_awaited_once()
+        assert form.await_args.kwargs == {"offline": True}
+    else:
+        form.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_an_offline_agents_queued_chat_gets_the_offline_message_not_the_ai(
     db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch
 ):

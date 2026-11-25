@@ -143,3 +143,32 @@ def test_retaining_preserves_existing_meta_data(db, test_organization):
     db.refresh(visitor)
     assert visitor.meta_data["student_name"] == "Priya"
     assert visitor.meta_data[CONTACT_EMAIL_META_KEY] == "taken3@acme.com"
+
+
+# ---------- the offline message's form: email only ----------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("offline, fields, title", [
+    (True, {"email"}, "Leave your email"),
+    (False, {"email", "name"}, "Before we connect you to a teammate"),
+])
+async def test_the_offline_form_asks_only_for_the_email(db, test_organization, test_agent, offline, fields, title):
+    """After the offline message: just the email, in its own words, whatever the
+    handoff settings say; a handoff asks for what they say."""
+    from unittest.mock import AsyncMock, patch
+    from app.services import widget_reply
+
+    test_agent.handoff_collect_email = False
+    test_agent.handoff_collect_name = True
+    if not offline:
+        test_agent.handoff_collect_email = True
+    db.commit()
+    customer = _anon(db, test_organization.id)
+    session = {"session_id": "s1", "agent_id": test_agent.id, "customer_id": customer.id}
+
+    with patch.object(widget_reply, "sio") as sio:
+        sio.emit = AsyncMock()
+        await widget_reply.send_handoff_contact_form(session, db, offline=offline)
+    form = sio.emit.await_args.args[1]["form_data"]
+    assert {field["name"] for field in form["fields"]} == fields
+    assert form["title"] == title

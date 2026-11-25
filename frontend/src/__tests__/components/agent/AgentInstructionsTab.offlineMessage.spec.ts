@@ -77,6 +77,15 @@ describe('AgentInstructionsTab offline message', () => {
     expect(wrapper.find('.offline-message-section .locked-note').text()).toContain('to write your own offline message.')
   })
 
+  it('asks for the email by default, on every plan, and saves the switch', async () => {
+    lock.locked = true
+    const wrapper = await mountTab()
+    const ask = wrapper.find('input[aria-label="Ask for their email"]')
+    expect((ask.element as HTMLInputElement).checked).toBe(true)
+    await ask.setValue(false)
+    expect(await saved(wrapper)).toMatchObject({ offlineAskEmail: false })
+  })
+
   it('is editable with no upgrade line where the plan has it', async () => {
     const wrapper = await mountTab()
     expect(box(wrapper).attributes('readonly')).toBeUndefined()

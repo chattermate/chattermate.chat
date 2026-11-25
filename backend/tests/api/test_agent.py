@@ -1934,6 +1934,10 @@ def test_offline_message_round_trip_and_blank_means_default(client, db, test_use
     response = client.put(f"/api/agents/{test_agent.id}", json={"offline_message": "   "})
     assert response.json()["offline_message"] is None
 
+    assert response.json()["offline_ask_email"] is True
+    response = client.put(f"/api/agents/{test_agent.id}", json={"offline_ask_email": False})
+    assert response.json()["offline_ask_email"] is False
+
     too_long = "x" * 501
     assert client.put(f"/api/agents/{test_agent.id}", json={"offline_message": too_long}).status_code == 422
 

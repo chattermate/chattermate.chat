@@ -54,6 +54,10 @@ const props = defineProps({
     type: String as () => string | null,
     default: null
   },
+  offlineAskEmail: {
+    type: Boolean,
+    default: true
+  },
   channelQuickReplies: {
     type: Boolean,
     default: false
@@ -155,6 +159,7 @@ const localAiRepliesEnabled = ref(props.aiRepliesEnabled)
 // Fetched rather than copied here, so it can't drift from what is sent.
 const localOfflineMessage = ref(props.offlineMessage ?? '')
 const defaultOfflineMessage = ref('')
+const localOfflineAskEmail = ref(props.offlineAskEmail)
 const localChannelQuickReplies = ref(props.channelQuickReplies)
 const localAskForRating = ref(props.askForRating)
 const localHandoffCollectEmail = ref(props.handoffCollectEmail)
@@ -186,6 +191,7 @@ onMounted(async () => {
 })
 
 watch(() => props.offlineMessage, (v) => { localOfflineMessage.value = v ?? '' })
+watch(() => props.offlineAskEmail, (v) => { localOfflineAskEmail.value = v })
 
 watch(() => props.guardrailPrompt, (v) => {
   localGuardrailPrompt.value = v ?? defaultGuardrailPrompt.value
@@ -286,6 +292,7 @@ const handleSave = () => {
     aiRepliesEnabled: localAiRepliesEnabled.value,
     // null goes back to the default, which follows any improvement to it
     offlineMessage: localOfflineMessage.value.trim() || null,
+    offlineAskEmail: localOfflineAskEmail.value,
     channelQuickReplies: localChannelQuickReplies.value,
     askForRating: localAskForRating.value,
     handoffCollectEmail: localHandoffCollectEmail.value,
@@ -414,6 +421,14 @@ const handleSave = () => {
         ></textarea>
         <p class="helper-text">Leave empty to send the default shown.</p>
       </template>
+      <div class="toggle-header offline-ask-email">
+        <span class="subsection-title">Ask for their email</span>
+        <label class="switch">
+          <input type="checkbox" v-model="localOfflineAskEmail" :disabled="!isEditing" aria-label="Ask for their email">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="helper-text">On your website, ask visitors we have no email for, so your reply reaches them.</p>
     </section>
 
     <!-- Transfer and Rating Section -->
@@ -780,6 +795,10 @@ const handleSave = () => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-sm);
+}
+
+.offline-ask-email {
+  margin-top: var(--space-md);
 }
 
 .offline-message-default {

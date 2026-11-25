@@ -25,8 +25,13 @@ test.describe('an agent set Offline', () => {
     await expect(widget.headerStatus).toHaveText("Offline · we'll reply when we're back")
 
     const modelCalls = (await llm.requests(agent)).length
+    const ratable = await widget.helpfulButtons.count()
     await widget.send('Anyone there?')
     await expect(widget.lastAgentMessage()).toHaveText(OFFLINE_REPLY, AI_REPLY)
+    // A canned line: nothing to rate
+    await expect(widget.helpfulButtons).toHaveCount(ratable)
+    // We have no email for this visitor: it is asked for, so the reply reaches them
+    await widget.leaveEmail()
     // The chat waits for the team: open, nobody holds it, not with the AI
     const [chat] = await chatsWithAgent(adminApi, agent.id)
     expect(chat).toMatchObject({ status: 'open', user_id: null, agent: { ai_replies_enabled: false } })
@@ -60,6 +65,20 @@ test.describe('an agent set Offline', () => {
     const [conversation] = await chatsWithAgent(adminApi, agent.id)
     expect(conversation).toMatchObject({ status: 'open', user_id: null })
     expect(await llm.requests(agent)).toHaveLength(0)
+  })
+
+  test('asks no email after the offline message when the agent says not to @agents', async ({ agent, adminApi, widget, page }) => {
+    const agents = new AgentsPage(page)
+    await agents.openAgent(agent.id)
+    await agents.setOfflineAskEmail(false)
+    await setAgentOnline(adminApi, agent.id, false)
+
+    await widget.embed()
+    await widget.open()
+    await widget.send('Hello?')
+    await expect(widget.lastAgentMessage()).toHaveText(OFFLINE_REPLY, AI_REPLY)
+    await expectUnchanged('the email form', () => widget.offlineEmailForm.count())
+    await expect(widget.offlineEmailForm).toHaveCount(0)
   })
 
   test("sends the agent's own offline message, written in its settings @agents @channels", async ({ agent, adminApi, request, page }) => {

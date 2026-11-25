@@ -133,6 +133,9 @@ class Agent(Base):
     # The one reply a customer gets while the agent is Offline. NULL sends
     # DEFAULT_OFFLINE_MESSAGE; custom text needs a plan with it.
     offline_message = Column(Text, nullable=True)
+    # After the offline message the website asks the visitor for an email we
+    # don't have, so the team's reply still reaches them
+    offline_ask_email = Column(Boolean, default=True, nullable=False, server_default="true")
     # Offer the AI's choices as tappable buttons on messaging channels that
     # can show them (WhatsApp, Messenger, Instagram, Telegram); not the widget
     channel_quick_replies = Column(Boolean, default=False, nullable=False, server_default="false")

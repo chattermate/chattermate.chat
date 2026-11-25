@@ -81,6 +81,11 @@ describe('answer actions', () => {
         expect(wrapper!.find('button[aria-label="Copied"]').exists()).toBe(true)
     })
 
+    it('offers no feedback or copy on a canned notice such as the offline message', () => {
+        mountAnswer(answer({ id: 7, attributes: { system_notice: true } }))
+        expect(wrapper!.find('.cm-answer-actions').exists()).toBe(false)
+    })
+
     it('shows no actions while the reply is still being revealed', () => {
         mountAnswer(answer({ id: 7 }), { isStreaming: vi.fn(() => true), displayText: vi.fn(() => 'Ret') })
         expect(wrapper!.find('.cm-answer-actions').exists()).toBe(false)

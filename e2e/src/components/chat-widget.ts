@@ -443,6 +443,27 @@ export class ChatWidget {
     })
   }
 
+  /** The email form that follows an Offline agent's message (backend contact_capture OFFLINE_FORM_TEXT). */
+  get offlineEmailForm(): Locator {
+    return this.frame.locator('.form-message').filter({ hasText: 'Leave your email' })
+  }
+
+  /** Leaves the visitor's email in the form an Offline agent's message asks with. */
+  async leaveEmail(): Promise<void> {
+    await step(`Customer leaves ${this.customer.email}`, async () => {
+      const form = this.offlineEmailForm
+      await expect(form).toBeVisible()
+      await form.getByLabel('Email').fill(this.customer.email)
+      await form.getByRole('button', { name: 'Submit' }).click()
+      await expect(form.getByRole('button', { name: 'Submit' })).toBeHidden()
+    })
+  }
+
+  /** The thumbs-up of every answer the visitor can rate. */
+  get helpfulButtons(): Locator {
+    return this.frame.getByRole('button', { name: 'Helpful', exact: true })
+  }
+
   /** Rates the finished chat; `stars` is 1–5. */
   async rate(stars: number, feedback?: string): Promise<void> {
     await step(`Customer rates the chat ${stars}/5`, async () => {

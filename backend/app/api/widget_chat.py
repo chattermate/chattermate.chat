@@ -968,7 +968,11 @@ async def handle_widget_chat(sid, data):
             # under way; otherwise only on the opening message: after that the
             # thread is visibly a conversation with people in it.
             if should_tell_offline(agent, active_session):
-                await tell_customer_agent_offline(db, active_session, agent)
+                # Then ask for the contact details we lack, so the team's reply
+                # still reaches a visitor who closes the tab
+                if (await tell_customer_agent_offline(db, active_session, agent)
+                        and agent.offline_ask_email):
+                    await send_handoff_contact_form(session, db, offline=True)
             elif is_first_customer_message and not agent_uses_ai:
                 await notify_customer(db, active_session, HUMAN_ONLY_ACK,
                                       channels_only=False)
