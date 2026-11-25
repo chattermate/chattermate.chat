@@ -89,6 +89,8 @@ describe('EnablePushPrompt', () => {
     await wrapper.find('.secondary-btn').trigger('click')
     expect(wrapper.find('.push-prompt').exists()).toBe(false)
     expect(localStorage.getItem('cm-push-prompt-snoozed-at')).toBeTruthy()
+    // ...and holds back the landing banner, which would only repeat it
+    expect(localStorage.getItem('cm-push-banner-snoozed-at')).toBeTruthy()
   })
 
   it('shows install-first guidance on iOS Safari (not installed)', async () => {

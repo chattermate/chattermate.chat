@@ -14,6 +14,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Dashboard shell | Each page names itself in the tab and the header breadcrumb; app icons are cache-busted | `specs/shell/shell.spec.ts` | P2 | ✅ |
 | Dashboard shell | Settings fold into a group that opens on its own pages and remembers its state; the inbox rail keeps named icons | `specs/shell/shell.spec.ts` | P2 | ✅ |
 | Dashboard shell | Theme switch, online/offline from the header and the account menu, Inbox badge after a handover | `specs/shell/shell.spec.ts` | P2 | ✅ |
+| Dashboard shell | Notifications off on this device: landing banner (header pages) or inbox strip, drawer line and bell dot for never asked, blocked, iPhone Safari and failed registration; Turn on / Try again clears them; Not now holds the banner back 7 days | `specs/shell/push-off.spec.ts` | P2 | ✅ |
 | Inbox | A handed-over chat waits in Waiting for a human with the AI's reason and summary; taking it over pauses the AI and moves it to Your inbox | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Hand back to AI: the customer is told and the AI answers the next message; the chat moves through the views (yours, AI handling, waiting again via Hand to my team) | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | A chat open in the inbox that nobody holds (the AI answering, or waiting) shows the customer's messages and the AI's answers as they come, and its row with them | `specs/inbox/inbox.spec.ts` | P1 | ✅ |

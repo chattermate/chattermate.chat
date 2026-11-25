@@ -35,6 +35,7 @@ import { useInboxThread } from '@/composables/useInboxThread'
 import { useInboxShortcuts } from '@/composables/useInboxShortcuts'
 import { useNow } from '@/composables/useNow'
 import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
+import PushOffNotice from '@/components/notifications/PushOffNotice.vue'
 import InboxViews from './InboxViews.vue'
 import InboxList from './InboxList.vue'
 import ThreadPane from './ThreadPane.vue'
@@ -282,6 +283,8 @@ useInboxShortcuts({
 
     <div class="pane-list">
       <PromoInboxCard v-if="isMobile && hasEnterpriseModule" compact class="promo" />
+      <!-- The Inbox hides the header, so its landing notice lives here -->
+      <PushOffNotice variant="strip" />
       <InboxList
         ref="listRef"
         v-model:sort="list.sort.value"
