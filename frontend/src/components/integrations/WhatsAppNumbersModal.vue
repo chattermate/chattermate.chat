@@ -24,7 +24,7 @@ import BaseModal from '@/components/common/BaseModal.vue'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import { apiErrorMessage } from '@/utils/apiError'
-import { numberLimitState } from '@/utils/channelAccounts'
+import { NO_AGENT_TEXT, numberLimitState } from '@/utils/channelAccounts'
 
 const SUBSCRIPTION_PATH = '/settings/subscription'
 
@@ -61,11 +61,19 @@ const state = computed(() => numberLimitState(props.accounts.length, props.limit
 const problem = (account: ChannelAccount): string | null => {
   if (account.needs_reconnect) return 'Access expired: reconnect to resume replies'
   if (account.send_problem) return "Can't send replies: open it to see why"
+  if (!account.agent_id) return NO_AGENT_TEXT
   return null
 }
 
+// The row's button names the fix its problem needs
+const actionLabel = (account: ChannelAccount) => {
+  if (account.needs_reconnect) return 'Reconnect'
+  if (!account.send_problem && !account.agent_id) return 'Assign agent'
+  return 'Manage'
+}
+
+// Only reached for a number with an agent: problem() covers one without
 const agentLabel = (account: ChannelAccount) => {
-  if (!account.agent_id) return 'No agent assigned'
   const name = agentNames.value[String(account.agent_id)]
   return name ? `Answered by ${name}` : 'Agent assigned'
 }
@@ -124,10 +132,10 @@ const disconnect = async (account: ChannelAccount) => {
             type="button"
             class="wan-btn"
             :class="{ 'wan-btn-primary': problem(account) }"
-            :aria-label="`${account.needs_reconnect ? 'Reconnect' : 'Manage'} ${account.display_name || account.external_account_id}`"
+            :aria-label="`${actionLabel(account)} ${account.display_name || account.external_account_id}`"
             @click="emit('manage', account)"
           >
-            {{ account.needs_reconnect ? 'Reconnect' : 'Manage' }}
+            {{ actionLabel(account) }}
           </button>
           <button
             type="button"

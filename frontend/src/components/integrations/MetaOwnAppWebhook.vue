@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<!-- The webhook address and verify token of a WhatsApp number or Messenger
-     Page connected from the customer's own Meta app. -->
+<!-- The webhook address and verify token of a WhatsApp number, Messenger
+     Page or Instagram account connected from the customer's own Meta app. -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ChannelAccount } from '@/services/channels'
@@ -26,6 +26,9 @@ const props = defineProps<{ account: ChannelAccount }>()
 const hint = computed(() => {
   if (props.account.channel_type === 'messenger') {
     return 'In your Meta app, add these under Messenger → Settings → Webhooks, then subscribe your Page to messages.'
+  }
+  if (props.account.channel_type === 'instagram') {
+    return 'In your Meta app, add these under Webhooks → Instagram, then subscribe to messages.'
   }
   return props.account.webhook_auto_configured
     ? 'Messages from this number come to ChatterMate. Nothing to set up.'

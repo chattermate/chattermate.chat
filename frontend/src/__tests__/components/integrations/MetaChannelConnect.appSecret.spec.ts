@@ -75,11 +75,22 @@ describe('MetaChannelConnect app secret', () => {
     expect(wrapper.text()).toContain('WhatsApp → Configuration')
   })
 
-  it('offers the secret on Messenger too, not Instagram', () => {
+  it('offers the secret on Messenger and Instagram too', () => {
     const has = (channel: 'messenger' | 'instagram') =>
       mount(MetaChannelConnect, { props: { channel }, global: { stubs: { 'font-awesome-icon': true } } })
         .find('#meta-app_secret').exists()
     expect(has('messenger')).toBe(true)
-    expect(has('instagram')).toBe(false)
+    expect(has('instagram')).toBe(true)
+  })
+
+  it('sends an Instagram secret and says where its webhooks go', async () => {
+    vi.mocked(channelsService.connectInstagram).mockResolvedValue(
+      { ...OWN_APP_ACCOUNT, channel_type: 'instagram', external_account_id: 'IG9' } as any)
+    const wrapper = mount(MetaChannelConnect, { props: { channel: 'instagram' }, global: { stubs: { 'font-awesome-icon': true } } })
+    await fill(wrapper, { ig_id: 'IG9', page_access_token: 'EAAG-p', app_secret: 's3cret' })
+    expect(channelsService.connectInstagram).toHaveBeenCalledWith(
+      { ig_id: 'IG9', page_access_token: 'EAAG-p', app_secret: 's3cret' })
+    expect(wrapper.text()).toContain('Callback URL')
+    expect(wrapper.text()).toContain('Webhooks → Instagram')
   })
 })

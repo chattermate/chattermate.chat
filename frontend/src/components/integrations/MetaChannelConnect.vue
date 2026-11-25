@@ -19,8 +19,10 @@ import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
+import NoAgentNotice from './NoAgentNotice.vue'
 import type { Agent } from '@/types/agent'
 import MessengerPagePicker from './MessengerPagePicker.vue'
+import MessengerPageNotice from './MessengerPageNotice.vue'
 import MetaOwnAppWebhook from './MetaOwnAppWebhook.vue'
 import { useMetaSignup } from '@/composables/useMetaSignup'
 import { apiErrorMessage } from '@/utils/apiError'
@@ -71,11 +73,12 @@ const META_FORMS = {
   },
   instagram: {
     title: 'Connect Instagram',
-    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token, from ',
-    introAfter: ' → Instagram.',
+    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. From your Meta app (',
+    introAfter: '), generate an access token for that Page with instagram_basic and instagram_manage_messages, and copy the app secret from App settings → Basic.',
     fields: [
       { key: 'ig_id', label: 'Instagram account ID', placeholder: '17841400000000000', secret: false },
       { key: 'page_access_token', label: 'Linked page access token', placeholder: 'EAAG…', secret: true },
+      APP_SECRET_FIELD,
     ],
   },
 } as const
@@ -118,10 +121,13 @@ const {
   signingUp,
   showManualForm,
   signupPages,
+  signupNotice,
   signupError,
   connectingPage,
   copy: signupCopy,
   startSignup,
+  startBusinessSignup,
+  canUseBusinessLogin,
   onPageSelected,
 } = useMetaSignup({
   channel: props.channel,
@@ -201,6 +207,14 @@ const saveAgent = async () => {
       <div v-if="!account" class="meta-modal-body">
         <!-- Login for Business can grant several accounts at once; the customer
              picks which one this channel answers. -->
+        <MessengerPageNotice
+          v-if="signupNotice"
+          class="meta-page-notice"
+          :notice="signupNotice"
+          :can-use-business-login="canUseBusinessLogin"
+          :busy="signingUp"
+          @business-login="startBusinessSignup"
+        />
         <MessengerPagePicker
           v-if="signupPages.length"
           :pages="signupPages"
@@ -219,7 +233,13 @@ const saveAgent = async () => {
         <div v-else-if="signupEnabled && !showManualForm" class="meta-signup">
           <p class="meta-intro">{{ signupCopy.intro }}</p>
           <p v-if="signupError" class="meta-signup-error" role="alert">{{ signupError }}</p>
-          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startSignup">
+          <!-- The notice's business login is the way forward, so this steps back -->
+          <button
+            class="meta-btn meta-signup-btn"
+            :class="{ 'meta-btn-primary': !(signupNotice && canUseBusinessLogin) }"
+            :disabled="signingUp"
+            @click="startSignup"
+          >
             <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
             {{ signingUp ? 'Waiting for Meta…' : signupCopy.cta }}
           </button>
@@ -268,6 +288,7 @@ const saveAgent = async () => {
           <strong>{{ account.display_name }}</strong> is connected.
         </p>
         <MetaOwnAppWebhook v-if="account.webhook_url && account.webhook_verify_token" :account="account" />
+        <NoAgentNotice v-if="!account.agent_id" />
         <p class="meta-intro">Choose which AI agent answers its messages:</p>
         <label class="meta-label" for="meta-agent">AI agent</label>
         <select id="meta-agent" v-model="selectedAgentId" class="meta-input">
@@ -417,6 +438,10 @@ const saveAgent = async () => {
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
+}
+
+.meta-page-notice {
+  margin-bottom: 12px;
 }
 
 .meta-signup-checking {

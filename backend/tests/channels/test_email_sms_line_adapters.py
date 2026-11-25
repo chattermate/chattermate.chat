@@ -181,6 +181,20 @@ class TestLineAdapter:
         assert post.await_args.kwargs["json"]["chatId"] == "Ucust9"
 
     @pytest.mark.asyncio
+    async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, monkeypatch):
+        from unittest.mock import AsyncMock
+        monkeypatch.setattr("app.channels.line.credentials",
+                            lambda a: {"channel_access_token": "tok\u200b"})
+        post = AsyncMock()
+        monkeypatch.setattr("app.channels.line._get_http_client", lambda: MagicMock(post=post))
+
+        result = await LineAdapter().send_text(MagicMock(), MagicMock(), "hi")
+
+        assert (result.ok, result.auth_failed) == (False, True)
+        assert "channel access token contains a character" in result.error
+        post.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_verify_signature(self, monkeypatch):
         adapter = LineAdapter()
         body = json.dumps(self.PAYLOAD).encode()

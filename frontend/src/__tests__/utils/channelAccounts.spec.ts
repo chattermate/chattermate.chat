@@ -15,12 +15,19 @@ limitations under the License.
 */
 
 import { describe, it, expect } from 'vitest'
-import { accountNamesSummary, accountToManage, accountWarning, numberLimitState } from '@/utils/channelAccounts'
+import {
+  accountNamesSummary,
+  accountToManage,
+  accountWarning,
+  accountsWithoutAgent,
+  noAgentWarning,
+  numberLimitState,
+} from '@/utils/channelAccounts'
 import type { ChannelAccount } from '@/services/channels'
 
 const account = (overrides: Partial<ChannelAccount> = {}): ChannelAccount => ({
   id: 'a1', channel_type: 'whatsapp', external_account_id: 'PN1',
-  display_name: 'Support (+1 555)', is_active: true, ...overrides,
+  display_name: 'Support (+1 555)', is_active: true, agent_id: 'ag1', ...overrides,
 })
 
 describe('accountWarning', () => {
@@ -68,7 +75,41 @@ describe('accountWarning for numbers that cannot send', () => {
   })
 })
 
+describe('noAgentWarning', () => {
+  it('is silent when every account has an agent', () => {
+    expect(noAgentWarning([])).toBeUndefined()
+    expect(noAgentWarning([account(), account({ id: 'a2' })])).toBeUndefined()
+  })
+
+  it('says messages are not answered for a lone account without one', () => {
+    expect(noAgentWarning([account({ agent_id: null })])).toBe("No agent: messages aren't answered.")
+  })
+
+  it('names only the accounts without an agent when several are connected', () => {
+    expect(noAgentWarning([
+      account({ id: 'a1', display_name: 'Sales', agent_id: null }),
+      account({ id: 'a2', display_name: 'Support' }),
+      account({ id: 'a3', display_name: undefined, external_account_id: 'PAGE3', agent_id: undefined }),
+    ])).toBe("No agent on Sales, PAGE3: messages aren't answered.")
+  })
+
+  it('lists the accounts without an agent', () => {
+    const missing = account({ id: 'a2', agent_id: null })
+    expect(accountsWithoutAgent([account(), missing])).toEqual([missing])
+  })
+})
+
 describe('accountToManage', () => {
+  it('opens an account without an agent before a healthy one', () => {
+    const unassigned = account({ id: 'a2', agent_id: null })
+    expect(accountToManage([account({ id: 'a1' }), unassigned])).toBe(unassigned)
+  })
+
+  it('opens a number that cannot send before one without an agent', () => {
+    const blocked = account({ id: 'a3', send_problem: 'x' })
+    expect(accountToManage([account({ id: 'a2', agent_id: null }), blocked])).toBe(blocked)
+  })
+
   it('opens a number that cannot send before a healthy one', () => {
     const blocked = account({ id: 'a2', send_problem: 'PIN Mismatch' })
     expect(accountToManage([account({ id: 'a1' }), blocked])).toBe(blocked)

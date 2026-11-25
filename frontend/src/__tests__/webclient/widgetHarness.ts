@@ -111,7 +111,7 @@ export const resetSocket = () => {
 export interface MountOptions {
     /** Merged into window.__INITIAL_DATA__.customization. */
     customization?: Record<string, any>
-    /** Extra keys on window.__INITIAL_DATA__ (workflow, hideBranding, …). */
+    /** Extra keys on window.__INITIAL_DATA__ (workflow, presence, …). */
     initialData?: Record<string, any>
     /** Body the stubbed fetch resolves with (the authorize call reads `agent`). */
     fetchBody?: Record<string, any>

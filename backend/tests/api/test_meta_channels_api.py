@@ -263,6 +263,18 @@ class TestMetaConnect:
         account = ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9")
         assert ChannelAccountRepository(db).get_credentials(account)["access_token"] == "EAAG-x"
 
+    def test_connect_messenger_routes_to_the_only_agent(self, client, test_agent):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE8", "is_valid": True,
+            "scopes": ["pages_messaging"]}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(False, {}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE8", "page_access_token": "EAAG-y"})
+        assert r.status_code == 200
+        assert r.json()["agent_id"] == str(test_agent.id)
+
     def test_connect_messenger_uses_page_name_when_readable(self, client):
         inspect = AsyncMock(return_value=(True, {
             "type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))
@@ -303,13 +315,55 @@ class TestMetaConnect:
         assert r.status_code == 400
         assert "Session has expired" in r.json()["detail"]
 
+    def _connect_instagram(self, client, inspect=None, lookup=(True, {"id": "IG7", "username": "acme"}),
+                           subscribe=True, ig_id="IG7"):
+        inspect = inspect or (True, {"type": "PAGE", "profile_id": "PAGE7", "is_valid": True})
+        subscribe_app = AsyncMock(return_value=subscribe)
+        with patch("app.api.channels.meta.debug_token", AsyncMock(return_value=inspect)), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=lookup)), \
+             patch("app.api.channels.meta.subscribe_app", subscribe_app):
+            response = client.post(f"{BASE}/instagram", json={
+                "ig_id": ig_id, "page_access_token": "EAAG-x"})
+        return response, subscribe_app
+
     def test_connect_instagram_success(self, client, db):
-        graph = AsyncMock(return_value=(True, {"id": "IG7", "username": "acme"}))
-        with patch("app.api.channels.meta.graph_get", graph):
-            r = client.post(f"{BASE}/instagram", json={
-                "ig_id": "IG7", "page_access_token": "EAAG-x"})
+        r, subscribe_app = self._connect_instagram(client)
         assert r.status_code == 200
         assert r.json()["display_name"] == "@acme"
+        account = ChannelAccountRepository(db).get_by_external_id("instagram", "IG7")
+        # A Page token: sends go through the Facebook graph, as that Page
+        assert account.settings["page_id"] == "PAGE7"
+        # DMs reach the app only once the linked Page subscribes it
+        assert subscribe_app.await_args.args[:2] == ("PAGE7", "EAAG-x")
+
+    def test_connect_instagram_rejects_a_user_token(self, client, db):
+        r, _ = self._connect_instagram(client, inspect=(True, {"type": "USER", "is_valid": True}))
+        assert r.status_code == 400
+        assert "Page access token" in r.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG7") is None
+
+    def test_connect_instagram_rejects_an_expired_token(self, client, db):
+        r, _ = self._connect_instagram(client, inspect=(True, {
+            "is_valid": False, "error": {"message": "Session has expired"}}))
+        assert r.status_code == 400
+        assert "Session has expired" in r.json()["detail"]
+
+    def test_connect_instagram_says_why_the_account_cant_be_read(self, client, db):
+        r, _ = self._connect_instagram(client, lookup=(False, {"error": {
+            "message": "(#10) Application does not have permission for this action", "code": 10}}))
+        assert r.status_code == 400
+        assert "does not have permission" in r.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG7") is None
+
+    def test_connect_instagram_refuses_a_page_id(self, client, db):
+        r, _ = self._connect_instagram(client, lookup=(True, {"id": "PAGE7"}), ig_id="PAGE7")
+        assert r.status_code == 200  # the node answers with its own id, so it matches
+        r, _ = self._connect_instagram(client, lookup=(True, {"id": "PAGE7"}), ig_id="IG8")
+        assert r.status_code == 400
+
+    def test_connect_instagram_survives_a_failed_page_subscribe(self, client, db):
+        r, _ = self._connect_instagram(client, subscribe=False)
+        assert r.status_code == 200
 
     def test_reconnect_other_org_409(self, client, db, whatsapp_account):
         whatsapp_account.organization_id = uuid4()
@@ -473,6 +527,14 @@ class TestEmbeddedSignupConfig:
         monkeypatch.setattr(settings, "META_APP_ID", "APP1")
         body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
         assert (body["enabled"], body["config_id"], body["app_id"]) == (True, "MCFG", "APP1")
+
+    def test_business_config_id_only_served_for_messenger(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "META_MESSENGER_BUSINESS_CONFIG_ID", "BIZCFG")
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        assert client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()["business_config_id"] == "BIZCFG"
+        assert client.get(f"{BASE}/embedded-signup-config?channel=whatsapp").json()["business_config_id"] is None
 
     def test_whatsapp_config_id_not_served_to_messenger(self, client, monkeypatch):
         """The WhatsApp config id must not leak on a Messenger request: Messenger
@@ -870,17 +932,112 @@ class TestMessengerSignup:
         monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
 
     def _list_pages(self, client, pages=None,
-                    long_lived=(True, {"access_token": "LONGLIVED"})):
-        """Drive step 1, returning (response, graph_list_all mock)."""
+                    long_lived=(True, {"access_token": "LONGLIVED"}),
+                    granted=(True, {}), page_lookup=None):
+        """Drive step 1, returning (response, graph_list_all mock).
+
+        granted is debug_token's answer for the user token (its
+        granular_scopes name the Pages ticked in the popup); page_lookup
+        answers a granted Page fetched by id."""
         lister = AsyncMock(return_value=(True, self.TWO_PAGES if pages is None else pages))
         with patch("app.api.channels.meta.exchange_signup_code",
                    AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
              patch("app.api.channels.meta.exchange_for_long_lived_token",
                    AsyncMock(return_value=long_lived)), \
-             patch("app.api.channels.meta.graph_list_all", lister):
+             patch("app.api.channels.meta.graph_list_all", lister), \
+             patch("app.api.channels.meta.debug_token", AsyncMock(return_value=granted)), \
+             patch("app.api.channels.meta.graph_get", page_lookup or AsyncMock(return_value=(False, {}))):
             r = client.post(self.PAGES, json={
                 "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
         return r, lister
+
+    @staticmethod
+    def _granted(*page_ids, scope="pages_messaging"):
+        return (True, {"type": "USER", "is_valid": True, "granular_scopes": [
+            {"scope": scope, "target_ids": list(page_ids)},
+            {"scope": "business_management", "target_ids": ["BIZ1"]},
+        ]})
+
+    def test_a_portfolio_page_left_out_of_me_accounts_is_still_offered(self, client):
+        """me/accounts misses a Page a business portfolio owns. The popup
+        granted it, so it is fetched by id with its own Page token."""
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, granted=self._granted("PAGE1", "BIZPAGE"), page_lookup=lookup)
+        assert r.status_code == 200
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2", "BIZPAGE"]
+        assert "EAAG-biz" not in r.text
+        # Only the missing Page is fetched, with the user token; never a business grant
+        lookup.assert_awaited_once()
+        assert lookup.await_args.args[:2] == ("BIZPAGE", "LONGLIVED")
+
+    def test_a_portfolio_page_can_be_connected(self, client, db):
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"), page_lookup=lookup)
+        with patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            connected = client.post(self.CONNECT, json={
+                "signup_token": r.json()["signup_token"], "page_id": "BIZPAGE"})
+        assert connected.status_code == 200
+        repo = ChannelAccountRepository(db)
+        assert repo.get_credentials(repo.get_by_external_id("messenger", "BIZPAGE"))["access_token"] == "EAAG-biz"
+
+    def test_a_granted_page_meta_will_not_give_a_token_for_is_left_out(self, client):
+        lookup = AsyncMock(return_value=(True, {"id": "BIZPAGE", "name": "No token"}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=lookup)
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+        # The picker says which Page is missing and how to fix it
+        assert "BIZPAGE" in r.json()["unavailable_notice"]
+        assert "no role on it" in r.json()["unavailable_notice"]
+
+    REFUSED = (False, {"error": {
+        "message": "(#100) Object does not exist, cannot be loaded due to missing permission", "code": 100}})
+
+    def test_only_an_unreadable_granted_page_names_it_and_the_fix(self, client):
+        """The portfolio Page Meta won't give a token for, without a Page role:
+        an answer with no Pages and the notice, not 'No Facebook Pages'."""
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        assert r.status_code == 200
+        assert r.json()["pages"] == []
+        notice = r.json()["unavailable_notice"]
+        assert "BIZPAGE" in notice and "Business Settings" in notice
+
+    def test_the_notice_points_to_the_business_login_when_it_is_set_up(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_BUSINESS_CONFIG_ID", "BIZCFG")
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZPAGE"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        notice = r.json()["unavailable_notice"]
+        assert "business portfolio" in notice and "Business Settings" not in notice
+
+    def test_a_rate_limited_lookup_is_not_blamed_on_a_missing_role(self, client):
+        limited = AsyncMock(return_value=(False, {"error": {"message": "Too many calls", "code": 4}}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE"), page_lookup=limited)
+        assert r.status_code == 200
+        assert r.json()["unavailable_notice"] is None
+
+    def test_several_unreadable_pages_are_named_together(self, client):
+        r, _ = self._list_pages(client, pages=[], granted=self._granted("BIZ1", "BIZ2"),
+                                page_lookup=AsyncMock(return_value=self.REFUSED))
+        assert r.json()["unavailable_notice"].startswith("Pages BIZ1, BIZ2 were shared")
+
+    def test_no_notice_when_every_granted_page_is_offered(self, client):
+        r, _ = self._list_pages(client, granted=self._granted("PAGE1"))
+        assert r.json()["unavailable_notice"] is None
+
+    def test_a_page_granted_without_messaging_is_not_offered(self, client):
+        """Listed but not messageable: it would connect and never send."""
+        lookup = AsyncMock(return_value=(True, {
+            "id": "BIZPAGE", "name": "Portfolio Page", "access_token": "EAAG-biz"}))
+        r, _ = self._list_pages(client, granted=self._granted("BIZPAGE", scope="pages_show_list"),
+                                page_lookup=lookup)
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
+        lookup.assert_not_awaited()
+
+    def test_pages_still_listed_when_the_grants_cannot_be_read(self, client):
+        r, _ = self._list_pages(client, granted=(False, {"error": {"message": "nope"}}))
+        assert r.status_code == 200
+        assert [p["id"] for p in r.json()["pages"]] == ["PAGE1", "PAGE2"]
 
     def _signup_token(self, client):
         return self._list_pages(client)[0].json()["signup_token"]

@@ -42,6 +42,7 @@ from app.channels.meta_base import (
     GRAPH_BASE,
     GRAPH_INSTAGRAM_BASE,
     WINDOW_HOURS,
+    NON_ASCII_TOKEN_MESSAGE,
 )
 from app.core.config import settings
 
@@ -383,7 +384,7 @@ class TestInstagramTransport:
         conversation = MagicMock()
         conversation.external_conversation_id = "IGSID1"
 
-        await adapter.send_text(MagicMock(), conversation, "hi")
+        await adapter.send_text(MagicMock(settings={}), conversation, "hi")
 
         call = graph_client.calls[0]
         assert _host(call["url"]) == _host(GRAPH_INSTAGRAM_BASE)
@@ -403,6 +404,23 @@ class TestInstagramTransport:
         call = graph_client.calls[0]
         assert _host(call["url"]) == _host(GRAPH_BASE)
         assert call["json"]["messaging_type"] == "RESPONSE"
+
+    @pytest.mark.asyncio
+    async def test_an_instagram_account_connected_with_a_page_token_sends_via_graph_facebook(
+            self, graph_client, monkeypatch):
+        """Connected by hand, the account holds its linked Page's token, which
+        graph.instagram.com rejects."""
+        adapter = get_adapter("instagram")
+        monkeypatch.setattr(adapter, "access_token", lambda account: "PAGETOKEN")
+        graph_client.response = _FakeResponse(200, {"message_id": "m1"})
+        conversation = MagicMock()
+        conversation.external_conversation_id = "IGSID1"
+
+        await adapter.send_text(MagicMock(settings={"page_id": "PAGE7"}), conversation, "hi")
+        await adapter.send_typing(MagicMock(settings={"page_id": "PAGE7"}), conversation)
+
+        assert [_host(call["url"]) for call in graph_client.calls] == [_host(GRAPH_BASE)] * 2
+        assert "messaging_type" not in graph_client.calls[0]["json"]
 
 
 class TestProfileEnrichment:
@@ -436,16 +454,23 @@ class TestProfileEnrichment:
     async def test_instagram_uses_the_ig_name_fields(self, monkeypatch):
         adapter, graph = self._adapter(
             "instagram", monkeypatch, (True, {"name": "Ada", "username": "ada_l"}))
-        assert await adapter.fetch_profile(MagicMock(), "IGSID1") == {"name": "Ada"}
+        assert await adapter.fetch_profile(MagicMock(settings={}), "IGSID1") == {"name": "Ada"}
         graph.assert_awaited_once_with(
             "IGSID1", "PAGE_TOKEN", params={"fields": "name,username"},
             base="https://graph.instagram.com")
 
     @pytest.mark.asyncio
+    async def test_instagram_with_a_page_token_looks_up_on_graph_facebook(self, monkeypatch):
+        adapter, graph = self._adapter(
+            "instagram", monkeypatch, (True, {"name": "Ada", "username": "ada_l"}))
+        assert await adapter.fetch_profile(MagicMock(settings={"page_id": "P"}), "IGSID1") == {"name": "Ada"}
+        assert graph.await_args.kwargs["base"] == "https://graph.facebook.com"
+
+    @pytest.mark.asyncio
     async def test_instagram_falls_back_to_username(self, monkeypatch):
         adapter, _ = self._adapter(
             "instagram", monkeypatch, (True, {"username": "ada_l"}))
-        assert await adapter.fetch_profile(MagicMock(), "IGSID1") == {"name": "ada_l"}
+        assert await adapter.fetch_profile(MagicMock(settings={}), "IGSID1") == {"name": "ada_l"}
 
 
 class TestDeliveryWindow:
@@ -547,6 +572,24 @@ class TestGraphHelpers:
         assert body["error"]["message"] == "not found"
         assert graph_client.calls[0]["method"] == "GET"
         assert graph_client.calls[0]["params"] == {"fields": "name"}
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_token_is_refused_with_a_readable_message(self, graph_client):
+        # A curly quote picked up while copying: an HTTP header can't carry it
+        ok, body = await graph_get("777777777777", "EAAG\u2019abc")
+
+        assert ok is False
+        assert body["error"]["message"] == NON_ASCII_TOKEN_MESSAGE
+        assert graph_client.calls == []
+
+    @pytest.mark.asyncio
+    async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, graph_client):
+        result = await graph_post("PHONE1/messages", "EAAG\u2019abc", {})
+
+        assert result.ok is False
+        assert result.auth_failed is True
+        assert result.error == NON_ASCII_TOKEN_MESSAGE
+        assert graph_client.calls == []
 
     @pytest.mark.asyncio
     async def test_network_error_is_reported_not_raised(self, graph_client):

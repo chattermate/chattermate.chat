@@ -172,6 +172,15 @@ class TestOwnAppWebhook:
             "metadata": {"phone_number_id": "PN-THEIRS"}, "statuses": WA_RECEIPT["entry"][0]["changes"][0]["value"]["statuses"]}}]}]})
         status.assert_not_awaited()
 
+    def test_an_instagram_account_from_their_app_takes_its_dms(self, client, db, test_organization):
+        account = _account(db, test_organization.id, channel_type="instagram", external_id="IG1")
+        payload = {"object": "instagram", "entry": [{"id": "IG1", "time": 1720000000, "messaging": [{
+            "sender": {"id": "IGSID1"}, "recipient": {"id": "IG1"}, "timestamp": 1720000000,
+            "message": {"mid": f"m.{uuid4().hex[:8]}", "text": "hello"}}]}]}
+        response, process, _ = _post(client, account.id, payload)
+        assert response.status_code == 200
+        assert _processed_for(process) == [account.id]
+
     def test_another_products_payload_is_ignored(self, client, db, test_organization):
         account = _account(db, test_organization.id)
         response, process, _ = _post(client, account.id, {"object": "page", "entry": [_page_entry("PN1")]})
@@ -428,12 +437,38 @@ class TestConnect:
             response = client.post(f"{BASE}/messenger", json={
                 "page_id": "PAGE9", "page_access_token": "EAAG-p", "app_secret": THEIR_SECRET})
         assert response.status_code == 200
+        # Meta lets only the app that issued a token inspect it
+        assert inspect.await_args.kwargs == {"app_id": THEIR_APP_ID, "app_secret": THEIR_SECRET}
         account, _ = _stored(db, "messenger", "PAGE9")
         data = response.json()
         assert data["webhook_url"].endswith(f"/webhooks/meta/{account.id}")
         assert data["webhook_verify_token"] == account.webhook_secret
         assert data["webhook_auto_configured"] is None
         graph_post.assert_not_awaited()  # Meta has no per-Page override
+
+    def test_messenger_with_our_own_apps_token_is_inspected_as_ours(self, client, db):
+        inspect = AsyncMock(return_value=(True, {"type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(False, {}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=(True, {"id": OUR_APP_ID}))):
+            response = client.post(f"{BASE}/messenger", json={"page_id": "PAGE9", "page_access_token": "EAAG-p"})
+        assert response.status_code == 200
+        assert inspect.await_args.kwargs == {"app_id": None, "app_secret": None}
+
+    def test_messenger_with_an_expired_token_says_so(self, client, db):
+        """Asking the token's app comes first now, so a dead token is answered
+        there: as a token to regenerate, not as Meta being unreachable."""
+        expired = (False, {"error": {"message": "Session has expired", "code": 190}})
+        inspect = AsyncMock()
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=expired)):
+            response = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-p", "app_secret": THEIR_SECRET})
+        assert response.status_code == 400
+        assert "Session has expired" in response.json()["detail"]
+        inspect.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9") is None
 
     def test_messenger_with_a_wrong_secret_is_refused(self, client, db):
         with patch("app.api.channels.meta.debug_token", AsyncMock(return_value=(True, {
@@ -443,6 +478,81 @@ class TestConnect:
                 "page_id": "PAGE9", "page_access_token": "EAAG-p", "app_secret": "wrong"})
         assert response.status_code == 400
         assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9") is None
+
+    def _connect_instagram(self, client, app_secret=THEIR_SECRET, app=(True, {"id": THEIR_APP_ID}),
+                           inspect=(True, {"type": "PAGE", "profile_id": "PAGE9", "is_valid": True})):
+        check = AsyncMock(return_value=inspect)
+        with patch("app.api.channels.meta.debug_token", check), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"id": "IG9", "username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=app)), \
+             patch("app.services.meta_own_app.graph_post_json", AsyncMock(return_value=(True, {}))) as graph_post:
+            body = {"ig_id": "IG9", "page_access_token": "EAAG-p"}
+            if app_secret:
+                body["app_secret"] = app_secret
+            response = client.post(f"{BASE}/instagram", json=body)
+        return response, check, graph_post
+
+    def test_instagram_with_a_secret_shows_the_address_to_paste(self, client, db):
+        response, inspect, graph_post = self._connect_instagram(client)
+        assert response.status_code == 200
+        assert inspect.await_args.kwargs == {"app_id": THEIR_APP_ID, "app_secret": THEIR_SECRET}
+        account, credentials = _stored(db, "instagram", "IG9")
+        assert credentials["app_secret"] == THEIR_SECRET
+        assert account.settings[APP_ID_SETTING] == THEIR_APP_ID
+        data = response.json()
+        assert data["webhook_url"].endswith(f"/webhooks/meta/{account.id}")
+        assert data["webhook_verify_token"] == account.webhook_secret
+        graph_post.assert_not_awaited()  # no per-account override outside WhatsApp
+
+    def test_instagram_from_their_app_without_a_secret_is_refused(self, client, db):
+        response, _, _ = self._connect_instagram(client, app_secret=None)
+        assert response.status_code == 400
+        assert "app's secret" in response.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG9") is None
+
+    def test_instagram_with_a_wrong_secret_is_refused(self, client, db):
+        response, _, _ = self._connect_instagram(client, app_secret="wrong", app=PROOF_ERROR)
+        assert response.status_code == 400
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "IG9") is None
+
+    def test_instagram_with_our_own_apps_token_needs_no_address(self, client, db):
+        response, inspect, _ = self._connect_instagram(client, app_secret=None, app=(True, {"id": OUR_APP_ID}))
+        assert response.status_code == 200
+        assert inspect.await_args.kwargs == {"app_id": None, "app_secret": None}
+        assert response.json()["webhook_url"] is None
+
+    def test_instagram_moved_to_our_app_forgets_their_secret(self, client, db, test_organization):
+        _account(db, test_organization.id, channel_type="instagram", external_id="IG9")
+        response, _, _ = self._connect_instagram(client, app_secret=None, app=(True, {"id": OUR_APP_ID}))
+        assert response.status_code == 200
+        account, credentials = _stored(db, "instagram", "IG9")
+        assert "app_secret" not in credentials
+        assert APP_ID_SETTING not in account.settings
+
+    def test_an_instagram_login_reconnect_drops_the_page_and_the_app(self, client, db, test_organization, monkeypatch):
+        """Reconnected with Instagram Login, the account holds an Instagram
+        token: it must leave the Facebook graph and its own-app address."""
+        account = _account(db, test_organization.id, channel_type="instagram", external_id="IG9")
+        ChannelAccountRepository(db).update_settings(account, {"page_id": "PAGE9"})
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "IGAPP")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "igsecret")
+        with patch("app.api.channels.meta.check_signup_access"), \
+             patch("app.api.channels.meta.exchange_instagram_code",
+                   AsyncMock(return_value=(True, {"access_token": "IGQ-short", "user_id": "IG9"}))), \
+             patch("app.api.channels.meta.exchange_instagram_long_lived",
+                   AsyncMock(return_value=(True, {"access_token": "IGQ-long"}))), \
+             patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"user_id": "IG9", "username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_instagram_app", AsyncMock(return_value=True)):
+            response = client.post(f"{BASE}/instagram/login/connect", json={
+                "code": "c", "redirect_uri": "https://app.example/meta-oauth-callback.html"})
+        assert response.status_code == 200
+        account, credentials = _stored(db, "instagram", "IG9")
+        assert credentials == {"access_token": "IGQ-long"}
+        assert "page_id" not in account.settings
+        assert APP_ID_SETTING not in account.settings
+        assert response.json()["webhook_url"] is None
 
     def _embedded_signup(self, client, monkeypatch):
         monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")

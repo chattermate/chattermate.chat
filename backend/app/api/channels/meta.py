@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 import json
 import secrets
 import time
@@ -23,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
+from app.channels.instagram import PAGE_ID_SETTING
 from app.channels.meta_base import (
     debug_token,
     exchange_for_long_lived_token,
@@ -40,6 +42,7 @@ from app.channels.meta_base import (
     GRAPH_INSTAGRAM_BASE,
 )
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.services.channel_limits import check_account_quota
 from app.services.meta_own_app import (
     APP_SECRET_KEY,
@@ -47,6 +50,7 @@ from app.services.meta_own_app import (
     AppSecretMismatch,
     AppSecretRequired,
     OwnApp,
+    TokenRefused,
     leave_own_app,
     own_app_token,
     resolve_own_app,
@@ -230,6 +234,17 @@ def check_signup_access(channel: str, user: User) -> None:
 SIGNUP_TOKEN_TTL_SECONDS = 600
 # 500 Pages; an agency ceiling, not a limit a real customer reaches.
 PAGE_LIST_MAX_PAGES = 5
+# What the picker needs from each Page, its token included
+SIGNUP_PAGE_FIELDS = "id,name,access_token"
+# The login grant a Page needs to be offered: without it the Page can't message
+PAGE_GRANT_SCOPE = "pages_messaging"
+# Granted Pages fetched one by one when me/accounts leaves them out
+GRANTED_PAGE_FETCH_LIMIT = 50
+# How many of those fetches run at once, to stay clear of Meta's rate limit
+GRANTED_PAGE_FETCH_CONCURRENCY = 5
+# Graph codes for a Page the person may not read: 100 "does not exist / missing
+# permission", 10 and 200 permission errors
+PAGE_ROLE_REFUSED_CODES = frozenset({10, 100, 200})
 
 
 def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
@@ -286,6 +301,74 @@ async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
     return data
 
 
+async def _granted_page_ids(user_token: str) -> list[str]:
+    """The Page ids the person ticked in Meta's login popup, in grant order."""
+    ok, info = await debug_token(user_token)
+    if not ok:
+        logger.warning(f"Could not read the signup's granted Pages: {graph_detail(info, 'no detail')}")
+        return []
+    ids: list[str] = []
+    for grant in info.get("granular_scopes") or []:
+        if grant.get("scope") != PAGE_GRANT_SCOPE:
+            continue
+        for target in grant.get("target_ids") or []:
+            if str(target) not in ids:
+                ids.append(str(target))
+    return ids
+
+
+async def _granted_page(page_id: str, user_token: str, limit: asyncio.Semaphore) -> dict | bool:
+    """The Page with its token; True when Meta refused it for want of a Page
+    role (a lasting answer to show the customer); False for any other failure,
+    such as a timeout or rate limit, which isn't worth explaining."""
+    async with limit:
+        ok, page = await graph_get(page_id, user_token, params={"fields": SIGNUP_PAGE_FIELDS})
+    if ok and page.get("id") and page.get("access_token"):
+        return page
+    logger.warning(f"Could not read granted Page {page_id}: {graph_detail(page, 'no Page token')}")
+    error = page.get("error") if isinstance(page.get("error"), dict) else {}
+    # Granted with no Page role, or no access_token in the answer: either way
+    # Meta won't give this person a token for it
+    return ok or error.get("code") in PAGE_ROLE_REFUSED_CODES
+
+
+def _no_page_role_message(page_ids: list[str]) -> str:
+    """Why a Page ticked in Meta's popup can't be connected, and the fix: the
+    business-portfolio login when it's set up, else a Page role."""
+    one = len(page_ids) == 1
+    shared = (f"Page {page_ids[0]} was shared, but your Facebook account has no role on it."
+              if one else
+              f"Pages {', '.join(page_ids)} were shared, but your Facebook account has no role on them.")
+    if settings.META_MESSENGER_BUSINESS_CONFIG_ID:
+        return f"{shared} Connect through your business portfolio instead."
+    return (f"{shared} Assign yourself to {'it' if one else 'them'} in Meta Business Settings "
+            "→ Accounts → Pages, then connect again.")
+
+
+async def _signup_pages(user_token: str) -> tuple[list[dict], list[str]]:
+    """Every Page this signup granted us, each with its own Page access token,
+    and the granted Page ids Meta wouldn't give a token for.
+
+    me/accounts lists only Pages the person has a role on directly. A Page a
+    business portfolio owns, managed through the portfolio, is granted in the
+    popup but missing there, so the granted ids are read from the token and
+    each missing Page is fetched by id. Meta refuses that when the person has
+    no role on the Page itself (seen 2026-11-23 on a portfolio-owned Page), so
+    those ids come back to explain the gap.
+    """
+    pages = await _list_manageable_pages(user_token, SIGNUP_PAGE_FIELDS)
+    listed = {str(p.get("id")) for p in pages}
+    missing = [i for i in await _granted_page_ids(user_token) if i not in listed]
+    if len(missing) > GRANTED_PAGE_FETCH_LIMIT:
+        logger.warning(f"Signup granted {len(missing)} unlisted Pages; offering the first "
+                       f"{GRANTED_PAGE_FETCH_LIMIT}")
+    limit = asyncio.Semaphore(GRANTED_PAGE_FETCH_CONCURRENCY)
+    tried = missing[:GRANTED_PAGE_FETCH_LIMIT]
+    fetched = await asyncio.gather(*(_granted_page(page_id, user_token, limit) for page_id in tried))
+    unavailable = [page_id for page_id, page in zip(tried, fetched) if page is True]
+    return pages + [page for page in fetched if isinstance(page, dict)], unavailable
+
+
 async def _signup_user_token(request: MessengerSignupRequest) -> str:
     """Trade a Facebook Login-for-Business code for a long-lived user token.
 
@@ -329,16 +412,19 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
         for key in forget:
             merged.pop(key, None)
         repo.update_credentials(existing, merged)
-        return repo.set_active(existing, True)
-    check_channel_access(db, organization.id)
-    check_account_quota(db, organization.id, channel_type)
-    return repo.create_account(
-        organization_id=organization.id,
-        channel_type=channel_type,
-        external_account_id=external_account_id,
-        credentials=credentials,
-        display_name=display_name,
-    )
+        account = repo.set_active(existing, True)
+    else:
+        check_channel_access(db, organization.id)
+        check_account_quota(db, organization.id, channel_type)
+        account = repo.create_account(
+            organization_id=organization.id,
+            channel_type=channel_type,
+            external_account_id=external_account_id,
+            credentials=credentials,
+            display_name=display_name,
+        )
+    assign_sole_agent(db, account)
+    return account
 
 
 def _previous_account(db: Session, organization: Organization, channel_type: str, external_account_id: str):
@@ -366,6 +452,10 @@ async def _own_app(access_token: str, secret: str | None) -> OwnApp | None:
         raise HTTPException(status_code=400, detail=(
             "That app secret is not the one for the Meta app this token comes from. "
             "Copy it from your app's App settings → Basic.")) from None
+    except TokenRefused as e:
+        raise HTTPException(status_code=400, detail=(
+            f"That token is not valid, generate a fresh one ({e})" if str(e)
+            else "That token is not valid, generate a fresh one")) from None
     except AppCheckUnavailable as e:
         raise ClientSafeHTTPException(
             status_code=502, detail=f"Could not check the app secret with Meta, try again ({e})") from e
@@ -391,6 +481,8 @@ async def get_embedded_signup_config(
         enabled=enabled,
         # Instagram Login has no configuration id, only an app id.
         config_id=(_signup_config_id(channel) or None) if enabled else None,
+        business_config_id=(settings.META_MESSENGER_BUSINESS_CONFIG_ID or None)
+        if enabled and channel == ChannelType.MESSENGER.value else None,
         app_id=_signup_app_id(channel) if enabled else None,
         graph_version=settings.META_GRAPH_VERSION,
     )
@@ -516,10 +608,15 @@ async def connect_messenger(
     db: Session = Depends(get_db),
 ):
     """Connect a Facebook Page for Messenger with a page access token."""
+    # The app first: Meta only lets the app that issued a token inspect it, so
+    # a token from the customer's own app is inspected as that app.
+    own = await _own_app(request.page_access_token, request.app_secret)
     # Inspect the token rather than reading the Page node: `me?fields=id,name`
     # needs pages_read_engagement, which a messaging token has no reason to
     # carry — it would reject a token that sends perfectly well.
-    ok, info = await debug_token(request.page_access_token)
+    ok, info = await debug_token(request.page_access_token,
+                                 app_id=own.app_id if own else None,
+                                 app_secret=own.secret if own else None)
     if not ok or not info.get("is_valid"):
         raise HTTPException(status_code=400, detail=graph_detail(
             info, "That token is not valid — generate a fresh Page access token"))
@@ -534,7 +631,6 @@ async def connect_messenger(
             f"entered. Webhooks are routed by Page ID, so the two must match."))
 
     previous = _previous_account(db, organization, ChannelType.MESSENGER.value, request.page_id)
-    own = await _own_app(request.page_access_token, request.app_secret)
     previous_token = own_app_token(previous)
 
     display_name = request.display_name or await _page_name(
@@ -568,8 +664,10 @@ async def list_messenger_signup_pages(
     check_signup_access(ChannelType.MESSENGER.value, current_user)
     user_token = await _signup_user_token(request)
 
-    pages = await _list_manageable_pages(user_token, "id,name,access_token")
-    if not pages:
+    pages, unavailable = await _signup_pages(user_token)
+    # Shared but out of reach: an answer with no Pages, so the notice and its
+    # business-portfolio login can show instead of a dead end
+    if not pages and not unavailable:
         raise HTTPException(status_code=400, detail=(
             "No Facebook Pages were shared with ChatterMate. Run the connect "
             "again and tick the Page you want to use."))
@@ -577,6 +675,7 @@ async def list_messenger_signup_pages(
     return MessengerSignupPagesOut(
         signup_token=_seal_signup_pages(organization.id, pages),
         pages=[MessengerPageOut(id=p["id"], name=p.get("name") or p["id"]) for p in pages],
+        unavailable_notice=_no_page_role_message(unavailable) if unavailable else None,
     )
 
 
@@ -661,14 +760,19 @@ async def connect_instagram_login(
     # any account — silently, with no error. Prefer the authoritative one.
     account_id = str((profile.get("user_id") if ok else None) or user_id)
 
+    previous_token = own_app_token(_previous_account(db, organization, ChannelType.INSTAGRAM.value, account_id))
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,
         external_account_id=account_id,
         credentials={"access_token": access_token},
         display_name=request.display_name or ("@" + (username or account_id)),
+        forget=(APP_SECRET_KEY,),
     )
+    # Was it connected by hand before? It now holds an Instagram Login token
+    ChannelAccountRepository(db).update_settings(account, {}, remove=(PAGE_ID_SETTING,))
     if not await subscribe_instagram_app(access_token):
         logger.warning(f"Instagram webhook subscribe failed for {account_id}; DMs may not arrive")
+    await sync_own_app(db, account, None, access_token, previous_token)
     return to_account_out(db, account)
 
 
@@ -679,12 +783,33 @@ async def connect_instagram(
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):
-    """Connect an Instagram professional account (via its linked page token)."""
+    """Connect an Instagram professional account with its linked Facebook
+    Page's token, from ChatterMate's app or the customer's own.
+
+    Instagram DMs come through the Page: the Page must subscribe the app, and
+    the token only works on the Facebook graph (see PAGE_ID_SETTING). A token
+    from the customer's own app also needs that app's secret, since Meta signs
+    its webhooks with it (see meta_own_app)."""
+    own = await _own_app(request.page_access_token, request.app_secret)
+    ok, info = await debug_token(request.page_access_token,
+                                 app_id=own.app_id if own else None,
+                                 app_secret=own.secret if own else None)
+    if not ok or not info.get("is_valid"):
+        raise HTTPException(status_code=400, detail=graph_detail(
+            info, "That token is not valid — generate a fresh Page access token"))
+    if info.get("type") != "PAGE":
+        raise HTTPException(status_code=400, detail=(
+            f"That is a {str(info.get('type', 'user')).lower()} access token, not a Page "
+            f"access token. Use the token of the Facebook Page your Instagram account is linked to."))
+    page_id = str(info.get("profile_id"))
+
     ok, data = await graph_get(request.ig_id, request.page_access_token,
                                params={"fields": "id,username"})
     if not ok:
-        raise HTTPException(status_code=400,
-                            detail=f"Could not verify Instagram credentials: {data.get('error', {}).get('message', 'invalid token or account id')}")
+        raise HTTPException(status_code=400, detail=graph_detail(data, (
+            "Could not read that Instagram account with this token. Check the account is "
+            "linked to the token's Facebook Page and the token has instagram_basic and "
+            "instagram_manage_messages.")))
     # Webhook routing matches entry.id against this value, so reject anything
     # that isn't the actual IG business-account id (e.g. a pasted Page id —
     # the page token can read that node too, so ok=True alone isn't enough).
@@ -692,12 +817,20 @@ async def connect_instagram(
         raise HTTPException(status_code=400,
                             detail="The ID entered is not an Instagram professional account ID")
 
+    previous_token = own_app_token(_previous_account(db, organization, ChannelType.INSTAGRAM.value, request.ig_id))
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,
         external_account_id=request.ig_id,
-        credentials={"access_token": request.page_access_token},
+        credentials={"access_token": request.page_access_token, **_own_app_credentials(own)},
         display_name=request.display_name or f"@{data.get('username', request.ig_id)}",
+        forget=() if own else (APP_SECRET_KEY,),
     )
+    ChannelAccountRepository(db).update_settings(account, {PAGE_ID_SETTING: page_id})
+    # Instagram DMs reach the app through the Page's subscription
+    if not await subscribe_app(page_id, request.page_access_token,
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
+        logger.warning(f"Page subscribe failed for {page_id} (Instagram {request.ig_id}); DMs may not arrive")
+    await sync_own_app(db, account, own, request.page_access_token, previous_token)
     return to_account_out(db, account)
 
 

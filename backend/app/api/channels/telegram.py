@@ -31,6 +31,7 @@ from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
 from app.services import telegram_webhooks
 from app.services.channel_access import check_channel_access
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -81,6 +82,7 @@ async def connect_telegram(
             detail += " — set BACKEND_URL to a public HTTPS URL (e.g. your ngrok domain)"
         raise ClientSafeHTTPException(status_code=502, detail=detail)
 
+    assign_sole_agent(db, account)
     logger.info(f"Connected Telegram bot @{bot.get('username')} for org {organization.id}")
     return to_account_out(db, account)
 

@@ -37,7 +37,6 @@ function setUp(customization: Partial<AgentCustomization> = {}, context: Partial
         widgetId: ref('agent-1'),
         agentName: ref('Ada'),
         photoUrl: ref('https://cdn.test/ada.png'),
-        showBranding: ref(true),
         width: ref(400),
         height: ref(600),
         ...context,
@@ -133,11 +132,10 @@ describe('usePreviewController', () => {
         expect(ctrl.askAiHotkey.value).toBe(false)
     })
 
-    it('takes branding, the photo and the help center from the dashboard, never the widget\'s startup data', () => {
-        ;(window as any).__INITIAL_DATA__ = { hideBranding: true, helpCenterUrl: 'https://help.example' }
+    it('takes the photo and the help center from the dashboard, never the widget\'s startup data', () => {
+        ;(window as any).__INITIAL_DATA__ = { helpCenterUrl: 'https://help.example' }
         try {
-            const { ctrl } = setUp({}, { showBranding: ref(true), helpCenterUrl: ref('https://acme.help') })
-            expect(ctrl.showBranding.value).toBe(true)
+            const { ctrl } = setUp({}, { helpCenterUrl: ref('https://acme.help') })
             expect(ctrl.helpCenterUrl.value).toBe('https://acme.help')
             expect(ctrl.photoUrl.value).toBe('https://cdn.test/ada.png')
         } finally {
@@ -216,7 +214,6 @@ describe('usePreviewController with a live conversation', () => {
             widgetId: ref('w-1'),
             agentName: ref('Ada'),
             photoUrl: ref('https://cdn.test/ada.png'),
-            showBranding: ref(true),
             width: ref(400),
             height: ref(600),
         }, { messages, loading, canSend, send }))!

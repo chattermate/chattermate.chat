@@ -13,8 +13,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-WhatsApp numbers and Messenger Pages that live in the customer's own Meta
-app (connected with manual credentials) rather than in ChatterMate's.
+WhatsApp numbers, Messenger Pages and Instagram accounts (through their
+linked Page) that live in the customer's own Meta app (connected with manual
+credentials) rather than in ChatterMate's.
 
 Meta signs their webhooks with the customer's app secret, which the shared
 /webhooks/meta endpoint can't check. So each such account gets its own
@@ -25,8 +26,8 @@ numbers), never for anyone else's: a payload signed with a secret someone
 chose themselves can't reach another organization.
 
 A WhatsApp number is pointed at its address with a per-number callback
-override; Messenger has no override, so the customer pastes the address and
-verify token into their app.
+override; Messenger and Instagram have none, so the customer pastes the
+address and verify token into their app.
 """
 
 import hashlib
@@ -36,7 +37,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from app.channels.meta_base import graph_detail, graph_get, graph_post_json
+from app.channels.meta_base import graph_auth_refused, graph_detail, graph_get, graph_post_json
 from app.core.config import settings, webhooks_base_url
 from app.core.logger import get_logger
 from app.models.channels import ChannelAccount, ChannelType
@@ -51,7 +52,7 @@ APP_SECRET_KEY = "app_secret"
 # accepted our per-number callback for it
 APP_ID_SETTING = "meta_app_id"
 AUTO_WEBHOOK_SETTING = "webhook_auto_configured"
-OWN_APP_CHANNELS = (ChannelType.WHATSAPP.value, ChannelType.MESSENGER.value)
+OWN_APP_CHANNELS = (ChannelType.WHATSAPP.value, ChannelType.MESSENGER.value, ChannelType.INSTAGRAM.value)
 
 # Meta's answer to an appsecret_proof made with another app's secret
 _PROOF_ERROR = "appsecret_proof"
@@ -67,7 +68,11 @@ class AppSecretRequired(Exception):
 
 
 class AppCheckUnavailable(Exception):
-    """Meta couldn't be asked (network, rate limit, an expired token…)."""
+    """Meta couldn't be asked (network, rate limit…)."""
+
+
+class TokenRefused(Exception):
+    """Meta refused the token itself: expired, revoked or never valid."""
 
 
 @dataclass
@@ -103,7 +108,8 @@ async def resolve_own_app(access_token: str, entered_secret: Optional[str]) -> O
     one-click signup, reconnected by hand), so a missing one is checked with
     ChatterMate's own secret: it proves only our app's tokens.
 
-    Raises AppSecretRequired, AppSecretMismatch or AppCheckUnavailable."""
+    Raises AppSecretRequired, AppSecretMismatch, TokenRefused or
+    AppCheckUnavailable."""
     secret = entered_secret or settings.META_APP_SECRET
     params = {"fields": "id"}
     if secret:
@@ -114,6 +120,8 @@ async def resolve_own_app(access_token: str, entered_secret: Optional[str]) -> O
         error = data.get("error") if isinstance(data.get("error"), dict) else {}
         if _PROOF_ERROR in str(error.get("message", "")):
             raise AppSecretMismatch() if entered_secret else AppSecretRequired()
+        if graph_auth_refused(data):
+            raise TokenRefused(graph_detail(data, ""))
         # Meta's own errors carry a code; anything else is ours (a timeout,
         # a socket error) and stays in the log
         logger.warning(f"Could not check an app secret with Meta: {error.get('message')}")

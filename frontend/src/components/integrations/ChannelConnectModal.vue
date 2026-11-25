@@ -19,6 +19,7 @@ import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount, type SmsProviderInfo } from '@/services/channels'
 import { agentService } from '@/services/agent'
+import NoAgentNotice from './NoAgentNotice.vue'
 import type { Agent } from '@/types/agent'
 import CopyField from './CopyField.vue'
 
@@ -223,6 +224,7 @@ const saveAgent = async () => {
         <CopyField v-if="account.webhook_url" class="cc-field" field-id="cc-webhook-url"
                    label="Webhook URL — set this on your provider" name="Webhook URL"
                    :value="account.webhook_url" />
+        <NoAgentNotice v-if="!account.agent_id" />
         <label class="cc-label" for="cc-agent">AI agent that answers this channel</label>
         <select id="cc-agent" v-model="selectedAgentId" class="cc-input">
           <option v-for="agent in agents" :key="String(agent.id)" :value="String(agent.id)">

@@ -21,7 +21,7 @@ import type { HumanAgent, SocketError } from '../types/widget'
 import { getErrorMessage, isReauthorizingRefusal, REAUTHORIZING_REFUSALS } from '../types/widget'
 import { widgetEnv } from '../webclient/widget-env'
 import { localTokenStore, readTokenClaims } from './useConversationToken'
-import { isFramed, reportedPageUrl } from '../webclient/frame-session'
+import { currentHostPage, isFramed } from '../webclient/frame-session'
 import type { Message } from '@/types/chat'
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'failed'
@@ -51,7 +51,11 @@ export const browserLanguages = (nav: Pick<Navigator, 'languages' | 'language'> 
  * `panel`: this socket is the widget panel's, which draws live steps, status cards
  * and the email check; the onboarding test chat says nothing and gets plain replies.
  */
-export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
+/**
+ * `sendsPage`: tell the agent the visitor's page with each message. Off for the
+ * dashboard's own test chat, whose "page" is the dashboard (or the Shopify admin).
+ */
+export function useWidgetSocket({ panel = false, sendsPage = true }: { panel?: boolean; sendsPage?: boolean } = {}) {
     const messages = ref<Message[]>([])
     const loading = ref(false)
     const errorMessage = ref('')
@@ -186,14 +190,8 @@ export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
         // Host page embedding the widget, recorded server-side on lead capture
         // (lead_source.page_url). A framed widget is told it by the loader; a srcdoc
         // one (older loaders) can read its same-origin parent; else the referrer.
-        try {
-            auth.page_url = reportedPageUrl()
-                || ((window.parent !== window && window.parent.location?.href)
-                    ? window.parent.location.href
-                    : (document.referrer || window.location.href))
-        } catch {
-            auth.page_url = document.referrer || ''
-        }
+        auth.page_url = currentHostPage()?.url
+            || (window.parent === window ? (document.referrer || window.location.href) : '')
         return auth
     }
 
@@ -772,11 +770,14 @@ export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
         messages.value.push(userMessage)
 
         // Emit to socket WITH files (files will be uploaded on backend)
+        // The page the visitor is on now, so "is this in stock?" is about this product
+        const page = sendsPage ? currentHostPage() : null
         socket.emit('chat', {
             ...extra,
             message: newMessage,
             email: email,
-            files: files  // Send files with base64 content
+            files: files,  // Send files with base64 content
+            ...(page ? { page } : {})
         })
 
         hasStartedChat.value = true

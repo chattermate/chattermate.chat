@@ -18,13 +18,12 @@ limitations under the License.
 <script setup lang="ts">
 /**
  * The agent page's widget preview: the widget's own panel (AgentPanelPreview) with
- * the agent's photo, or its orb, and the plan's branding, as visitors get them.
+ * the agent's photo, or its orb, as visitors get them.
  */
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
 import { resolveUploadUrl } from '@/config/api'
 import { orbSvgDataUri } from '@/utils/orb'
-import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useFeatureLock } from '@/composables/useFeatureLock'
 import AgentPanelPreview from './AgentPanelPreview.vue'
 
@@ -39,15 +38,6 @@ const props = defineProps<{
     windowWidth?: number
     windowHeight?: number
 }>()
-
-// The preview matches what visitors see: a plan with custom branding drops
-// "Powered by" (the server decides the same for the live widget). Open
-// source always shows it. Read from the store so it follows the plan once
-// it loads, not just whatever was cached when the panel mounted.
-const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } = useEnterpriseFeatures()
-const showBranding = computed(() =>
-    !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
-onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 
 // Quick actions are a paid plan's: on Free the server serves none, so neither does
 // the preview (they stay saved in the form). The editor's own lock decides.
@@ -70,7 +60,6 @@ const photoUrl = computed(() =>
         :agent-id="agentId"
         :agent-name="agentName"
         :photo-url="photoUrl"
-        :show-branding="showBranding"
         :window-width="windowWidth"
         :window-height="windowHeight"
     />

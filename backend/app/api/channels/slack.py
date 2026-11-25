@@ -34,6 +34,7 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
 from app.services.channel_access import channels_allowed
+from app.services.channel_agent_defaults import assign_sole_agent
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -118,18 +119,19 @@ async def slack_oauth_callback(
         if str(existing.organization_id) != org_id:
             return _settings_redirect("failure", "workspace_connected_elsewhere")
         repo.update_credentials(existing, credentials)
-        repo.set_active(existing, True)
+        account = repo.set_active(existing, True)
     else:
         if not channels_allowed(db, UUID(org_id)):
             await _revoke(data.get("access_token"))
             return _settings_redirect("failure", "plan_required")
-        repo.create_account(
+        account = repo.create_account(
             organization_id=UUID(org_id),
             channel_type=ChannelType.SLACK.value,
             external_account_id=team_id,
             credentials=credentials,
             display_name=team.get("name", team_id),
         )
+    assign_sole_agent(db, account)
     logger.info(f"Connected Slack workspace {team.get('name')} for org {org_id}")
     return _settings_redirect("success")
 

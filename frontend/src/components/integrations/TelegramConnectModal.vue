@@ -19,6 +19,7 @@ import { ref, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
+import NoAgentNotice from './NoAgentNotice.vue'
 import type { Agent } from '@/types/agent'
 
 const props = defineProps<{
@@ -120,6 +121,7 @@ const saveAgent = async () => {
           <strong>{{ account.display_name }}</strong> is connected.
           Choose which AI agent answers its messages:
         </p>
+        <NoAgentNotice v-if="!account.agent_id" />
         <label class="tg-label" for="tg-agent">AI agent</label>
         <select id="tg-agent" v-model="selectedAgentId" class="tg-input">
           <option v-for="agent in agents" :key="String(agent.id)" :value="String(agent.id)">

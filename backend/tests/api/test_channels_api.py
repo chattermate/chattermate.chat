@@ -80,6 +80,27 @@ class TestConnectTelegram:
         assert "555:tok" not in account.encrypted_credentials
         assert ChannelAccountRepository(db).get_credentials(account) == {"bot_token": "555:tok"}
 
+    def test_connect_routes_to_the_only_agent(self, client, db, test_agent):
+        # Skipping the agent step must not leave the bot silently unanswered
+        with patch("app.api.channels.telegram.telegram_api.get_me",
+                   AsyncMock(return_value={"id": 557, "username": "soloagentbot"})), \
+             patch("app.api.channels.telegram.telegram_api.set_webhook",
+                   AsyncMock(return_value=(True, ""))):
+            response = client.post(f"{BASE}/telegram", json={"bot_token": "557:tok"})
+
+        assert response.status_code == 200
+        assert response.json()["agent_id"] == str(test_agent.id)
+
+    def test_connect_without_agents_leaves_routing_unset(self, client):
+        with patch("app.api.channels.telegram.telegram_api.get_me",
+                   AsyncMock(return_value={"id": 558, "username": "noagentbot"})), \
+             patch("app.api.channels.telegram.telegram_api.set_webhook",
+                   AsyncMock(return_value=(True, ""))):
+            response = client.post(f"{BASE}/telegram", json={"bot_token": "558:tok"})
+
+        assert response.status_code == 200
+        assert response.json()["agent_id"] is None
+
     def test_connect_invalid_token(self, client):
         with patch("app.api.channels.telegram.telegram_api.get_me", AsyncMock(return_value=None)):
             response = client.post(f"{BASE}/telegram", json={"bot_token": "bad"})

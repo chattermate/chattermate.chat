@@ -85,6 +85,8 @@ export interface WhatsAppTemplate {
 export interface EmbeddedSignupConfig {
   enabled: boolean
   config_id: string | null
+  /** Messenger only: the business-portfolio login, for Pages the person has no role on */
+  business_config_id?: string | null
   app_id: string | null
   graph_version: string
 }
@@ -100,6 +102,8 @@ export interface MessengerSignupPages {
   pages: MessengerSignupPage[]
   /** Opaque blob carrying the Pages' access tokens back to the connect step */
   signup_token: string
+  /** Why a Page ticked in Meta's popup isn't in the list, and the fix */
+  unavailable_notice?: string | null
 }
 
 export interface ChannelAccount {
@@ -108,7 +112,7 @@ export interface ChannelAccount {
   external_account_id: string
   display_name?: string
   is_active: boolean
-  agent_id?: string
+  agent_id?: string | null   // null: no agent answers this account
   created_at?: string
   /** For email/SMS/LINE and Meta accounts from the customer's own app: the
    *  webhook URL to configure on the provider */
@@ -229,7 +233,11 @@ const channelsService = {
   },
 
   /** Connect an Instagram professional account (via its linked page token) */
-  async connectInstagram(payload: { ig_id: string; page_access_token: string }): Promise<ChannelAccount> {
+  async connectInstagram(payload: {
+    ig_id: string
+    page_access_token: string
+    app_secret?: string
+  }): Promise<ChannelAccount> {
     const response = await api.post('/channels/meta/instagram', payload)
     return response.data
   },

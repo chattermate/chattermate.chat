@@ -18,15 +18,20 @@ from typing import ClassVar, List, Optional
 
 from app.channels.interactive_limits import INSTAGRAM_LIMITS, InteractiveLimits
 from app.channels.messenger import MessengerAdapter
-from app.channels.meta_base import GRAPH_INSTAGRAM_BASE
+from app.channels.meta_base import GRAPH_BASE, GRAPH_INSTAGRAM_BASE
 from app.channels.registry import register_adapter
-from app.models.channels import ChannelType
+from app.models.channels import ChannelAccount, ChannelType
 
 # Instagram DM uses the same Messenger Platform envelope (entry[].messaging[],
 # sender.id = IGSID) and the same `me/messages` send shape, so it subclasses
-# Messenger. What differs is the host and the credential: accounts connect
+# Messenger. What differs is the host and the credential: most accounts connect
 # through Instagram Login, which yields an Instagram user token rather than a
-# Facebook Page token.
+# Facebook Page token. An account connected by hand uses its linked Page's
+# token instead, which only the Facebook graph accepts; it records that Page.
+
+# In the account's (non-secret) settings: the linked Facebook Page whose token
+# it holds, for an account connected with a Page token
+PAGE_ID_SETTING = "page_id"
 
 
 class InstagramAdapter(MessengerAdapter):
@@ -44,6 +49,11 @@ class InstagramAdapter(MessengerAdapter):
     interactive_limits: ClassVar[Optional[InteractiveLimits]] = INSTAGRAM_LIMITS
     # Instagram's own cap on a message's text
     max_text_length: ClassVar[Optional[int]] = INSTAGRAM_LIMITS.body_max
+
+    def graph_base_for(self, account: ChannelAccount) -> str:
+        """A Page token (an account connected by hand) only works on the
+        Facebook graph; an Instagram Login token only on Instagram's."""
+        return GRAPH_BASE if (account.settings or {}).get(PAGE_ID_SETTING) else self.graph_base
 
     def _events(self, entry: dict) -> List[dict]:
         """Instagram delivers a DM either as messaging[] or, depending on the
