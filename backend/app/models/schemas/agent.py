@@ -31,6 +31,8 @@ PerDayLimit = Annotated[Optional[int], Field(ge=1, le=MAX_PER_DAY)]
 
 AGENT_NAME_MAX = 100
 AGENT_DESCRIPTION_MAX = 500
+# The agent's own Offline reply (services/agent_offline.py)
+OFFLINE_MESSAGE_MAX = 500
 
 
 class KnowledgeItem(BaseModel):
@@ -80,6 +82,14 @@ class AgentBase(BaseModel):
         default=True,
         description="Apply the scope rule. Injection and disclosure protections are always on."
     )
+    offline_message: Optional[str] = Field(
+        default=None, max_length=OFFLINE_MESSAGE_MAX,
+        description="Sent once per conversation while the agent is Offline. Null sends the default."
+    )
+    offline_ask_email: bool = Field(
+        default=True,
+        description="After the offline message, ask website visitors for an email we don't have."
+    )
 
 
 class AgentCreate(AgentBase):
@@ -116,6 +126,8 @@ class AgentUpdate(BaseModel):
     topic_scope: Optional[str] = Field(default=None, max_length=500)
     guardrail_prompt: Optional[str] = Field(default=None, max_length=GUARDRAIL_PROMPT_MAX)
     guardrail_enabled: Optional[bool] = None
+    offline_message: Optional[str] = Field(default=None, max_length=OFFLINE_MESSAGE_MAX)
+    offline_ask_email: Optional[bool] = None
 
     @field_validator('name')
     @classmethod
@@ -130,6 +142,13 @@ class AgentUpdate(BaseModel):
     @classmethod
     def strip_description(cls, value: Optional[str]) -> Optional[str]:
         return value.strip() if value is not None else None
+
+    @field_validator('offline_message')
+    @classmethod
+    def blank_offline_message_is_default(cls, value: Optional[str]) -> Optional[str]:
+        """An emptied box goes back to the default text."""
+        stripped = (value or '').strip()
+        return stripped or None
 
 
 class AgentKnowledge(BaseModel):
@@ -183,6 +202,8 @@ class AgentResponse(BaseModel):
     topic_scope: Optional[str] = None
     guardrail_prompt: Optional[str] = None
     guardrail_enabled: bool = True
+    offline_message: Optional[str] = None
+    offline_ask_email: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -87,6 +87,14 @@ export const FEATURE_GATES = {
     description: 'Show up to three questions to ask next under an answer.',
     bullets: ['Suggested next questions', 'One tap to ask'],
   },
+  'offline-message': {
+    feature: 'offline_message',
+    newFlag: true,
+    name: 'Offline message',
+    title: 'Unlock Your Own Offline Message',
+    description: 'Write what customers get while the agent is Offline.',
+    bullets: ['Your own words', 'On the website and every channel'],
+  },
   ticketing: {
     feature: 'ai_ticketing',
     name: 'AI Ticketing',

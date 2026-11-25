@@ -30,7 +30,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
-from app.services.contact_capture import build_handoff_contact_form
+from app.services.contact_capture import HANDOFF_FORM_TEXT, OFFLINE_FORM_TEXT, build_handoff_contact_form
 from app.services.reply_ui import TurnEvents
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
@@ -190,9 +190,9 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
     return payload
 
 
-async def send_handoff_contact_form(session: dict, db) -> None:
+async def send_handoff_contact_form(session: dict, db, offline: bool = False) -> None:
     """Ask the visitor for whichever contact details the agent wants and we
-    don't have yet."""
+    don't have yet. `offline`: after an Offline agent's message, just the email."""
     session_id = session['session_id']
     try:
         handoff_agent = AgentRepository(db).get_agent(session['agent_id'])
@@ -200,8 +200,9 @@ async def send_handoff_contact_form(session: dict, db) -> None:
         if handoff_agent and customer:
             contact_form = build_handoff_contact_form(
                 customer,
-                collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
-                collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
+                collect_email=offline or getattr(handoff_agent, 'handoff_collect_email', True),
+                collect_name=not offline and getattr(handoff_agent, 'handoff_collect_name', True),
+                text=OFFLINE_FORM_TEXT if offline else HANDOFF_FORM_TEXT,
             )
             if contact_form:
                 await sio.emit('display_form', {

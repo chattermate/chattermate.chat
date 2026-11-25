@@ -48,6 +48,7 @@ from app.services.app_first_routing import announce_inbound, app_claims, text_re
 from app.services.chat_notifications import (
     notify_new_channel_chat_once, notify_team_chat_waits, team_not_yet_notified,
 )
+from app.services.agent_offline import should_tell_offline, tell_customer_agent_offline
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
 from app.services.conversation_token import VERIFIED_SCOPE
@@ -151,9 +152,12 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
                                    HandledBy.HUMAN, received_at)
 
             # Nothing will answer this on its own, so acknowledge once — on a
-            # channel an unanswered message reads as a dead number. Only on the
-            # opening message of a brand-new conversation.
-            if is_new_session and not agent_uses_ai:
+            # channel an unanswered message reads as a dead number. An Offline
+            # agent says so, once per conversation, even one already under way;
+            # otherwise only on the opening message of a brand-new conversation.
+            if should_tell_offline(agent, session_record):
+                await tell_customer_agent_offline(db, session_record, agent)
+            elif is_new_session and not agent_uses_ai:
                 await notify_customer(db, session_record, HUMAN_ONLY_ACK,
                                       channels_only=False)
             elif agent_uses_ai and not plan_allows and session_record.user_id is None:

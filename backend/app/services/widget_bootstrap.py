@@ -35,8 +35,8 @@ from app.models.widget import Widget
 from app.repositories.widget import WidgetRepository
 from app.services import conversation_token, launcher, widget_plan, widget_ui
 from app.services.widget_help_center import help_center_url
+from app.services.widget_presence import widget_presence
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
-from app.utils.business_hours import is_within_business_hours
 
 logger = get_logger(__name__)
 
@@ -78,16 +78,6 @@ def find_widget(db: Session, widget_id: str) -> Widget:
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
     return widget
-
-
-def _presence(agent: Agent) -> dict:
-    """What the header may honestly claim. Only a human-handled agent needs the
-    business-hours check: while the AI answers, it answers at 3am too."""
-    return {
-        'mode': 'ai' if agent.answers_with_ai else 'human',
-        'available': True if agent.answers_with_ai
-                     else is_within_business_hours(agent.organization),
-    }
 
 
 def conversation_key(token_payload: Optional[dict]) -> str:
@@ -150,7 +140,7 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
         # no customer yet keeps its conversation key
         token = mint_widget_token(widget.id, conversation_key(token_payload), source=source)
 
-    return WidgetSession(widget=widget, agent=agent, customer_id=customer_id, token=token, presence=_presence(agent),
+    return WidgetSession(widget=widget, agent=agent, customer_id=customer_id, token=token, presence=widget_presence(agent),
                          runs_workflow=agent_runs_workflow(db, agent))
 
 

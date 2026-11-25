@@ -60,6 +60,12 @@ export function handoverOf(message: WidgetMessage): HandoverState | null {
 }
 
 /** The visitor's thumb on this reply, or null. */
+/** A canned line the business sent (offline, handover and limit notices), not an
+ * answer anyone could rate (backend visitor_payload.SYSTEM_NOTICE_KEY). */
+export function isSystemNotice(message: WidgetMessage): boolean {
+    return message.attributes?.system_notice === true
+}
+
 export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
     return visitorFeedbackIn(message.attributes)
 }
@@ -68,7 +74,7 @@ export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
  * the panel's own, and the keys the chat UI layer draws from. */
 export function replyExtras(data: Record<string, unknown>): Record<string, unknown> {
     const extras: Record<string, unknown> = {}
-    for (const key of ['quick_replies', 'handover', ...(uiLayer.replyKeys ?? [])]) {
+    for (const key of ['quick_replies', 'handover', 'system_notice', ...(uiLayer.replyKeys ?? [])]) {
         if (data[key] !== null && data[key] !== undefined) extras[key] = data[key]
     }
     return extras

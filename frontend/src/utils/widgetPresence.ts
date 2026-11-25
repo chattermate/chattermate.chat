@@ -23,12 +23,15 @@ limitations under the License.
  *
  * - the AI answers → it really is instant, around the clock
  * - a person has to answer → only true inside the organization's business hours
+ * - the agent is switched Offline → it says so
  *
  * Availability is decided server-side from business hours alone. `is_online` is
  * set at login and cleared only on logout or a manual toggle, so it reports
  * people who closed a tab days ago as present.
  */
-export type PresenceMode = 'ai' | 'human'
+import { shallowRef } from 'vue'
+
+export type PresenceMode = 'ai' | 'human' | 'offline'
 
 export interface WidgetPresence {
   mode?: PresenceMode
@@ -45,16 +48,25 @@ export interface PresenceWording {
   ai: string
   human: string
   away: string
+  offline: string
 }
 
 export const PRESENCE_TEXT: PresenceWording = {
   ai: 'Online · replies instantly',
   human: 'Online · usually replies in a few minutes',
   away: "Away · we'll reply when we're back",
+  offline: "Offline · we'll reply when we're back",
 }
 
 /**
- * @param presence  what the server said when the widget loaded
+ * The presence the server last sent over the widget socket: on every connect,
+ * and whenever the agent is switched Online or Offline. Until then the page's
+ * own (window.__INITIAL_DATA__.presence) stands.
+ */
+export const livePresence = shallowRef<WidgetPresence | null>(null)
+
+/**
+ * @param presence  what the server last said (livePresence, else the page's)
  * @param handedOverToHuman  a person has taken this conversation over, so the
  *   AI is no longer answering it whatever the agent is configured to do
  * @param wording  the words to use (the classic widget's by default)
@@ -70,6 +82,9 @@ export function presenceLine(
 
   if (mode === 'ai') {
     return { text: wording.ai, online: true }
+  }
+  if (mode === 'offline') {
+    return { text: wording.offline, online: false }
   }
 
   const available = presence?.available !== false

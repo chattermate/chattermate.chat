@@ -18,7 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 vi.mock('@/services/agent', () => ({
-  agentService: { getGuardrailDefault: vi.fn().mockResolvedValue('') },
+  agentService: { getGuardrailDefault: vi.fn().mockResolvedValue(''), getOfflineMessageDefault: vi.fn().mockResolvedValue('') },
 }))
 
 import AgentInstructionsTab from '@/components/agent/AgentInstructionsTab.vue'

@@ -65,4 +65,17 @@ describe('presenceLine', () => {
     expect(presenceLine({ mode: 'ai' }, true, PANEL_PRESENCE_TEXT).text)
       .toBe('Online · usually replies in a few minutes')
   })
+
+  it('says Offline when the agent is switched Offline, in or out of hours', () => {
+    expect(presenceLine({ mode: 'offline', available: false }))
+      .toEqual({ text: "Offline · we'll reply when we're back", online: false })
+    expect(presenceLine({ mode: 'offline', available: true }).online).toBe(false)
+    expect(presenceLine({ mode: 'offline' }, false, PANEL_PRESENCE_TEXT).text)
+      .toBe("Offline · we'll reply when we're back")
+  })
+
+  it('a person who took the chat over answers, Offline or not', () => {
+    expect(presenceLine({ mode: 'offline', available: true }, true).text)
+      .toBe('Online · usually replies in a few minutes')
+  })
 })

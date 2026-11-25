@@ -457,6 +457,7 @@ const isAdvancedLocked = computed(() => isLocked('advanced'))
 const isTicketingLocked = computed(() => isLocked('ticketing'))
 const isLeadCaptureLocked = computed(() => isLocked('lead-capture'))
 const isJourneysLocked = computed(() => isLocked('journeys'))
+const isOfflineMessageLocked = computed(() => isLocked('offline-message'))
 
 // The upgrade modal's copy, by gate
 const modalGate = computed(() => FEATURE_GATES[upgradeModalType.value])
@@ -660,6 +661,9 @@ const handleSaveAgentFromTab = async (data: any) => {
             guardrail_enabled: data.guardrailEnabled,
             transfer_to_human: data.transferToHuman,
             ai_replies_enabled: data.aiRepliesEnabled,
+            // A locked field is never sent: the plan keeps the agent's text as it is
+            ...(isOfflineMessageLocked.value ? {} : { offline_message: data.offlineMessage }),
+            offline_ask_email: data.offlineAskEmail,
             channel_quick_replies: data.channelQuickReplies,
             ask_for_rating: data.askForRating,
             handoff_collect_email: data.handoffCollectEmail,
@@ -987,6 +991,8 @@ onMounted(async () => {
                                 :guardrail-enabled="agentData.guardrail_enabled ?? true"
                                 :transfer-to-human="agentData.transfer_to_human"
                                 :ai-replies-enabled="agentData.ai_replies_enabled ?? true"
+                                :offline-message="agentData.offline_message ?? null"
+                                :offline-ask-email="agentData.offline_ask_email ?? true"
                                 :channel-quick-replies="agentData.channel_quick_replies ?? false"
                                 :ask-for-rating="agentData.ask_for_rating"
                                 :handoff-collect-email="agentData.handoff_collect_email"

@@ -67,5 +67,13 @@ export async function setAgentOnline(api: ApiClient, agentId: string, online: bo
   await api.put(`/agent/${agentId}`, { data: { is_active: online } })
 }
 
+/** The agent's own Offline text, saved as the agent settings save it (null = the default). */
+export async function saveOfflineMessage(api: ApiClient, agentId: string, text: string | null): Promise<void> {
+  await api.put(`/agent/${agentId}`, { data: { offline_message: text } })
+}
+
 /** What a channel customer is sent once when no AI will answer (backend HUMAN_ONLY_ACK). */
 export const TEAM_WILL_REPLY = 'Thanks for your message. Someone from our team will reply here shortly.'
+
+/** What an Offline agent sends once per conversation by default (backend DEFAULT_OFFLINE_MESSAGE). */
+export const OFFLINE_REPLY = "We're offline right now. Leave a message and our team will reply as soon as we're back."

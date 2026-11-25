@@ -30,6 +30,7 @@ from app.api import agent as agent_router
 from io import BytesIO
 from PIL import Image as PILImage
 from app.core.config import settings
+from app.services.agent_offline import DEFAULT_OFFLINE_MESSAGE
 from app.services.file_storage import local_upload_path
 from app.core.auth import get_current_user, require_permissions, get_unified_auth
 from app.models.schemas.agent_customization import CustomizationCreate
@@ -1923,6 +1924,43 @@ def test_reply_limits_round_trip_and_clear(client, db, test_user, test_agent):
     assert response.json()["messages_per_customer_per_minute"] == 6
 
     assert client.put(f"/api/agents/{test_agent.id}", json={"replies_per_customer_per_day": 0}).status_code == 422
+
+
+def test_offline_message_round_trip_and_blank_means_default(client, db, test_user, test_agent):
+    response = client.put(f"/api/agents/{test_agent.id}", json={"offline_message": "  Back Monday.  "})
+    assert response.status_code == 200
+    assert response.json()["offline_message"] == "Back Monday."
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"offline_message": "   "})
+    assert response.json()["offline_message"] is None
+
+    assert response.json()["offline_ask_email"] is True
+    response = client.put(f"/api/agents/{test_agent.id}", json={"offline_ask_email": False})
+    assert response.json()["offline_ask_email"] is False
+
+    too_long = "x" * 501
+    assert client.put(f"/api/agents/{test_agent.id}", json={"offline_message": too_long}).status_code == 422
+
+
+def test_offline_message_default_is_served(client):
+    response = client.get("/api/agents/offline-message-default")
+    assert response.status_code == 200
+    assert response.json() == {"message": DEFAULT_OFFLINE_MESSAGE}
+
+
+def test_switching_offline_tells_open_widgets(client, db, test_user, test_agent):
+    """Open widgets hear the change; a save that leaves presence alone sends nothing."""
+    with patch("app.services.agent_rooms.sio.emit", new_callable=AsyncMock) as emit:
+        client.put(f"/api/agents/{test_agent.id}", json={"is_active": False})
+        emit.assert_awaited_once_with('presence', {'mode': 'offline', 'available': False},
+                                      room=f"agent_presence_{test_agent.id}", namespace='/widget')
+
+        emit.reset_mock()
+        client.put(f"/api/agents/{test_agent.id}", json={"offline_message": "Back soon."})
+        emit.assert_not_awaited()
+
+        client.put(f"/api/agents/{test_agent.id}", json={"is_active": True})
+        assert emit.await_args.args[1] == {'mode': 'ai', 'available': True}
 
 
 def _workflow(db, organization_id, agent_id, created_by):

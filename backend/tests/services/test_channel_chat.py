@@ -35,6 +35,7 @@ from app.repositories.channels import (
 from app.repositories.agent import AgentRepository
 from app.repositories.chat import ChatRepository
 from app.services import agent_rooms, channel_chat
+from app.services.agent_offline import DEFAULT_OFFLINE_MESSAGE
 from app.services.human_routing import HUMAN_ONLY_ACK
 from app.services.business_message import remember_business_message
 from app.services.channel_chat import process_channel_message
@@ -434,15 +435,19 @@ async def test_human_handling_relays_and_skips_bot(db, routed_account, use_test_
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("switched_off", ["ai_replies_enabled", "is_active"])
+@pytest.mark.parametrize("switched_off, reply", [
+    ("ai_replies_enabled", HUMAN_ONLY_ACK),
+    ("is_active", DEFAULT_OFFLINE_MESSAGE),
+])
 async def test_human_only_agent_never_runs_the_bot(db, routed_account, use_test_db,
                                                    test_ai_config, test_agent, mock_sio,
-                                                   switched_off):
+                                                   switched_off, reply):
     """AI replies off, or the agent set Offline: relay to the dashboard, never
     model.
 
     No transfer either — the chat simply waits for someone to pick it up, so
-    the customer gets no automated reply.
+    the customer gets one automated line: the team will reply, or (Offline)
+    that nobody is in right now.
     """
     setattr(test_agent, switched_off, False)
     db.commit()
@@ -454,7 +459,9 @@ async def test_human_only_agent_never_runs_the_bot(db, routed_account, use_test_
         create_async.assert_not_awaited()
         # One acknowledgement so the number doesn't look dead, nothing more.
         assert ack.await_count == 1
-        assert ack.await_args.args[2]['message'] == HUMAN_ONLY_ACK
+        assert ack.await_args.args[2]['message'] == reply
+        # A canned line, marked so the widget offers no feedback on it
+        assert ack.await_args.args[2]['system_notice'] is True
 
     # A follow-up message is not acknowledged again.
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()), \
@@ -469,6 +476,56 @@ async def test_human_only_agent_never_runs_the_bot(db, routed_account, use_test_
     # A plain open chat waiting in the inbox, not a transfer.
     assert session.status == SessionStatus.OPEN
     assert session.user_id is None
+
+
+async def _replies_to(routed_account, text):
+    """The automated lines the customer got for one message."""
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()), \
+         patch("app.services.human_routing.deliver_to_customer",
+               AsyncMock(return_value=DeliveryResult(ok=True))) as sent:
+        await process_channel_message(routed_account.id, make_inbound(text))
+    return [call.args[2]['message'] for call in sent.await_args_list]
+
+
+@pytest.mark.asyncio
+async def test_switching_offline_mid_conversation_says_so_once(db, routed_account, use_test_db,
+                                                               test_ai_config, test_agent, mock_sio):
+    """A conversation already under way gets the offline message on its next
+    message after the switch, and only that once."""
+    test_agent.ai_replies_enabled = False
+    db.commit()
+    assert await _replies_to(routed_account, "hello") == [HUMAN_ONLY_ACK]
+
+    test_agent.is_active = False
+    db.commit()
+    assert await _replies_to(routed_account, "anyone?") == [DEFAULT_OFFLINE_MESSAGE]
+    assert await _replies_to(routed_account, "hello??") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("plan_allows, expected", [(True, "Back Monday."), (False, DEFAULT_OFFLINE_MESSAGE)])
+async def test_offline_message_is_the_agents_own_where_the_plan_allows(
+        db, routed_account, use_test_db, test_ai_config, test_agent, mock_sio, plan_allows, expected):
+    test_agent.is_active = False
+    test_agent.offline_message = "Back Monday."
+    db.commit()
+    with patch("app.services.agent_offline.plan_flag_on", return_value=plan_allows) as flag:
+        assert await _replies_to(routed_account, "hello") == [expected]
+    assert flag.call_args.args[2] == "offline_message"
+
+
+@pytest.mark.asyncio
+async def test_no_offline_message_once_a_person_holds_the_chat(db, routed_account, use_test_db,
+                                                               test_ai_config, test_agent, mock_sio,
+                                                               test_user):
+    test_agent.ai_replies_enabled = False
+    db.commit()
+    await _replies_to(routed_account, "hello")
+    session = db.query(SessionToAgent).one()
+    session.user_id = test_user.id
+    test_agent.is_active = False
+    db.commit()
+    assert await _replies_to(routed_account, "still there?") == []
 
 
 @pytest.mark.asyncio

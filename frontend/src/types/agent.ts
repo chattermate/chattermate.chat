@@ -48,6 +48,10 @@ export interface Agent {
   /** Tenant-editable scope rule; null uses the platform default. */
   guardrail_prompt?: string | null
   guardrail_enabled?: boolean
+  /** Sent once per conversation while the agent is Offline; null sends the default. */
+  offline_message?: string | null
+  /** After the offline message, ask website visitors for an email we don't have. */
+  offline_ask_email?: boolean
   knowledge: Array<{
     id: number
     name: string
@@ -84,6 +88,8 @@ export interface AgentUpdate {
   ticketing_enabled?: boolean
   guardrail_prompt?: string | null
   guardrail_enabled?: boolean
+  offline_message?: string | null
+  offline_ask_email?: boolean
   customization?: AgentCustomization
 }
 

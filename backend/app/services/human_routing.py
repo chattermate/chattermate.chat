@@ -27,6 +27,7 @@ from app.repositories.group import GroupRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.user import UserRepository
 from app.services.chat_notifications import UNASSIGNED_CHAT_VIEWERS
+from app.services.visitor_payload import SYSTEM_NOTICE_KEY
 from app.services.message_delivery import deliver_to_customer
 from app.services.notifications import ChatNotificationEvent, notify_chat_event
 
@@ -86,6 +87,8 @@ async def notify_customer(
         result = await deliver_to_customer(db, session, {
             'message': message,
             'type': 'chat_response',
+            # A canned line: the widget offers no feedback on it
+            SYSTEM_NOTICE_KEY: True,
         }, message_id=stored.id, source=MessageSource.SYSTEM)
         if not result.ok:
             logger.warning(

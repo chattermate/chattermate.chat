@@ -34,7 +34,7 @@ from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.workflow import WorkflowRepository
 from app.models.schemas.agent import AgentUpdate, AgentResponse, AgentCreate, AgentRosterItem, AgentWithCustomizationResponse
 from sqlalchemy.orm import Session
-from app.models.agent import Agent, AgentCustomization
+from app.models.agent import DEFAULT_OFFLINE_MESSAGE, Agent, AgentCustomization
 from app.models.organization import Organization
 from app.agents.guardrail_policy import DEFAULT_GUARDRAIL_PROMPT
 from app.models.schemas.agent_customization import CustomizationCreate, CustomizationResponse, customization_schema
@@ -46,6 +46,7 @@ from app.services.agent_quota import check_agent_quota
 from app.services.agent_removal import LastAgentError, delete_agent, removal_impact
 from app.services.avatar_image import AvatarRejected, delete_replaced_avatar, store_avatar
 from app.services.file_storage import agent_photo_folder
+from app.services.widget_presence import widget_presence
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
 from app.utils.agno_utils import create_model
@@ -192,6 +193,8 @@ async def create_agent(
             topic_scope=agent.topic_scope,
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
+            offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             knowledge=[],
             groups=[]
         )
@@ -322,10 +325,18 @@ async def update_agent(
             _require_agents_workflow(db, agent, update_dict["active_workflow_id"])
 
         buttons_turned_on = update_dict.get("channel_quick_replies") is True and not agent.channel_quick_replies
+        presence_before = widget_presence(agent)
         agent = agent_repo.update_agent(agent_id, **update_dict)
         if buttons_turned_on:
             # Telegram bots connected before buttons existed don't receive taps yet
             await telegram_webhooks.reregister_for_agent(db, agent.id)
+        if widget_presence(agent) != presence_before:
+            # Open widgets show Offline (or back Online) without a reload.
+            # Imported here: socketio reads every org's CORS origins on import,
+            # which this module (loaded early by app.main) must not trigger
+            # before all the models exist.
+            from app.services.agent_rooms import announce_presence
+            await announce_presence(agent)
         # Get knowledge sources for response
         knowledge_items = knowledge_repo.get_by_agent(agent.id)
 
@@ -364,6 +375,8 @@ async def update_agent(
             topic_scope=agent.topic_scope,
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
+            offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             knowledge=[{
                 "id": k.id,
                 "name": k.source,
@@ -420,6 +433,19 @@ async def get_guardrail_default(
     ).first()
     label = (org.name or "").strip() if org else ""
     return {"prompt": DEFAULT_GUARDRAIL_PROMPT.replace("{org}", label or "this business")}
+
+
+@router.get("/offline-message-default")
+async def get_offline_message_default(
+    auth_info: dict = Depends(
+        require_any_unified_permission("view_agents", "manage_agents")),
+):
+    """What an Offline agent sends when it has no text of its own, for the
+    dashboard to show. Served from here so the wording has one source.
+
+    Declared before /{agent_id} so the literal path wins the route match.
+    """
+    return {"message": DEFAULT_OFFLINE_MESSAGE}
 
 
 @router.get("/customization-schema")
@@ -489,6 +515,8 @@ async def get_organization_agents(
                 topic_scope=agent.topic_scope,
                 guardrail_prompt=agent.guardrail_prompt,
                 guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
+                offline_message=agent.offline_message,
+                offline_ask_email=agent.offline_ask_email is not False,
                 knowledge=[{
                     "id": k.id,
                     "name": k.source,
@@ -690,6 +718,8 @@ async def update_agent_groups(
             topic_scope=agent.topic_scope,
             guardrail_prompt=agent.guardrail_prompt,
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
+            offline_message=agent.offline_message,
+            offline_ask_email=agent.offline_ask_email is not False,
             groups=agent.groups,
             knowledge=[{
                 "id": k.id,

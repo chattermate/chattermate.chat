@@ -182,6 +182,12 @@ export const agentService = {
     return response.data?.prompt ?? ''
   },
 
+  /** What an Offline agent sends when it has no text of its own. */
+  async getOfflineMessageDefault(): Promise<string> {
+    const response = await api.get('/agent/offline-message-default')
+    return response.data?.message ?? ''
+  },
+
   async generateInstructions(prompt: string, existingInstructions?: string[]): Promise<string[]> {
     const response = await api.post('/agent/generate-instructions', {
         prompt,

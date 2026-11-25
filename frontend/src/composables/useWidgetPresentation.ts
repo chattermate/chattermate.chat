@@ -21,7 +21,7 @@ import type { AgentCustomization } from '../types/agent'
 import type { HumanAgent } from '../types/widget'
 import { resolveOrbStyle } from '../utils/orb'
 import { shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
-import { presenceLine } from '../utils/widgetPresence'
+import { livePresence, presenceLine } from '../utils/widgetPresence'
 import { resolveWidgetUploadUrl } from '../webclient/widget-env'
 import { themeCssVars } from '../webclient/widget-theme'
 import { PANEL_PRESENCE_TEXT } from '../webclient/copy'
@@ -90,9 +90,10 @@ export function useWidgetPresentation({
     const isHandedOverToHuman = computed(() => !!humanAgent.value?.human_agent_name)
 
     // What the header may honestly say about how soon someone replies. Server-sent
-    // at load; a takeover flips it to the human wording without a round trip.
+    // at load and kept current over the socket (Offline shows without a reload);
+    // a takeover flips it to the human wording without a round trip.
     const presence = computed(() => presenceLine(
-        window.__INITIAL_DATA__?.presence,
+        livePresence.value ?? window.__INITIAL_DATA__?.presence,
         isHandedOverToHuman.value,
         PANEL_PRESENCE_TEXT,
     ))

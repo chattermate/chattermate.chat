@@ -50,6 +50,9 @@ WORKFLOW_FEATURE = "workflow"
 MCP_TOOLS_FEATURE = "mcp_tools"
 LEAD_CAPTURE_FEATURE = "lead_capture"
 CUSTOM_BRANDING_FEATURE = "custom_branding"
+# The agent's own Offline reply text (services/agent_offline.py); a plan flag
+# newer than some plan rows, so read with plan_flag_on
+OFFLINE_MESSAGE_FEATURE = "offline_message"
 
 
 def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:

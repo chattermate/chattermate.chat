@@ -43,10 +43,16 @@ def retain_unstored_email(customer_repo, customer_id, submitted_email: str, upda
     ) is not None
 
 
+# The form's words: at a handover, and after an Offline agent's message
+HANDOFF_FORM_TEXT = ('Before we connect you to a teammate', 'Share your details so we can follow up.')
+OFFLINE_FORM_TEXT = ('Leave your email', "We'll reply here and by email when we're back.")
+
+
 def build_handoff_contact_form(
     customer,
     collect_email: bool,
     collect_name: bool,
+    text: tuple = HANDOFF_FORM_TEXT,
 ) -> Optional[Dict[str, Any]]:
     """Return ``form_data`` (``form_type='contact'``) for the handoff contact prompt, or
     ``None`` when there is nothing to collect (toggles off, or the customer already has the
@@ -82,7 +88,7 @@ def build_handoff_contact_form(
 
     return {
         'form_type': 'contact',
-        'title': 'Before we connect you to a teammate',
-        'description': 'Share your details so we can follow up.',
+        'title': text[0],
+        'description': text[1],
         'fields': fields,
     }

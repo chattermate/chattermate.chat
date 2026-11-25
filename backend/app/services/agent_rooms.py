@@ -20,9 +20,13 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.core.auth import has_any_permission
+from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.repositories.user import UserRepository
 from app.services.chat_notifications import UNASSIGNED_CHAT_VIEWERS
+from app.services.widget_presence import PRESENCE_EVENT, presence_room, widget_presence
+
+logger = get_logger(__name__)
 
 # Per-organization room every inbox page joins (see handle_join_room), for
 # updates about any of the org's conversations — including AI-owned ones,
@@ -93,3 +97,14 @@ async def relay_stored_message(session_record, stored, message_type: str) -> Non
         'attributes': stored.attributes or {},
     }
     await emit_to_session_agents('chat_reply', payload, session_id, session_record.user_id)
+
+
+async def announce_presence(agent) -> None:
+    """Tell the agent's open widgets what their header should say now.
+    Never raises: the setting that changed is saved either way, and a widget
+    that misses this reads presence again when it reconnects."""
+    try:
+        await sio.emit(PRESENCE_EVENT, widget_presence(agent),
+                       room=presence_room(agent.id), namespace='/widget')
+    except Exception as e:
+        logger.error(f"Could not push presence for agent {agent.id}: {e}")
