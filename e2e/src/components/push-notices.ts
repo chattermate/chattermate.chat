@@ -38,6 +38,15 @@ export class PushNotices {
     return this.page.getByRole('dialog', { name: 'Enable notifications' })
   }
 
+  /** "Show me how": the steps to unblock notifications in this browser. */
+  get unblockGuide(): Locator {
+    return this.page.getByRole('dialog', { name: 'Turn notifications back on' })
+  }
+
+  get unblockSteps(): Locator {
+    return this.unblockGuide.getByRole('listitem')
+  }
+
   /** The More sheet's Notifications row (phones). */
   get moreSheetNotifications(): Locator {
     return this.page.getByRole('dialog', { name: 'More' }).getByRole('button', { name: /^Notifications/ })
@@ -51,8 +60,8 @@ export class PushNotices {
     await step('Open More', () => this.page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'More' }).click())
   }
 
-  /** Turn on / Try again on a notice. */
-  async act(notice: Locator, label: 'Turn on' | 'Try again'): Promise<void> {
+  /** Turn on / Try again / Show me how on a notice. */
+  async act(notice: Locator, label: 'Turn on' | 'Try again' | 'Show me how'): Promise<void> {
     await step(label, () => notice.getByRole('button', { name: label }).click())
   }
 

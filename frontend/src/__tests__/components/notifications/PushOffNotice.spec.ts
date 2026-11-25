@@ -42,7 +42,10 @@ vi.mock('@/composables/usePushStatus', async () => {
   }
 })
 
-const stubs = { 'font-awesome-icon': true }
+const browser = vi.hoisted(() => ({ kind: 'chrome' as string }))
+vi.mock('@/utils/browserKind', () => ({ detectBrowser: () => browser.kind }))
+
+const stubs = { 'font-awesome-icon': true, teleport: true }
 const mountNotice = (variant: 'panel' | 'banner' | 'strip') =>
   mount(PushOffNotice, { props: { variant }, global: { stubs } })
 
@@ -51,11 +54,12 @@ describe('PushOffNotice', () => {
     vi.clearAllMocks()
     push.reason.value = 'off'
     push.landing.value = true
+    browser.kind = 'chrome'
   })
 
   it.each([
     ['off', 'Notifications are off on this device', "You won't hear about new chats until you turn them on.", 'Turn on'],
-    ['blocked', 'Notifications are blocked in this browser', 'Click the icon left of the address bar, allow notifications, then reload.', null],
+    ['blocked', 'Notifications are blocked in this browser', 'Click the icon left of the address bar and allow notifications.', 'Show me how'],
     ['install', 'Add ChatterMate to your Home Screen', 'iPhone only sends notifications to installed apps. Tap Share, then Add to Home Screen.', null],
     ['failed', "Couldn't set up notifications", "This device isn't receiving them yet.", 'Try again'],
   ] as const)('panel line reads the %s state', (reason, title, body, action) => {
@@ -69,6 +73,46 @@ describe('PushOffNotice', () => {
     // The panel line can't be dismissed
     expect(wrapper.find('.push-off-dismiss').exists()).toBe(false)
     expect(wrapper.find('.push-off-close').exists()).toBe(false)
+  })
+
+  it('blocked: Show me how opens the steps for this browser, not the enable flow', async () => {
+    push.reason.value = 'blocked'
+    browser.kind = 'safari'
+    const wrapper = mountNotice('panel')
+    expect(wrapper.find('.push-off-body').text()).toBe('Allow them for this site in Safari → Settings → Websites.')
+
+    await wrapper.find('.push-off-cta').trigger('click')
+
+    expect(push.turnOn).not.toHaveBeenCalled()
+    const guide = wrapper.find('[role="dialog"]')
+    expect(guide.attributes('aria-label')).toBe('Turn notifications back on')
+    expect(guide.findAll('.ug-step').map((step) => step.find('.ug-step-text').text())).toEqual([
+      '1In the menu bar, choose Safari → Settings.',
+      '2Open Websites → Notifications and set this site to Allow.',
+      '3Reload this page.',
+    ])
+  })
+
+  it('the steps close by themselves once notifications are allowed', async () => {
+    push.reason.value = 'blocked'
+    const wrapper = mountNotice('banner')
+    await wrapper.find('.push-off-cta').trigger('click')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+
+    push.reason.value = 'failed'
+    await nextTick()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('in Brave, a failed registration names the setting that blocks it', () => {
+    push.reason.value = 'failed'
+    browser.kind = 'brave'
+    const wrapper = mountNotice('panel')
+
+    expect(wrapper.find('.push-off-body').text()).toBe(
+      'In Brave, turn on "Use Google services for push messaging" in Settings → Privacy, then try again.'
+    )
+    expect(wrapper.find('.push-off-cta').text()).toBe('Try again')
   })
 
   it('panel line stays while the landing notice is snoozed, and goes when push works', async () => {
@@ -102,7 +146,7 @@ describe('PushOffNotice', () => {
     const wrapper = mountNotice('banner')
 
     expect(wrapper.text()).toContain('Notifications are blocked in this browser.')
-    expect(wrapper.find('.push-off-cta').exists()).toBe(false)
+    expect(wrapper.find('.push-off-cta').text()).toBe('Show me how')
     expect(wrapper.find('.push-off-dismiss').exists()).toBe(true)
   })
 

@@ -15,6 +15,8 @@ limitations under the License.
 */
 
 import type { PushOffReason } from '@/composables/usePushStatus'
+import type { BrowserKind } from '@/utils/browserKind'
+import { UNBLOCK_GUIDES } from './unblockSteps'
 
 export interface PushOffCopy {
   /** Panel line and banner heading */
@@ -25,7 +27,7 @@ export interface PushOffCopy {
   bannerBody?: string
   /** One-line version for the inbox strip */
   short: string
-  /** Button label; none where the fix is outside the app */
+  /** Button label; none where there is nothing to tap */
   action?: string
   icon: string
 }
@@ -41,8 +43,9 @@ export const PUSH_OFF_COPY: Record<PushOffReason, PushOffCopy> = {
   },
   blocked: {
     title: 'Notifications are blocked in this browser',
-    body: 'Click the icon left of the address bar, allow notifications, then reload.',
+    body: UNBLOCK_GUIDES.chrome.summary,
     short: 'Notifications are blocked',
+    action: 'Show me how',
     icon: 'fa-solid fa-bell-slash',
   },
   install: {
@@ -58,4 +61,15 @@ export const PUSH_OFF_COPY: Record<PushOffReason, PushOffCopy> = {
     action: 'Try again',
     icon: 'fa-solid fa-triangle-exclamation',
   },
+}
+
+// Brave turns off the Google push service FCM relies on, so registration fails
+const BRAVE_FAILED_BODY = 'In Brave, turn on "Use Google services for push messaging" in Settings → Privacy, then try again.'
+
+/** The copy for this reason, with steps that match this browser's settings. */
+export function pushOffCopyFor(reason: PushOffReason, browser: BrowserKind): PushOffCopy {
+  const copy = PUSH_OFF_COPY[reason]
+  if (reason === 'blocked') return { ...copy, body: UNBLOCK_GUIDES[browser].summary }
+  if (reason === 'failed' && browser === 'brave') return { ...copy, body: BRAVE_FAILED_BODY, bannerBody: BRAVE_FAILED_BODY }
+  return copy
 }

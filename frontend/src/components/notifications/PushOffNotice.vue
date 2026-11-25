@@ -15,9 +15,11 @@ limitations under the License.
 -->
 
 <script setup lang="ts" name="PushOffNotice">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePushStatus } from '@/composables/usePushStatus'
-import { PUSH_OFF_COPY } from './pushOffCopy'
+import { detectBrowser } from '@/utils/browserKind'
+import { pushOffCopyFor } from './pushOffCopy'
+import UnblockGuide from './UnblockGuide.vue'
 
 /**
  * "Notifications are off on this device", in three places:
@@ -31,7 +33,20 @@ const props = defineProps<{
 
 const { reason, showLandingNotice, busy, turnOn, snoozeLanding } = usePushStatus()
 
-const copy = computed(() => (reason.value ? PUSH_OFF_COPY[reason.value] : null))
+const browser = detectBrowser()
+const copy = computed(() => (reason.value ? pushOffCopyFor(reason.value, browser) : null))
+const guideOpen = ref(false)
+
+// Blocked: the fix is in the browser's settings, so show where; else act here
+const onAction = () => {
+  if (reason.value === 'blocked') guideOpen.value = true
+  else turnOn()
+}
+
+// Allowed in site settings while the guide was up: the notice is done
+watch(reason, (now) => {
+  if (now !== 'blocked') guideOpen.value = false
+})
 const visible = computed(() =>
   props.variant === 'panel' ? !!copy.value : !!copy.value && showLandingNotice.value
 )
@@ -62,7 +77,7 @@ const visible = computed(() =>
       <button v-if="variant === 'banner'" type="button" class="push-off-dismiss" @click="snoozeLanding">
         Not now
       </button>
-      <button v-if="copy.action" type="button" class="push-off-cta" :disabled="busy" @click="turnOn">
+      <button v-if="copy.action" type="button" class="push-off-cta" :disabled="busy" @click="onAction">
         {{ copy.action }}
       </button>
       <button
@@ -76,6 +91,7 @@ const visible = computed(() =>
         <font-awesome-icon icon="fa-solid fa-xmark" aria-hidden="true" />
       </button>
     </div>
+    <UnblockGuide v-if="guideOpen" :browser="browser" @close="guideOpen = false" />
   </div>
 </template>
 

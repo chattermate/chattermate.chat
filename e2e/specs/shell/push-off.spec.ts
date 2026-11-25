@@ -31,7 +31,7 @@ test.describe('notifications off on this device', () => {
     await expect.poll(() => pushDevice.storedTokens()).toHaveLength(1)
   })
 
-  test('blocking at the prompt says how to unblock, with nothing to tap @shell', async ({ dashboard, pushDevice, pushNotices }) => {
+  test('blocking at the prompt shows how to unblock, step by step @shell', async ({ dashboard, pushDevice, pushNotices }) => {
     await pushDevice.setPermission('prompt')
     await pushNotices.firstAskPutOff(8)
     await dashboard.goto('/ai-agents')
@@ -39,11 +39,23 @@ test.describe('notifications off on this device', () => {
     pushDevice.answerPromptWith('denied')
     await pushNotices.act(pushNotices.landing, 'Turn on')
 
-    await expect(pushNotices.landing).toContainText(`${BLOCKED}. Click the icon left of the address bar, allow notifications, then reload.`)
+    await expect(pushNotices.landing).toContainText(`${BLOCKED}. Click the icon left of the address bar and allow notifications.`)
     await expect(pushNotices.landing.getByRole('button', { name: 'Turn on' })).toHaveCount(0)
     await pushNotices.openDrawer()
     await expect(pushNotices.drawerLine).toHaveAccessibleName(BLOCKED)
-    await expect(pushNotices.drawerLine.getByRole('button')).toHaveCount(0)
+
+    await pushNotices.act(pushNotices.drawerLine, 'Show me how')
+    await expect(pushNotices.unblockSteps).toContainText([
+      'Click the icon left of the address bar.',
+      'Turn on Notifications.',
+      "Reload this page if they don't turn on by themselves.",
+    ])
+
+    // Allowed in site settings while the steps are up: they close, and the device registers
+    await pushDevice.setPermission('granted')
+    await expect(pushNotices.unblockGuide).toBeHidden()
+    await expect(pushNotices.drawerLine).toBeHidden()
+    await expect.poll(() => pushDevice.storedTokens()).toHaveLength(1)
   })
 
   test('allowing in site settings after a block registers the device without a reload @shell', async ({ dashboard, pushDevice, pushNotices }) => {
