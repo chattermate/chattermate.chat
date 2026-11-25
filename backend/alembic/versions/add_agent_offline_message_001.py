@@ -17,7 +17,7 @@ limitations under the License.
 """add agents.offline_message
 
 Revision ID: add_agent_offline_message_001
-Revises: channel_agent_backfill_001
+Revises: shopify_proxy_prefix_001
 Create Date: 2026-11-25
 
 The reply a customer gets once per conversation while the agent is Offline.
@@ -28,7 +28,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_agent_offline_message_001'
-down_revision = 'channel_agent_backfill_001'
+down_revision = 'shopify_proxy_prefix_001'
 branch_labels = None
 depends_on = None
 

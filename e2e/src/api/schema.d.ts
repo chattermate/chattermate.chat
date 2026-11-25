@@ -2946,6 +2946,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/offline-message-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Offline Message Default
+         * @description What an Offline agent sends when it has no text of its own, for the
+         *     dashboard to show. Served from here so the wording has one source.
+         *
+         *     Declared before /{agent_id} so the literal path wins the route match.
+         */
+        get: operations["get_offline_message_default_api_v1_agent_offline_message_default_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/customization-schema": {
         parameters: {
             query?: never;
@@ -6021,6 +6044,11 @@ export interface components {
              * @default true
              */
             guardrail_enabled: boolean;
+            /**
+             * Offline Message
+             * @description Sent once per conversation while the agent is Offline. Null sends the default.
+             */
+            offline_message?: string | null;
             /** Organization Id */
             organization_id?: string | null;
         };
@@ -6256,6 +6284,8 @@ export interface components {
             guardrail_prompt?: string | null;
             /** Guardrail Enabled */
             guardrail_enabled?: boolean | null;
+            /** Offline Message */
+            offline_message?: string | null;
         };
         /** AgentWithCustomizationResponse */
         AgentWithCustomizationResponse: {
@@ -6358,6 +6388,8 @@ export interface components {
              * @default true
              */
             guardrail_enabled: boolean;
+            /** Offline Message */
+            offline_message?: string | null;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -16455,6 +16487,26 @@ export interface operations {
         };
     };
     get_guardrail_default_api_v1_agent_guardrail_default_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_offline_message_default_api_v1_agent_offline_message_default_get: {
         parameters: {
             query?: never;
             header?: never;
