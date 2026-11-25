@@ -207,9 +207,11 @@ export function pageChat(
   token: string,
   customerName: string,
   to = SHARED_META_WEBHOOK,
+  // Where replies go: a Page token only works on the Facebook graph, so that is
+  // every account except one connected with Instagram Login
+  provider: 'graph' | 'graph-instagram' = 'graph',
 ): ChatWithButtons {
   const senderId = digits(16)
-  const provider = object === 'page' ? 'graph' : 'graph-instagram'
   const inbound = (message: Record<string, unknown>) => deliverMeta(request, {
     object,
     entry: [{ id: pageId, time: Date.now(), messaging: [{
@@ -247,11 +249,12 @@ export const messenger: ChannelConnector<ButtonChat> = ({ api, request, agentId 
     return { chatWith: (customerName) => pageChat('Messenger', request, externals, 'page', pageId, token, customerName) }
   })
 
-/** An Instagram professional account connected by hand (IG user id + page token). */
+/** An Instagram professional account connected by hand: its IG user id and the
+ *  token of the Facebook Page it is linked to, which owns both. */
 export const instagram: ChannelConnector<ButtonChat> = ({ api, request, agentId }) =>
   step('Connect an Instagram account', async () => {
     const igId = digits(17)
-    const token = metaToken(igId)
+    const token = metaToken(digits(15), igId)
     const account = await connectInstagram(api, igId, token)
     await routeToAgent(api, account.id, agentId)
     const externals = new FakeExternals(request)
