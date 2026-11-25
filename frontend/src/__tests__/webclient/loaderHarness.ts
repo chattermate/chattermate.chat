@@ -46,6 +46,8 @@ export function resetPage() {
 }
 
 export function cleanupPage() {
+  // Destroy the widget first, so none of its timers outlive the test environment.
+  try { (window as any).ChatterMate?.destroy?.() } catch { /* nothing built */ }
   vi.unstubAllGlobals()
   vi.useRealTimers()
   delete (window as any).ChatterMate
