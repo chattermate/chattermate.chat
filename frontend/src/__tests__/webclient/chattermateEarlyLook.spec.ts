@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WIDGET_ID, api, bringUp, cleanupPage, fromFrame, handshake, loadLoader, resetPage, spyOnFrame } from './loaderHarness'
+import { FRAME_ORIGIN, WIDGET_ID, api, bringUp, cleanupPage, flush, fromFrame, handshake, loadLoader, resetPage, spyOnFrame } from './loaderHarness'
 import { LOOK_CACHE_PREFIX } from '@/webclient/loader/lookCache.js'
 import { DEFAULT_LAUNCHER_COLOR } from '@/webclient/launcher-style'
 
@@ -62,14 +62,36 @@ describe('launcher look from the frame page', () => {
     expect(css()).toContain(`background: ${DEFAULT_LAUNCHER_COLOR};`)
   })
 
-  it('is never cached, and the widget\'s own settings are', async () => {
+  it('is kept for the next visit once the frame\'s handshake comes from the same origin', async () => {
     await loadLoader()
-    earlyLook({ chat_bubble_color: BRAND, launcher: { size: 'sm' } })
+    earlyLook({ chat_bubble_color: BRAND, launcher: { size: 'sm' } }, { origin: FRAME_ORIGIN })
     expect(cached()).toBeNull()
 
-    bringUp()
+    handshake()
+    expect(cached()).toMatchObject({ chat_bubble_color: BRAND, launcher: { size: 'sm' } })
+
+    // The widget's own settings then replace it
+    fromFrame({ type: 'WIDGET_READY' })
     fromFrame({ type: 'CUSTOMIZATION_UPDATE', data: { chat_bubble_color: '#10B981', launcher: { size: 'md' } } })
     expect(cached()).toEqual({ chat_bubble_color: '#10B981', launcher: { size: 'md' } })
+  })
+
+  it('a look from a frame that was replaced before its handshake is not kept', async () => {
+    await loadLoader()
+    earlyLook({ chat_bubble_color: BRAND }, { origin: FRAME_ORIGIN })
+    // A new visitor: the old frame goes before it said hello
+    api().identify('tok-1')
+    await flush()
+    handshake()
+    expect(cached()).toBeNull()
+  })
+
+  it('is not kept when the handshake comes from another origin', async () => {
+    await loadLoader()
+    // The frame was navigated elsewhere before our page's look arrived
+    earlyLook({ chat_bubble_color: BRAND }, { origin: 'https://spoof.example' })
+    handshake()
+    expect(cached()).toBeNull()
   })
 
   it('leaves the panel framing the loader already has', async () => {

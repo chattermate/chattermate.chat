@@ -166,12 +166,36 @@ describe('ChatterMate frame and lifecycle API', () => {
         .toEqual({ type: 'PREFILL_MESSAGE', text: 'Where is my order?' })
     })
 
-    it('drops the loading state once the widget is ready', async () => {
+    it('keeps the launcher\'s icon while the chat loads behind it', async () => {
       await loadLoader()
       const button = document.getElementById('chattermate-button')!
+      expect(button.classList.contains('loading')).toBe(false)
+    })
+
+    it('shows the loading state only while the visitor waits with the chat open', async () => {
+      await loadLoader()
+      const button = document.getElementById('chattermate-button')!
+      api().open()
+      expect(button.classList.contains('loading')).toBe(true)
+      api().close()
+      expect(button.classList.contains('loading')).toBe(false)
+      api().open()
       expect(button.classList.contains('loading')).toBe(true)
       bringUp()
       expect(button.classList.contains('loading')).toBe(false)
+      // Ready: opening again shows no spinner
+      api().close()
+      api().open()
+      expect(button.classList.contains('loading')).toBe(false)
+    })
+
+    it('a frame that reloads itself while the chat is open shows the loading state again', async () => {
+      await loadLoader()
+      const button = document.getElementById('chattermate-button')!
+      bringUp()
+      api().open()
+      handshake()
+      expect(button.classList.contains('loading')).toBe(true)
     })
 
     it('tells the frame the page it is on when the chat opens and on navigation', async () => {
