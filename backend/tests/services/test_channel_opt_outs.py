@@ -230,15 +230,10 @@ def test_other_channels_never_treat_stop_as_an_opt_out(db, test_organization):
     assert channel_opt_outs.opt_out_reply(db, telegram, _inbound("STOP")) is None
 
 
-def test_the_repository_erases_an_organizations_contacts(db, account):
+def test_the_repository_reads_a_batch_of_contacts(db, account):
     repo = ChannelOptOutRepository(db)
     repo.opt_out(account, CONTACT, OptOutSource.STOP_WORD)
-    repo.opt_out(account, "+15550001111", OptOutSource.INBOX)
     assert repo.opted_out_of(account.id, [CONTACT, "+19990000000"]) == {CONTACT}
-    assert repo.erase(account.organization_id, [CONTACT]) == 1
-    db.commit()
-    assert not repo.is_opted_out(account.id, CONTACT)
-    assert repo.is_opted_out(account.id, "+15550001111")
 
 
 # --- Buttons the business owns (register_button_handler) -------------------------------------------

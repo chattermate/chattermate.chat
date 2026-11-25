@@ -68,13 +68,3 @@ class ChannelOptOutRepository:
                    .delete(synchronize_session=False))
         self.db.commit()
         return removed > 0
-
-    def erase(self, organization_id, contacts: Iterable[str]) -> int:
-        """Delete an organization's records of these contacts (a privacy erasure).
-        Doesn't commit: the caller erases everything in one transaction."""
-        wanted = [c for c in set(contacts) if c]
-        if not wanted:
-            return 0
-        return (self.db.query(ChannelOptOut)
-                .filter(ChannelOptOut.organization_id == organization_id, ChannelOptOut.contact.in_(wanted))
-                .delete(synchronize_session=False))
