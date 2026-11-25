@@ -80,6 +80,11 @@ def hit_counter(key, window_seconds):
     return int(redis_client.eval(_HIT_COUNTER_LUA, 1, key, window_seconds))
 
 
+def seconds_phrase(seconds):
+    """'1 second' / '5 seconds', so the visitor never reads '1 seconds'."""
+    return f"{seconds} second" if seconds == 1 else f"{seconds} seconds"
+
+
 def socket_rate_limit(namespace='/widget', read_only=False):
     """
     Socket rate limiting decorator for socketio event handlers
@@ -187,7 +192,7 @@ def socket_rate_limit(namespace='/widget', read_only=False):
                                 if seconds > 0 and minutes < 5:  # Only show seconds for short waits
                                     time_msg += f" and {seconds} seconds"
                             else:
-                                time_msg = f"{seconds} seconds"
+                                time_msg = seconds_phrase(seconds)
                             
                             logger.warning(f"Rate limit exceeded for {client_ip} - daily limit of {overall_limit} requests")
                             await sio.emit('error', {
@@ -221,7 +226,7 @@ def socket_rate_limit(namespace='/widget', read_only=False):
 
                             logger.warning(f"Rate limit exceeded for {client_ip} - frequency limit of {requests_per_sec} req/sec")
                             await sio.emit('error', {
-                                'error': f"You're sending messages too quickly. Please wait {ttl} seconds before sending another message.",
+                                'error': f"You're sending messages too quickly. Please wait {seconds_phrase(ttl)} before sending another message.",
                                 'type': 'rate_limit_error'
                             }, to=sid, namespace=namespace)
                             return None

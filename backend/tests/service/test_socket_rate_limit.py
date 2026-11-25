@@ -502,7 +502,7 @@ async def test_blocked_message_never_says_negative_wait(mock_redis):
     run, handler, emit = _run_decorated(mock_redis, 1.0, 2)
     mock_redis.ttl.return_value = -1
     await run()
-    assert 'wait 1 seconds' in emit.call_args[0][1]['error']
+    assert emit.call_args[0][1]['error'] == "You're sending messages too quickly. Please wait 1 second before sending another message."
 
 
 @pytest.mark.asyncio
