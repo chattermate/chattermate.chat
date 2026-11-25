@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   // Never resolves — stands in for getSWRegistration()'s 8s timeout when no
@@ -44,9 +44,15 @@ vi.mock('@/services/user', () => ({
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('logout push cleanup', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
+    // A production build, which ships the app service worker
+    vi.stubEnv('DEV', false)
     Object.defineProperty(window, 'Notification', {
       value: { permission: 'granted' },
       configurable: true,

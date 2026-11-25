@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getSWRegistration: vi.fn(),
@@ -47,9 +47,15 @@ const setPermission = (permission: NotificationPermission) => {
 }
 
 describe('device registration state', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    // A production build, which ships the app service worker
+    vi.stubEnv('DEV', false)
     mocks.getSWRegistration.mockResolvedValue({})
     mocks.isSupported.mockResolvedValue(true)
     mocks.getToken.mockResolvedValue('device_token')
@@ -74,6 +80,15 @@ describe('device registration state', () => {
 
     expect(await refreshFCMToken()).toBe(false)
     expect(deviceRegistration.value).toBe('failed')
+  })
+
+  it('stays quiet on the vite dev server, which has no service worker by design', async () => {
+    vi.stubEnv('DEV', true)
+    const { refreshFCMToken, deviceRegistration } = await import('@/services/firebase')
+
+    expect(await refreshFCMToken()).toBe(false)
+    expect(deviceRegistration.value).toBe('unsupported')
+    expect(mocks.getToken).not.toHaveBeenCalled()
   })
 
   it('reads failed when no service worker is there to bind to', async () => {

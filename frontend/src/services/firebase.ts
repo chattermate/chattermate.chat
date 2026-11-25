@@ -85,6 +85,10 @@ export type DeviceRegistration = 'idle' | 'registering' | 'registered' | 'failed
 const registration = ref<DeviceRegistration>('idle')
 export const deviceRegistration = readonly(registration)
 
+// The vite dev server ships no app service worker (PWA devOptions are off), so
+// push can't register there; that's the build, not a failure to report.
+const APP_WORKER_IN_THIS_BUILD = !import.meta.env.DEV
+
 // Set by registerFCMToken, read and cleared by logout (see thisDeviceFCMToken)
 let deviceToken: string | null = null
 let pendingDrop: Promise<void> | null = null
@@ -131,7 +135,7 @@ const registerFCMToken = (): Promise<boolean> => {
       if (startedIn === signOuts) registration.value = outcome
     }
     try {
-      if (!(await isPushSupported())) {
+      if (!(await isPushSupported()) || !APP_WORKER_IN_THIS_BUILD) {
         settle('unsupported')
         return false
       }
