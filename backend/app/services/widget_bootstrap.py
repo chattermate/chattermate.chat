@@ -84,8 +84,8 @@ def _presence(agent: Agent) -> dict:
     """What the header may honestly claim. Only a human-handled agent needs the
     business-hours check: while the AI answers, it answers at 3am too."""
     return {
-        'mode': 'ai' if agent.ai_replies_enabled else 'human',
-        'available': True if agent.ai_replies_enabled
+        'mode': 'ai' if agent.answers_with_ai else 'human',
+        'available': True if agent.answers_with_ai
                      else is_within_business_hours(agent.organization),
     }
 
@@ -184,7 +184,7 @@ async def _customization(db: Session, agent: Agent) -> dict:
         "collect_email": customization.collect_email,
         # A human-only agent never produces an AI reply, so disclosing one
         # would be untrue — same reason the widget hides it after takeover.
-        "show_ai_disclaimer": customization.show_ai_disclaimer and agent.ai_replies_enabled,
+        "show_ai_disclaimer": customization.show_ai_disclaimer and agent.answers_with_ai,
         "customization_metadata": metadata,
         "launcher_logo_url": logo_url,
     }

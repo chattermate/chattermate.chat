@@ -44,7 +44,7 @@ export class IntegrationsPage {
    */
   noAgentFor(account: string): RegExp {
     const name = escapeRegExp(account)
-    return new RegExp(`No agent(?: on [^:]*${name}[^:]*)?: messages aren't answered\\.`)
+    return new RegExp(`No agent(?: on [^:]*${name}[^:]*)?: messages wait in your inbox\\.`)
   }
 
   /** "Assign agent" on the card's no-agent warning: opens the first account without one. */
@@ -56,7 +56,7 @@ export class IntegrationsPage {
 
   /** A connect/manage dialog's notice that no agent answers the account yet. */
   noAgentNotice(): Locator {
-    return this.page.getByRole('alert').filter({ hasText: "No agent: messages aren't answered." })
+    return this.page.getByRole('alert').filter({ hasText: "No agent: messages wait in your inbox." })
   }
 
   /** In an open connect/manage dialog: route the account to `agentName`. */

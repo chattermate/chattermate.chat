@@ -19,7 +19,7 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, false, or_, select
+from sqlalchemy import String, and_, cast, false, not_, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.agent import Agent
@@ -79,15 +79,15 @@ def mentions(user_id: Optional[UUID]) -> ColumnElement:
 
 def waiting_for_human() -> ColumnElement:
     """Nobody holds it and no AI reply is coming: handed over, queued for a
-    group, the agent never answers with AI, or the agent was deleted (the
-    joined row is missing). Mirrors chatHandler() in the frontend's
-    utils/chatState.ts."""
+    group, the agent doesn't answer with AI (Offline or AI replies off), or
+    there is no agent (the joined row is missing). Mirrors chatHandler() in
+    the frontend's utils/chatState.ts."""
     return and_(
         SessionToAgent.user_id.is_(None),
         or_(
             SessionToAgent.status == SessionStatus.TRANSFERRED,
             SessionToAgent.group_id.isnot(None),
-            Agent.ai_replies_enabled.is_(False),
+            not_(Agent.answers_with_ai),
             Agent.id.is_(None),
         ),
     )
@@ -95,14 +95,13 @@ def waiting_for_human() -> ColumnElement:
 
 def ai_handling() -> ColumnElement:
     """The exact complement of waiting_for_human among unheld chats: the AI is
-    answering. IS NOT FALSE keeps an agent row with no setting on the AI side,
-    as the waiting test's IS FALSE leaves it."""
+    answering."""
     return and_(
         SessionToAgent.user_id.is_(None),
         SessionToAgent.status == SessionStatus.OPEN,
         SessionToAgent.group_id.is_(None),
         Agent.id.isnot(None),
-        Agent.ai_replies_enabled.isnot(False),
+        Agent.answers_with_ai,
     )
 
 

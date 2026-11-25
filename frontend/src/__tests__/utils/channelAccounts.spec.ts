@@ -82,7 +82,7 @@ describe('noAgentWarning', () => {
   })
 
   it('says messages are not answered for a lone account without one', () => {
-    expect(noAgentWarning([account({ agent_id: null })])).toBe("No agent: messages aren't answered.")
+    expect(noAgentWarning([account({ agent_id: null })])).toBe("No agent: messages wait in your inbox.")
   })
 
   it('names only the accounts without an agent when several are connected', () => {
@@ -90,7 +90,7 @@ describe('noAgentWarning', () => {
       account({ id: 'a1', display_name: 'Sales', agent_id: null }),
       account({ id: 'a2', display_name: 'Support' }),
       account({ id: 'a3', display_name: undefined, external_account_id: 'PAGE3', agent_id: undefined }),
-    ])).toBe("No agent on Sales, PAGE3: messages aren't answered.")
+    ])).toBe("No agent on Sales, PAGE3: messages wait in your inbox.")
   })
 
   it('lists the accounts without an agent', () => {

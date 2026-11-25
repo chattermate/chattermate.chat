@@ -52,6 +52,22 @@ export class AgentsPage {
     })
   }
 
+  /** The Online/Offline switch in the open agent's header. */
+  get onlineSwitch(): Locator {
+    return this.page.getByRole('checkbox', { name: 'Agent online' })
+  }
+
+  /** Flips the open agent's Online/Offline switch, as an admin does, and waits for it to save. */
+  async setOnline(online: boolean): Promise<void> {
+    await step(`Set the agent ${online ? 'Online' : 'Offline'}`, async () => {
+      if ((await this.onlineSwitch.isChecked()) !== online) {
+        // The input sits under its slider: the switch's label takes the click
+        await this.onlineSwitch.locator('..').click()
+      }
+      await expect(this.page.getByText(online ? 'Agent is online.' : 'Agent is offline.')).toBeVisible()
+    })
+  }
+
   async setInstructions(instructions: string): Promise<void> {
     await step('Edit the agent instructions', async () => {
       await this.page.getByPlaceholder('Enter instructions for the agent...').fill(instructions)

@@ -61,3 +61,11 @@ export async function enableLeadCapture(api: ApiClient, agentId: string): Promis
 export async function listAgents(api: ApiClient): Promise<Array<Agent & { display_name: string | null, instructions: string[] }>> {
   return api.get('/agent/list')
 }
+
+/** The agent's Online/Offline switch, as the dashboard sets it. Offline stops the AI. */
+export async function setAgentOnline(api: ApiClient, agentId: string, online: boolean): Promise<void> {
+  await api.put(`/agent/${agentId}`, { data: { is_active: online } })
+}
+
+/** What a channel customer is sent once when no AI will answer (backend HUMAN_ONLY_ACK). */
+export const TEAM_WILL_REPLY = 'Thanks for your message. Someone from our team will reply here shortly.'

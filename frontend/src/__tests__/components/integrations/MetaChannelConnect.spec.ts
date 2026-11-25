@@ -63,7 +63,7 @@ describe('MetaChannelConnect reconnect prompt', () => {
     const wrapper = mountModal({ ...ACCOUNT, channel_type: 'messenger', agent_id: null })
     await flushPromises()
     expect(wrapper.find('[data-testid="no-agent-notice"]').text())
-      .toBe("No agent: messages aren't answered. Assign one below.")
+      .toBe("No agent: messages wait in your inbox. Assign one below.")
   })
 
   it('has no agent notice once an agent answers the account', async () => {

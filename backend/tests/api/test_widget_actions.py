@@ -114,7 +114,7 @@ async def test_a_paused_reply_waits_for_the_page(db, sio, socket_session, open_p
     socket_session[host_action_runtime.OFFERED_KEY] = ["open_page"]
     monkeypatch.setattr(widget_chat, "_own_session", lambda repo, s, active_only=True: MagicMock(
         session_id=socket_session["session_id"], status=widget_chat.SessionStatus.OPEN,
-        user_id=None, workflow_id=None))
+        user_id=None, workflow_id=None, agent_id=socket_session["agent_id"]))
     monkeypatch.setattr(widget_chat, "notify_new_chat", AsyncMock())
     agent = MagicMock()
     agent.agent.session_id = socket_session["session_id"]

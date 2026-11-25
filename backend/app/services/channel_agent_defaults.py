@@ -34,8 +34,8 @@ def assign_sole_agent(db: Session, account: ChannelAccount) -> Optional[AgentCha
     configs = AgentChannelConfigRepository(db)
     if configs.get_by_account(account.id) is not None:
         return None
-    # Every agent counts, as in the dialog's picker: channel routing ignores
-    # an agent's is_active flag
+    # Every agent counts, as in the dialog's picker: an Offline agent is still
+    # routed to, its chats just wait for the team
     agents = AgentRepository(db).get_all_agents(account.organization_id)
     if len(agents) != 1:
         return None

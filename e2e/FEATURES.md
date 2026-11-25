@@ -69,6 +69,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Agents | Create in the dashboard → edit instructions → they reach the model | `specs/agents/agent-editor.spec.ts` | P1 | ✅ |
 | Agents | Duplicate from the card menu makes a "(copy)" with the same instructions; Delete says what goes with it (widget stops working) and what stays, removes the card, and the agent's past chat stays in the inbox | `specs/agents/duplicate-delete.spec.ts` | P2 | ✅ |
 | Agents | Every agent gets the new panel: one that chose the original widget and a new one, in the preview and on the site; no design choice left | `specs/agents/widget-design.spec.ts` | P1 | ✅ |
+| Agents | Set Offline from the agent header: an open website chat stops getting AI replies and waits in the inbox, and the AI answers again once back Online; on a channel the customer gets one "team will reply" acknowledgement and no AI reply | `specs/agents/online-offline.spec.ts` | P1 | ✅ |
 | Agents | Toggles (handover, rating, reply buttons) | — | P1 | ⬜ |
 | Knowledge | Add text → answer is grounded in it (real search) | `specs/knowledge/knowledge-answer.spec.ts` | P1 | ✅ |
 | Knowledge | Deleted knowledge stops reaching the model; one agent's never reaches another's | `specs/knowledge/knowledge-lifecycle.spec.ts` | P1 | ✅ |
@@ -111,7 +112,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Channels | A WhatsApp number or Messenger Page from the customer's own Meta app (manual credentials + app secret) receives messages at its own webhook address; a wrong secret is refused; the address never takes another app's number | `specs/channels/own-meta-app.spec.ts` | P2 | ✅ |
 | Channels | A WhatsApp number whose token Meta refuses is flagged, the Integrations card names it, and reconnecting or the next delivered reply clears it; a message-level refusal does not flag it | `specs/channels/needs-reconnect.spec.ts` | P2 | ✅ |
 | Channels | A WhatsApp number Meta won't let send (refused register at one-click signup, a blocked WhatsApp account, or a reply failed as account locked) is flagged with Meta's reason on the Integrations card; signing up again or a delivered reply clears it, and a message-level failure does not flag it | `specs/channels/cannot-send.spec.ts` | P2 | ✅ |
-| Channels | A connected account no agent answers is flagged on its Integrations card and in its dialog ("No agent: messages aren't answered"); assigning one clears the warning and its messages are answered. With a single agent in the org, connecting assigns it by itself | `specs/channels/no-agent.spec.ts` | P2 | ✅ |
+| Channels | A connected account no agent answers keeps its messages for the team (one "team will reply" acknowledgement, no AI, the chat in the inbox) and is flagged on its Integrations card and in its dialog ("No agent: messages wait in your inbox"); assigning one clears the warning and its messages are answered. With a single agent in the org, connecting assigns it by itself | `specs/channels/no-agent.spec.ts` | P2 | ✅ |
 | Channels | Media messages; disconnect | — | P2 | ⬜ |
 | Analytics | A conversation counts for its agent; the dashboard renders | `specs/analytics/analytics.spec.ts` | P2 | ✅ |
 | CRM | HubSpot install, manual sync and automatic push (worker) with the lead's details | `specs/crm/hubspot.org.spec.ts` | P2 | ✅ |
