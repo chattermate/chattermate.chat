@@ -69,10 +69,11 @@ describe('AgentInstructionsTab offline message', () => {
     expect(await saved(wrapper)).toMatchObject({ offlineMessage: null })
   })
 
-  it('is read-only with an upgrade line on a plan without it', async () => {
+  it('shows the default text and an upgrade line, with no box, on a plan without it', async () => {
     lock.locked = true
     const wrapper = await mountTab()
-    expect(box(wrapper).attributes('readonly')).toBeDefined()
+    expect(box(wrapper).exists()).toBe(false)
+    expect(wrapper.find('.offline-message-section').text()).toContain(DEFAULT)
     expect(wrapper.find('.offline-message-section .locked-note').text()).toContain('to write your own offline message.')
   })
 

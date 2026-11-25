@@ -73,6 +73,12 @@ export class AgentsPage {
     return this.page.getByRole('textbox', { name: 'Offline message' })
   }
 
+  /** The offline message card: on a plan without its own text, the default and an upgrade line, no box. */
+  get offlineMessageCard(): Locator {
+    // A settings card, not a landmark: found by its heading
+    return this.page.locator('section').filter({ has: this.page.getByRole('heading', { name: 'Offline Message' }) })
+  }
+
   /** The upgrade line under the offline message on a plan without it. */
   get offlineMessageUpgrade(): Locator {
     return this.page.getByText('to write your own offline message.')

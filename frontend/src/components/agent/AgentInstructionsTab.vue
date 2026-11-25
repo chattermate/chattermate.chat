@@ -397,17 +397,23 @@ const handleSave = () => {
       <p class="helper-text">
         Sent once per conversation while this agent is Offline, on your website and every channel.
       </p>
-      <textarea
-        class="instructions-textarea"
-        v-model="localOfflineMessage"
-        rows="2"
-        maxlength="500"
-        aria-label="Offline message"
-        :placeholder="defaultOfflineMessage"
-        :readonly="!isEditing || isOfflineMessageLocked"
-      ></textarea>
-      <LockedNote v-if="isOfflineMessageLocked" feature="offline_message" action="to write your own offline message." />
-      <p v-else class="helper-text">Leave empty to send the default shown.</p>
+      <!-- On a plan without it: the text customers get, and how to change it -->
+      <template v-if="isOfflineMessageLocked">
+        <p class="offline-message-default">{{ defaultOfflineMessage }}</p>
+        <LockedNote feature="offline_message" action="to write your own offline message." />
+      </template>
+      <template v-else>
+        <textarea
+          class="instructions-textarea"
+          v-model="localOfflineMessage"
+          rows="2"
+          maxlength="500"
+          aria-label="Offline message"
+          :placeholder="defaultOfflineMessage"
+          :readonly="!isEditing"
+        ></textarea>
+        <p class="helper-text">Leave empty to send the default shown.</p>
+      </template>
     </section>
 
     <!-- Transfer and Rating Section -->
@@ -774,6 +780,13 @@ const handleSave = () => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-sm);
+}
+
+.offline-message-default {
+  margin: 0;
+  color: var(--text-color);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 .helper-text {
