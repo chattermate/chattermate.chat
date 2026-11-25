@@ -34,7 +34,7 @@ customers/data_request counts what it holds about that customer.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import or_
@@ -84,6 +84,8 @@ class RedactRequest:
     organization_id: Optional[UUID]
     email: Optional[str] = None
     phone: Optional[str] = None
+    # customers/redact: the customer's orders Shopify names (orders_to_redact)
+    order_ids: Tuple[str, ...] = ()
 
 
 # Erases an extension's rows for the request, staged on the caller's session
@@ -289,7 +291,8 @@ def _run(db: Session, topic: str, payload: Dict[str, Any], webhook_id: Optional[
         erased = _run_redact_hooks(db, RedactRequest(
             topic=topic, shop_domain=shop_domain, organization_id=organization_id,
             email=customer.get("email") if topic == TOPIC_CUSTOMERS_REDACT else None,
-            phone=customer.get("phone") if topic == TOPIC_CUSTOMERS_REDACT else None))
+            phone=customer.get("phone") if topic == TOPIC_CUSTOMERS_REDACT else None,
+            order_ids=_order_ids(payload) if topic == TOPIC_CUSTOMERS_REDACT else ()))
         outcome.merge(erased)
         if status == STATUS_NO_MATCH and erased.counts:
             status = STATUS_COMPLETED
@@ -316,6 +319,11 @@ def _run(db: Session, topic: str, payload: Dict[str, Any], webhook_id: Optional[
 
     logger.info(f"Shopify {topic} for {shop_domain}: {status} {result}")
     return ComplianceOutcome(status, result, attachment_urls=outcome.attachment_urls)
+
+
+def _order_ids(payload: Dict[str, Any]) -> Tuple[str, ...]:
+    """The order ids a customers/redact names (numbers, as Shopify sends them)."""
+    return tuple(str(o) for o in payload.get("orders_to_redact") or [] if o is not None)
 
 
 def _agents_serving_other_shops(db: Session, organization_id: UUID,

@@ -135,3 +135,15 @@ def test_a_data_request_with_nothing_held_matches_nothing(db, shop):
     shopify_privacy.register_data_request_hook("extension_rows", lambda db, request: 0)
     outcome = shopify_privacy.handle_data_request(db, customer_payload(), "wh-dr-2")
     assert outcome.status == shopify_privacy.STATUS_NO_MATCH
+
+
+def test_customers_redact_passes_the_orders_shopify_names(db, shop, hooks):
+    """Order automations erase by order: the messages and opt-ins kept per order."""
+    payload = {**customer_payload(), "orders_to_redact": [1001, 1002]}
+    shopify_privacy.handle_customers_redact(db, payload, "wh-orders")
+    assert hooks[-1].order_ids == ("1001", "1002")
+
+
+def test_shop_redact_names_no_orders(db, shop, hooks):
+    shopify_privacy.handle_shop_redact(db, {"shop_domain": SHOP, "shop_id": 1}, "wh-shop-orders")
+    assert hooks[-1].order_ids == ()
