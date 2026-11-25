@@ -79,15 +79,19 @@ export async function useShopForAgent(api: ApiClient, agentId: string, shopId: s
   await api.post(`/shopify/agent-config/${agentId}`, { data: { enabled: true, shop_id: shopId } })
 }
 
+/** Where the app's App Proxy is on a storefront until the merchant moves it. */
+const DEFAULT_PROXY_PATH = '/apps/chattermate'
+
 /**
- * A storefront form posted through Shopify's App Proxy (/apps/chattermate/<action>):
- * Shopify signs the query with the app's secret before forwarding it. Returns the
+ * A storefront form posted through Shopify's App Proxy (/apps/chattermate/<action>,
+ * or `proxyPath` where the merchant moved it): Shopify signs the query with the
+ * app's secret before forwarding it. Returns the
  * status and the JSON the storefront gets back.
  */
-export async function storefrontAction(shopDomain: string, action: string, fields: object): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function storefrontAction(shopDomain: string, action: string, fields: object, proxyPath = DEFAULT_PROXY_PATH): Promise<{ status: number; body: Record<string, unknown> }> {
   const context = await request.newContext(NO_COOKIES)
   try {
-    const response = await context.post(`${env.apiUrl}/shopify/proxy/${action}`, { params: proxySigned(shopDomain, {}), data: fields })
+    const response = await context.post(`${env.apiUrl}/shopify/proxy/${action}`, { params: proxySigned(shopDomain, {}, proxyPath), data: fields })
     return { status: response.status(), body: await response.json() }
   } finally {
     await context.dispose()
@@ -101,12 +105,13 @@ export async function storefrontAction(shopDomain: string, action: string, field
  */
 export async function openStorefrontPage(shopDomain: string, link: string, method: 'GET' | 'POST' = 'GET'): Promise<{ status: number; html: string }> {
   const url = new URL(link)
-  const prefix = '/apps/chattermate/'
-  if (!url.pathname.startsWith(prefix)) throw new Error(`not an App Proxy page: ${link}`)
-  const params = proxySigned(shopDomain, Object.fromEntries(url.searchParams))
+  // The proxy's path is the first two segments (/apps/chattermate, or where the merchant moved it)
+  const [, prefix, subpath] = /^(\/[^/]+\/[^/]+)\/(.+)$/.exec(url.pathname) ?? []
+  if (!prefix || !subpath) throw new Error(`not an App Proxy page: ${link}`)
+  const params = proxySigned(shopDomain, Object.fromEntries(url.searchParams), prefix)
   const context = await request.newContext(NO_COOKIES)
   try {
-    const response = await context.fetch(`${env.apiUrl}/shopify/proxy/${url.pathname.slice(prefix.length)}`, { method, params })
+    const response = await context.fetch(`${env.apiUrl}/shopify/proxy/${subpath}`, { method, params })
     return { status: response.status(), html: await response.text() }
   } finally {
     await context.dispose()
@@ -114,9 +119,9 @@ export async function openStorefrontPage(shopDomain: string, link: string, metho
 }
 
 /** `query` plus the parameters Shopify adds when it forwards a storefront request, signed with the app's secret. */
-function proxySigned(shopDomain: string, query: Record<string, string>): Record<string, string> {
+function proxySigned(shopDomain: string, query: Record<string, string>, proxyPath: string): Record<string, string> {
   const params: Record<string, string> = {
-    ...query, shop: shopDomain, path_prefix: '/apps/chattermate', logged_in_customer_id: '',
+    ...query, shop: shopDomain, path_prefix: proxyPath, logged_in_customer_id: '',
     timestamp: String(Math.floor(Date.now() / 1000)),
   }
   // Shopify's App Proxy signature: the parameters as sorted key=value strings, joined with nothing

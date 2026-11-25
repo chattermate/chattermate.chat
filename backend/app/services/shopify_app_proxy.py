@@ -27,6 +27,7 @@ address, unconfirmed: that email names nobody.
 
 import hashlib
 import hmac
+import re
 import time
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urlencode
@@ -129,6 +130,8 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
     if not customer_id.isdigit():
         return None
     shop, widget = _store_widget(db, params.get('shop') or '', params.get('widget_id') or '')
+    if shop is not None:
+        remember_storefront_prefix(db, shop, params)
     # Signed-in customers are a Pro plan's (widget_plan.py); a failed plan read
     # leaves the visitor anonymous
     if widget is None or not plan_flag_on(db, widget.organization_id, KNOWN_CUSTOMERS_FEATURE, otherwise=False):
@@ -195,6 +198,7 @@ def run_proxy_action(db: Session, name: str, query: Sequence[Tuple[str, str]],
     shop = ShopifyShopRepository(db).get_shop_by_domain(params.get('shop') or '')
     if shop is None or not shop.is_installed or shop.organization_id is None:
         return 200, dict(UNAVAILABLE)
+    remember_storefront_prefix(db, shop, params)
     return action(db, shop, params, fields if isinstance(fields, dict) else {})
 
 
@@ -204,6 +208,8 @@ def run_proxy_action(db: Session, name: str, query: Sequence[Tuple[str, str]],
 # under it the pages extensions register: /apps/chattermate/page/<name>
 STOREFRONT_PREFIX = '/apps/chattermate'
 PAGE_PATH = 'page'
+# The paths Shopify lets a merchant move the proxy to: one of its four prefixes and a subpath
+PROXY_PREFIX = re.compile(r'^/(apps|a|community|tools)/[A-Za-z0-9_-]{1,60}$')
 
 # (db, the installed and linked store, the signed query, "GET" or "POST") ->
 # (HTTP status, HTML). Shopify shows the HTML as it is, on the store's own domain.
@@ -218,10 +224,31 @@ def register_proxy_page(name: str, page: ProxyPage) -> None:
     _pages[name] = page
 
 
-def storefront_page_url(store_url: str, name: str, **params: str) -> str:
-    """A registered page's address on the store's own domain."""
+def storefront_prefix(shop: ShopifyShop) -> str:
+    """Where `shop`'s storefront has the App Proxy: the path Shopify last sent, or the default."""
+    return shop.storefront_proxy_prefix or STOREFRONT_PREFIX
+
+
+def remember_storefront_prefix(db: Session, shop: ShopifyShop, params: Mapping[str, str]) -> None:
+    """Keep the proxy's path from a signed request (path_prefix is signed by
+    Shopify), so links point where the merchant put it. Written only when it
+    changes; a failed write never stops the request."""
+    prefix = (params.get('path_prefix') or '').strip()
+    if not PROXY_PREFIX.match(prefix) or prefix == storefront_prefix(shop):
+        return
+    try:
+        shop.storefront_proxy_prefix = None if prefix == STOREFRONT_PREFIX else prefix
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Couldn't keep the App Proxy path for {shop.shop_domain}: {e}")
+
+
+def storefront_page_url(store_url: str, name: str, params: Optional[Mapping[str, str]] = None,
+                        prefix: str = STOREFRONT_PREFIX) -> str:
+    """A registered page's address on the store's own domain, under its App Proxy path."""
     query = f"?{urlencode(params)}" if params else ''
-    return f"{store_url.rstrip('/')}{STOREFRONT_PREFIX}/{PAGE_PATH}/{name}{query}"
+    return f"{store_url.rstrip('/')}{prefix}/{PAGE_PATH}/{name}{query}"
 
 
 def run_proxy_page(db: Session, name: str, query: Sequence[Tuple[str, str]], method: str) -> Tuple[int, str]:
@@ -236,5 +263,6 @@ def run_proxy_page(db: Session, name: str, query: Sequence[Tuple[str, str]], met
     shop = ShopifyShopRepository(db).get_shop_by_domain(params.get('shop') or '')
     if shop is None or not shop.is_installed or shop.organization_id is None:
         return 404, NOT_FOUND_PAGE
+    remember_storefront_prefix(db, shop, params)
     return page(db, shop, params, method)
 

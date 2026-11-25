@@ -321,8 +321,54 @@ class TestProxyPages:
         assert page == []
 
     def test_a_page_lives_under_the_app_proxy_on_the_stores_domain(self):
-        assert (proxy.storefront_page_url("https://shop.example/", "leave", t="a b")
+        assert (proxy.storefront_page_url("https://shop.example/", "leave", {"t": "a b"})
                 == "https://shop.example/apps/chattermate/page/leave?t=a+b")
+        assert (proxy.storefront_page_url("https://shop.example", "leave", {"t": "x"}, prefix="/a/alerts")
+                == "https://shop.example/a/alerts/page/leave?t=x")
+
+
+class TestStorefrontPrefix:
+    """Where a store has the App Proxy, kept from Shopify's signed requests."""
+
+    @pytest.fixture
+    def page(self, monkeypatch):
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._pages, "leave", lambda db, shop, params, method: (200, "ok"))
+        monkeypatch.setitem(proxy._actions, "notify", lambda db, shop, params, fields: (200, {"status": "ok"}))
+
+    def test_a_store_on_the_default_path_keeps_nothing(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+        assert proxy.storefront_prefix(store) == "/apps/chattermate"
+
+    def test_a_moved_proxy_is_kept_from_a_page_or_an_action_and_moving_back_clears_it(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, path_prefix="/a/alerts"), "GET")
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/a/alerts"
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain, path_prefix="/tools/chattermate"), {})
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/tools/chattermate"
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {})
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    @pytest.mark.parametrize("prefix", ["", "/evil/chattermate", "/apps/", "/apps/a/b", "https://x.example/apps/c",
+                                        "/apps/" + "x" * 61, "/apps/chatter mate"])
+    def test_a_path_shopify_couldnt_have_sent_is_not_kept(self, db, store, page, prefix):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, path_prefix=prefix), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    def test_an_unsigned_request_changes_nothing(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed("wrong-secret", shop=store.shop_domain, path_prefix="/a/x"), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    def test_the_identity_call_keeps_it_too(self, db, store, test_widget, signed_in):
+        proxy.identity_token(db, _query(test_widget, path_prefix="/community/cm"))
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/community/cm"
 
     def test_the_route_serves_html_never_cached_nor_referred_on(self, monkeypatch):
         from app.main import app

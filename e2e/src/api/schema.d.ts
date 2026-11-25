@@ -5441,7 +5441,7 @@ export interface paths {
          *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
          *     The body is never read (a mail client's one-click POST carries nothing we use).
          */
-        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
+        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__post"];
         put?: never;
         /**
          * Storefront Proxy Page
@@ -5449,7 +5449,7 @@ export interface paths {
          *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
          *     The body is never read (a mail client's one-click POST carries nothing we use).
          */
-        post: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
+        post: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21088,7 +21088,7 @@ export interface operations {
             };
         };
     };
-    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21119,7 +21119,7 @@ export interface operations {
             };
         };
     };
-    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__post: {
         parameters: {
             query?: never;
             header?: never;
