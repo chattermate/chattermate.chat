@@ -344,7 +344,7 @@
   /* Extended status / chart palette tuned for light bg: each reaches WCAG AA
      4.5:1 as text on white and on its own pale tint. */
   --c-danger: #B33F3F;
-  --c-warn: #8F5E18;
+  --c-warn: #825514; /* #8F5E18 fell under 4.5:1 on tinted rows (waiting chip, selected tab) */
   --c-info: #225BD8;
   --c-positive: #187742;
   --c-neutral: #606773;

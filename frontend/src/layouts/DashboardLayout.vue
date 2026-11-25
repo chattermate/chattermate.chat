@@ -27,10 +27,12 @@ import { useNavItems } from '@/components/layout/navItems'
 import { OPEN_NAV_KEY } from '@/components/layout/navDrawer'
 import NotificationList from '@/components/notifications/NotificationList.vue'
 import EnablePushPrompt from '@/components/notifications/EnablePushPrompt.vue'
+import PushOffNotice from '@/components/notifications/PushOffNotice.vue'
 import FailedSourceNotice from '@/components/knowledge/FailedSourceNotice.vue'
 import { userService } from '@/services/user'
 import type { User } from '@/types/user'
 import { useNotifications } from '@/composables/useNotifications'
+import { usePushStatus } from '@/composables/usePushStatus'
 import { notificationService } from '@/services/notification'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { AGENT_STATUS_KEY, useAgentStatus } from '@/composables/useAgentStatus'
@@ -66,6 +68,8 @@ const { sectionFor } = useNavItems()
 // Attaches push listeners when permission is already granted; the permission
 // request itself only happens from the EnablePushPrompt user gesture.
 const { enableNotifications } = useNotifications()
+// Bell dot while this device isn't receiving push
+const { pushOff } = usePushStatus()
 
 useDocumentTitle(waitingForHuman)
 
@@ -217,6 +221,7 @@ const openNotificationsFromSheet = () => {
                 :is-online="isOnline"
                 :status-updating="statusUpdating"
                 :unread-count="unreadCount"
+                :push-off="pushOff"
                 :theme-mode="themeMode"
                 @toggle-sidebar="toggleSidebar"
                 @toggle-status="toggleOnline"
@@ -231,6 +236,9 @@ const openNotificationsFromSheet = () => {
                 <!-- Not on the knowledge page (it lists the failed source itself), nor on
                      full-page layouts, whose .content is a fixed 100vh with no room for it -->
                 <FailedSourceNotice v-if="!props.hideHeader && route.name !== 'knowledge'" />
+                <!-- Pages without the header (Inbox) show a slim strip of their own; User
+                     Settings has its own notice in the Notifications card -->
+                <PushOffNotice v-if="!props.hideHeader && route.name !== 'user-settings'" variant="banner" />
                 <slot></slot>
             </main>
         </div>
@@ -246,6 +254,7 @@ const openNotificationsFromSheet = () => {
         <BottomNav
             v-if="showBottomNav"
             :unread-count="unreadCount"
+            :push-off="pushOff"
             :more-open="showMoreSheet"
             @more="showMoreSheet = true"
         />
@@ -255,6 +264,7 @@ const openNotificationsFromSheet = () => {
             :status-updating="statusUpdating"
             :theme-mode="themeMode"
             :unread-count="unreadCount"
+            :push-off="pushOff"
             @close="showMoreSheet = false"
             @toggle-status="toggleOnline"
             @toggle-theme="toggleTheme"

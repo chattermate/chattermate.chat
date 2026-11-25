@@ -28,6 +28,8 @@ const props = defineProps<{
     isOnline: boolean
     statusUpdating: boolean
     unreadCount: number
+    /** This device isn't receiving push: an amber dot on the bell */
+    pushOff?: boolean
     themeMode: ThemeMode
 }>()
 
@@ -53,9 +55,10 @@ const themeLabel = computed(
 const statusLabel = computed(() => (props.isOnline ? 'Online' : 'Offline'))
 const statusAction = computed(() => (props.isOnline ? 'Go offline' : 'Go online'))
 const badgeText = computed(() => formatBadgeCount(props.unreadCount))
-const bellLabel = computed(() =>
-    props.unreadCount ? `Notifications, ${props.unreadCount} unread` : 'Notifications'
-)
+const bellLabel = computed(() => {
+    const label = props.unreadCount ? `Notifications, ${props.unreadCount} unread` : 'Notifications'
+    return props.pushOff ? `${label}, off on this device` : label
+})
 </script>
 
 <template>
@@ -116,6 +119,7 @@ const bellLabel = computed(() =>
                 >
                     <span class="bell" aria-hidden="true" v-html="navIconSvg('bell', 18)"></span>
                     <span v-if="unreadCount > 0" class="notification-badge" aria-hidden="true">{{ badgeText }}</span>
+                    <span v-if="pushOff" class="push-off-dot" aria-hidden="true"></span>
                 </button>
             </div>
         </div>
@@ -280,6 +284,18 @@ const bellLabel = computed(() =>
 .icon-btn :deep(svg),
 .bell {
     display: flex;
+}
+
+/* Push is off on this device; the unread badge keeps the top corner */
+.push-off-dot {
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    background: var(--warning);
+    border: 2px solid var(--bg);
+    border-radius: 50%;
 }
 
 .status-pill:focus-visible,

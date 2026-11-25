@@ -21,6 +21,8 @@ import { useNavItems, navIconSvg, formatBadgeCount } from './navItems'
 
 const props = defineProps<{
     unreadCount?: number
+    /** This device isn't receiving push (the bell lives in the More sheet) */
+    pushOff?: boolean
     moreOpen?: boolean
 }>()
 
@@ -64,6 +66,7 @@ const badgeText = computed(() => formatBadgeCount(props.unreadCount))
             <span class="bottom-nav-icon" v-html="navIconSvg('more', 24)"></span>
             <span class="bottom-nav-label">More</span>
             <span v-if="unreadCount" class="bottom-nav-badge">{{ badgeText }}</span>
+            <span v-else-if="pushOff" class="bottom-nav-dot" aria-hidden="true"></span>
         </button>
     </nav>
 </template>
@@ -133,6 +136,17 @@ const badgeText = computed(() => formatBadgeCount(props.unreadCount))
 
 .bottom-nav-item.active .bottom-nav-label {
     font-weight: var(--font-weight-semibold);
+}
+
+.bottom-nav-dot {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 7px);
+    width: 10px;
+    height: 10px;
+    background: var(--warning);
+    border: 1.5px solid var(--bg2);
+    border-radius: 50%;
 }
 
 .bottom-nav-badge {

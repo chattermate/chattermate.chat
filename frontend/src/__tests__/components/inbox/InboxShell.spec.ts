@@ -86,7 +86,7 @@ const DetailsStub = { name: 'DetailsPanel', props: ['chat', 'overlay'], template
 const mountShell = () =>
   mount(InboxShell, {
     attachTo: document.body,
-    global: { stubs: { ThreadPane: ThreadPaneStub, DetailsPanel: DetailsStub, NewWhatsAppConversation: true, ShortcutsSheet: true } },
+    global: { stubs: { ThreadPane: ThreadPaneStub, DetailsPanel: DetailsStub, NewWhatsAppConversation: true, ShortcutsSheet: true, PushOffNotice: true } },
   })
 
 beforeEach(() => {
@@ -203,4 +203,19 @@ describe('InboxShell', () => {
     expect(wrapper.find('.inbox').classes()).toContain('mobile-thread')
     wrapper.unmount()
   })
+
+  it('puts the push-off strip above the conversation list, on a phone too', async () => {
+    for (const mobile of [false, true]) {
+      screen.mobile = mobile
+      const wrapper = mountShell()
+      await flushPromises()
+
+      const strip = wrapper.findComponent({ name: 'PushOffNotice' })
+      expect(strip.props('variant')).toBe('strip')
+      expect(strip.element.parentElement?.classList.contains('pane-list')).toBe(true)
+      expect(strip.element.nextElementSibling).toBe(wrapper.findComponent({ name: 'InboxList' }).element)
+      wrapper.unmount()
+    }
+  })
 })
+

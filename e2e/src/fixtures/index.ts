@@ -7,6 +7,8 @@ import { createGroup, createUser } from '../api/team'
 import { createWidget } from '../api/widgets'
 import { ChatWidget } from '../components/chat-widget'
 import { Sidebar } from '../components/sidebar'
+import { PushNotices } from '../components/push-notices'
+import { PushDevice } from '../support/push-device'
 import { FakeExternals } from '../fakes/externals'
 import { FakeLlm, scenarioMarker, type ScriptedAgent } from '../fakes/llm'
 import { attachDiagnostics, startDiagnostics } from './diagnostics'
@@ -128,6 +130,10 @@ interface TestFixtures {
   loginPage: LoginPage
   dashboard: Dashboard
   sidebar: Sidebar
+  /** The "notifications are off on this device" surfaces. */
+  pushNotices: PushNotices
+  /** This browser's notification permission, prompt answer and (stand-in) FCM. */
+  pushDevice: PushDevice
   aiConfigPage: AiConfigPage
   agentsPage: AgentsPage
   /** The agent editor's Actions tab. */
@@ -287,6 +293,12 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   adminInbox: async ({ page }, use) => use(new InboxPage(page)),
   faqPage: async ({ page }, use) => use(new FaqPage(page)),
   sidebar: async ({ page }, use) => use(new Sidebar(page)),
+  pushNotices: async ({ page }, use) => use(new PushNotices(page)),
+  pushDevice: async ({ page }, use) => {
+    const device = new PushDevice(page)
+    await device.install()
+    await use(device)
+  },
   aiConfigPage: async ({ page }, use) => use(new AiConfigPage(page)),
   agentsPage: async ({ page }, use) => use(new AgentsPage(page)),
   actionsTab: async ({ page }, use) => use(new AgentActionsTab(page)),

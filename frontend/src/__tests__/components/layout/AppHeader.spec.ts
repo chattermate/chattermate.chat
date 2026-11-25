@@ -122,4 +122,17 @@ describe('AppHeader', () => {
     expect(wrapper.findComponent({ name: 'Enterprise-promo' }).exists()).toBe(true)
     enterprise.hasEnterpriseModule = false
   })
+
+  it('puts an amber dot on the bell while push is off, and says so', () => {
+    const off = mountHeader({ pushOff: true, unreadCount: 2 })
+    expect(off.find('.push-off-dot').exists()).toBe(true)
+    expect(off.find('.notification-badge').exists()).toBe(true)
+    expect(off.find('.notification-button').attributes('aria-label')).toBe(
+      'Notifications, 2 unread, off on this device'
+    )
+
+    const on = mountHeader({ pushOff: false })
+    expect(on.find('.push-off-dot').exists()).toBe(false)
+    expect(on.find('.notification-button').attributes('aria-label')).toBe('Notifications')
+  })
 })

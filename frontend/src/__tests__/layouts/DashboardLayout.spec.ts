@@ -46,6 +46,15 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
   })
 }))
 
+const pushStatus = vi.hoisted(() => ({ off: true }))
+vi.mock('@/composables/usePushStatus', async () => {
+  const { computed } = await import('vue')
+  return {
+    usePushStatus: () => ({ pushOff: computed(() => pushStatus.off) }),
+    setFloatingPromptOpen: vi.fn(),
+  }
+})
+
 const navCounts = vi.hoisted(() => ({ waiting: 3, tickets: 2 }))
 vi.mock('@/composables/useNavCounts', () => ({
   useNavCounts: () => ({
@@ -93,6 +102,7 @@ const makeRouter = () =>
       { path: '/analytics', component: Page },
       { path: '/conversations', component: Page },
       { path: '/knowledge', name: 'knowledge', component: Page },
+      { path: '/settings/user', name: 'user-settings', component: Page },
     ]
   })
 
@@ -104,7 +114,7 @@ const mountAt = async (path: string, props: Record<string, unknown> = {}) => {
     props,
     global: {
       plugins: [router],
-      stubs: { AppSidebar: true, NotificationList: true, FailedSourceNotice: true }
+      stubs: { AppSidebar: true, NotificationList: true, FailedSourceNotice: true, PushOffNotice: true }
     }
   })
   await flushPromises()
@@ -250,3 +260,40 @@ describe('DashboardLayout - unreadable website notice', () => {
     expect(wrapper.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
   })
 })
+
+describe('DashboardLayout - notifications off on this device', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    pushStatus.off = true
+  })
+
+  it('shows the landing banner on header pages and a dot on the bell', async () => {
+    const { wrapper } = await mountAt('/')
+
+    const notice = wrapper.findComponent({ name: 'PushOffNotice' })
+    expect(notice.exists()).toBe(true)
+    expect(notice.props('variant')).toBe('banner')
+    expect(wrapper.find('.notification-button .push-off-dot').exists()).toBe(true)
+  })
+
+  it('leaves the banner to the page on header-less pages (the Inbox has its own strip)', async () => {
+    const { wrapper } = await mountAt('/conversations', { hideHeader: true })
+
+    expect(wrapper.findComponent({ name: 'PushOffNotice' }).exists()).toBe(false)
+  })
+
+  it('has no bell dot while push works', async () => {
+    pushStatus.off = false
+    const { wrapper } = await mountAt('/')
+
+    expect(wrapper.find('.push-off-dot').exists()).toBe(false)
+  })
+
+  it('leaves the banner off User Settings, which has its own notice', async () => {
+    const { wrapper } = await mountAt('/settings/user')
+
+    expect(wrapper.findComponent({ name: 'PushOffNotice' }).exists()).toBe(false)
+    expect(wrapper.find('.push-off-dot').exists()).toBe(true)
+  })
+})
+

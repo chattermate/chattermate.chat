@@ -15,10 +15,11 @@ limitations under the License.
 -->
 
 <script setup lang="ts" name="EnablePushPrompt">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { isShopifyEmbedded } from '@/pwa/register'
 import { usePWAInstall } from '@/composables/usePWAInstall'
 import { navIconSvg } from '@/components/layout/navIcons'
+import { setFloatingPromptOpen, usePushStatus } from '@/composables/usePushStatus'
 
 const emit = defineEmits<{
   // Parent (DashboardLayout) owns the notifications composable instance and
@@ -32,6 +33,10 @@ const SNOOZE_MS = 14 * 24 * 60 * 60 * 1000
 const visible = ref(false)
 const needsInstallFirst = ref(false)
 const { isIOS, isStandalone } = usePWAInstall()
+const { snoozeLanding } = usePushStatus()
+// The landing banners stay out of the way while this card asks
+watch(visible, setFloatingPromptOpen)
+onBeforeUnmount(() => setFloatingPromptOpen(false))
 
 const isSnoozed = () => {
   const at = Number(localStorage.getItem(SNOOZE_KEY) || 0)
@@ -55,6 +60,8 @@ onMounted(() => {
 
 const snooze = () => {
   localStorage.setItem(SNOOZE_KEY, String(Date.now()))
+  // Don't follow a "Not now" with a banner saying the same thing
+  snoozeLanding()
   visible.value = false
 }
 

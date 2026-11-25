@@ -27,6 +27,8 @@ const props = defineProps<{
     statusUpdating?: boolean
     themeMode?: ThemeMode
     unreadCount?: number
+    /** This device isn't receiving push */
+    pushOff?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -112,6 +114,7 @@ const navigate = (to?: string) => {
                     <button type="button" class="sheet-row standalone" @click="emit('notifications')">
                         <span class="row-icon" v-html="navIconSvg('bell', 20)"></span>
                         <span class="row-label">Notifications</span>
+                        <span v-if="pushOff" class="row-push-off">Off on this device</span>
                         <span v-if="unreadCount" class="row-badge">{{ badgeText }}</span>
                     </button>
 
@@ -327,6 +330,23 @@ const navigate = (to?: string) => {
 .row-chevron {
     color: var(--muted);
     display: flex;
+}
+
+.row-push-off {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--warning);
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+}
+
+.row-push-off::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warning);
 }
 
 .row-badge {

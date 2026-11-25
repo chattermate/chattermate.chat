@@ -115,3 +115,75 @@ describe('PWA update prompt', () => {
     expect(mocks.toast.dismiss).toHaveBeenCalledWith('toast-id')
   })
 })
+
+describe('getSWRegistration', () => {
+  const worker = (state: string) => {
+    const listeners: Array<() => void> = []
+    return {
+      state,
+      addEventListener: (_: string, fn: () => void) => listeners.push(fn),
+      become(next: string) {
+        this.state = next
+        listeners.forEach((fn) => fn())
+      },
+    }
+  }
+
+  const useServiceWorker = (registration: unknown) => {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: {
+        ready: new Promise(() => {}),
+        getRegistration: vi.fn().mockResolvedValue(registration),
+      },
+      configurable: true,
+    })
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    Object.defineProperty(window, 'location', { value: { pathname: '/' }, configurable: true, writable: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('waits out a slow first install instead of giving up at the timeout', async () => {
+    const installing = worker('installing')
+    const registration = { installing, waiting: null }
+    useServiceWorker(registration)
+    const { getSWRegistration } = await import('@/pwa/register')
+
+    let result: unknown = 'pending'
+    getSWRegistration().then((value) => { result = value })
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(result).toBe('pending')
+
+    installing.become('activated')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(result).toBe(registration)
+  })
+
+  it('gives up when the installing worker is thrown away', async () => {
+    const installing = worker('installing')
+    useServiceWorker({ installing, waiting: null })
+    const { getSWRegistration } = await import('@/pwa/register')
+
+    const result = getSWRegistration()
+    await vi.advanceTimersByTimeAsync(8000)
+    installing.become('redundant')
+
+    expect(await result).toBeUndefined()
+  })
+
+  it('gives up at the timeout when no worker is on its way (vite dev)', async () => {
+    useServiceWorker(undefined)
+    const { getSWRegistration } = await import('@/pwa/register')
+
+    const result = getSWRegistration()
+    await vi.advanceTimersByTimeAsync(8000)
+
+    expect(await result).toBeUndefined()
+  })
+})

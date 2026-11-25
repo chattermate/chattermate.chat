@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { ref, readonly } from 'vue'
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
 import { isSupported, type Messaging } from 'firebase/messaging'
 import { userService } from './user'
@@ -65,6 +66,29 @@ export const getMessagingIfSupported = async (): Promise<Messaging | null> => {
   return getMessaging(initializeFirebase() ?? undefined)
 }
 
+const readPermission = (): NotificationPermission | null =>
+  typeof Notification === 'undefined' ? null : Notification.permission
+const permission = ref(readPermission())
+/** This browser's notification permission; null where there's no Notification API. */
+export const notificationPermission = readonly(permission)
+/** Re-read the permission: after asking, or when the user may have changed it in site settings. */
+export const syncNotificationPermission = (): void => {
+  permission.value = readPermission()
+}
+
+/**
+ * Whether this browser's push token reached the server on this page load.
+ * 'idle' until a registration runs (and again after logout); 'unsupported'
+ * when the browser has no push at all, so nothing can be fixed from here.
+ */
+export type DeviceRegistration = 'idle' | 'registering' | 'registered' | 'failed' | 'unsupported'
+const registration = ref<DeviceRegistration>('idle')
+export const deviceRegistration = readonly(registration)
+
+// The vite dev server ships no app service worker (PWA devOptions are off), so
+// push can't register there; that's the build, not a failure to report.
+const APP_WORKER_IN_THIS_BUILD = !import.meta.env.DEV
+
 // Set by registerFCMToken, read and cleared by logout (see thisDeviceFCMToken)
 let deviceToken: string | null = null
 let pendingDrop: Promise<void> | null = null
@@ -105,14 +129,31 @@ const registerFCMToken = (): Promise<boolean> => {
     // A logout's deleteToken() still in flight would void the token minted here
     await pendingDrop
     const startedIn = signOuts
-    const token = await getCurrentToken()
-    if (!token) return false
+    registration.value = 'registering'
+    // Signed out meanwhile: the outcome belongs to no one now
+    const settle = (outcome: DeviceRegistration) => {
+      if (startedIn === signOuts) registration.value = outcome
+    }
+    try {
+      if (!(await isPushSupported()) || !APP_WORKER_IN_THIS_BUILD) {
+        settle('unsupported')
+        return false
+      }
+      const token = await getCurrentToken()
+      if (!token) {
+        settle('failed')
+        return false
+      }
 
-    await userService.updateFCMToken(token)
-    // Signed out meanwhile: the token belongs to no one now, and the next
-    // account must not name it on its own logout.
-    if (startedIn === signOuts) deviceToken = token
-    return true
+      await userService.updateFCMToken(token)
+      // The next account must not name this token on its own logout
+      if (startedIn === signOuts) deviceToken = token
+      settle('registered')
+      return true
+    } catch (err) {
+      settle('failed')
+      throw err
+    }
   }
   const registering = run().finally(() => {
     if (pendingRegister === registering) pendingRegister = null
@@ -134,8 +175,9 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     }
     if (Notification.permission === 'denied') return false
 
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') return false
+    const answer = await Notification.requestPermission()
+    syncNotificationPermission()
+    if (answer !== 'granted') return false
 
     return await registerFCMToken()
   } catch (err) {
@@ -149,14 +191,16 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
  * after the migration off firebase-messaging-sw.js: the old worker (and the
  * push subscription the stored token was bound to) is unregistered on upgrade,
  * so without this existing users would silently stop receiving pushes. Also
- * keeps tokens fresh across normal FCM rotation.
+ * keeps tokens fresh across normal FCM rotation. Also the "Try again" after a
+ * failed registration. Resolves true once the server has the token.
  */
-export const refreshFCMToken = async (): Promise<void> => {
+export const refreshFCMToken = async (): Promise<boolean> => {
   try {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return
-    await registerFCMToken()
+    if (!('Notification' in window) || Notification.permission !== 'granted') return false
+    return await registerFCMToken()
   } catch (err) {
     console.error('Failed to refresh FCM token:', err)
+    return false
   }
 }
 
@@ -181,6 +225,7 @@ export const thisDeviceFCMToken = (): string | null => deviceToken
  */
 export const dropFCMSubscription = (): void => {
   deviceToken = null
+  registration.value = 'idle'
   signOuts++
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 

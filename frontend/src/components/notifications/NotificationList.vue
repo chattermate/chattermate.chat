@@ -20,6 +20,7 @@ import { useRouter } from 'vue-router'
 import { notificationService, type Notification } from '@/services/notification'
 import { getNotificationIcon } from './notificationIcons'
 import { conversationSessionUrl } from '@/pwa/pushContract'
+import PushOffNotice from './PushOffNotice.vue'
 
 const router = useRouter()
 
@@ -161,7 +162,7 @@ onMounted(fetchNotifications)
 </script>
 
 <template>
-    <div class="notification-drawer" :class="{ open: isOpen }">
+    <div class="notification-drawer" :class="{ open: isOpen }" role="region" aria-label="Notifications">
         <div class="drawer-header">
             <h3>Notifications</h3>
             <div class="header-actions">
@@ -179,6 +180,8 @@ onMounted(fetchNotifications)
                 <button class="close-button" @click="emit('close')" title="Close">&times;</button>
             </div>
         </div>
+
+        <PushOffNotice variant="panel" />
 
         <div class="drawer-filter">
             <div class="filter-tabs">

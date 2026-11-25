@@ -86,4 +86,15 @@ describe('BottomNav', () => {
     await wrapper.find('button.bottom-nav-item').trigger('click')
     expect(wrapper.emitted('more')).toHaveLength(1)
   })
+
+  it('dots More while push is off, unless the unread badge is already there', async () => {
+    expect((await mountNav({ pushOff: true })).find('.bottom-nav-dot').exists()).toBe(true)
+
+    const both = await mountNav({ pushOff: true, unreadCount: 3 })
+    expect(both.find('.bottom-nav-dot').exists()).toBe(false)
+    expect(both.find('.bottom-nav-badge').text()).toBe('3')
+
+    expect((await mountNav({ pushOff: false })).find('.bottom-nav-dot').exists()).toBe(false)
+  })
 })
+
