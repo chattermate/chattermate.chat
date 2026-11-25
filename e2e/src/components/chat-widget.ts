@@ -554,6 +554,11 @@ export class ChatWidget {
     return this.panel.getByRole('status').filter({ hasText: 'Loading chat…' })
   }
 
+  /** The loading outline's close button (inside the panel: the open launcher has the same name). */
+  get loadingWindowClose(): Locator {
+    return this.panel.getByRole('button', { name: 'Close chat' })
+  }
+
   /**
    * Which design the site was served: the loader frames the redesigned widget's
    * panel differently. CSS: the loader marks that container with .cm-v2, nothing

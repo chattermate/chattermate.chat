@@ -106,6 +106,22 @@ test.describe('opening the chat before it has loaded', () => {
     await expect(widget.loadingWindow).toBeVisible()
   })
 
+  test.describe('on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 } })
+
+    test('the full-screen outline can be closed while the chat loads @widget', async ({ widget }) => {
+      await widget.embed({ chatHeldBack: true })
+      await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+
+      await widget.launcher.click()
+      await expect(widget.loadingWindow).toBeVisible()
+      await widget.loadingWindowClose.click()
+      await expect(widget.loadingWindow).toBeHidden()
+      await expect(widget.launcher).toHaveAttribute('aria-expanded', 'false')
+      await expect(widget.launcher).toBeVisible()
+    })
+  })
+
   for (const displayMode of ['sidebar-right', 'search-bar'] as const) {
     test(`the outline also shows in the ${displayMode} layout @widget`, async ({ widget }) => {
       await widget.embed({ chatHeldBack: true, config: { displayMode } })

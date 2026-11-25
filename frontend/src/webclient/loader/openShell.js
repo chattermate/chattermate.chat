@@ -31,13 +31,19 @@ export const SHELL_LABEL = 'Loading chat…'
 const SURFACE = { light: '#FFFFFF', dark: '#16141F' }
 const INK = { light: '15, 23, 42', dark: '255, 255, 255' }
 
-/** Shows and hides the shell inside `container`, which the loader may empty at any time. */
-export function createOpenShell(doc, container) {
+export const CLOSE_LABEL = 'Close chat'
+
+/**
+ * Shows and hides the shell inside `container`, which the loader may empty at any
+ * time. `onClose` closes the chat: on a phone the shell fills the screen, and the
+ * widget's own header (with its close button) isn't there yet.
+ */
+export function createOpenShell(doc, container, { onClose }) {
   let shell = null
 
   function show() {
     if (!shell || shell.parentNode !== container) {
-      shell = build(doc)
+      shell = build(doc, onClose)
       container.appendChild(shell)
     }
   }
@@ -50,15 +56,18 @@ export function createOpenShell(doc, container) {
   return { show, hide, isShown: function () { return !!shell && shell.parentNode === container } }
 }
 
-function build(doc) {
+function build(doc, onClose) {
   const shell = el(doc, 'div', SHELL_CLASS)
-  shell.setAttribute('role', 'status')
   shell.setAttribute('aria-busy', 'true')
+
+  // The outline itself, announced as one status; the close button sits beside it
+  const outline = el(doc, 'div', 'cm-shell-outline')
+  outline.setAttribute('role', 'status')
 
   const head = el(doc, 'div', 'cm-shell-head')
   head.appendChild(el(doc, 'span', 'cm-shell-avatar'))
   head.appendChild(el(doc, 'span', 'cm-shell-bar cm-shell-title'))
-  shell.appendChild(head)
+  outline.appendChild(head)
 
   const body = el(doc, 'div', 'cm-shell-body')
   for (const width of ['72%', '54%', '64%']) {
@@ -66,16 +75,23 @@ function build(doc) {
     bar.style.width = width
     body.appendChild(bar)
   }
-  shell.appendChild(body)
+  outline.appendChild(body)
 
   const composer = el(doc, 'div', 'cm-shell-composer')
   composer.appendChild(el(doc, 'span', 'cm-shell-spinner'))
-  shell.appendChild(composer)
+  outline.appendChild(composer)
 
   // For screen readers: the placeholders are decoration
   const label = el(doc, 'span', 'cm-shell-label')
   label.textContent = SHELL_LABEL
-  shell.appendChild(label)
+  outline.appendChild(label)
+  shell.appendChild(outline)
+
+  const close = el(doc, 'button', 'cm-shell-close')
+  close.type = 'button'
+  close.setAttribute('aria-label', CLOSE_LABEL)
+  close.addEventListener('click', function () { onClose() })
+  shell.appendChild(close)
   return shell
 }
 
@@ -99,15 +115,46 @@ export function shellCss(containerId, { accent, elevation, palette }) {
       ${c} {
         position: absolute;
         inset: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-        padding: 18px;
-        box-sizing: border-box;
         background: ${SURFACE[tone]};
         border-radius: inherit;
         font: 14px/1.4 system-ui, -apple-system, sans-serif;
       }
+      ${c} .cm-shell-outline {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        height: 100%;
+        padding: 18px;
+        box-sizing: border-box;
+      }
+      ${c} .cm-shell-close {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        cursor: pointer;
+      }
+      ${c} .cm-shell-close:hover { background: rgba(${ink}, 0.06); }
+      ${c} .cm-shell-close:focus-visible { outline: 2px solid ${accent}; outline-offset: 2px; }
+      ${c} .cm-shell-close::before,
+      ${c} .cm-shell-close::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 16px;
+        height: 2px;
+        margin: -1px 0 0 -8px;
+        border-radius: 1px;
+        background: rgba(${ink}, 0.6);
+        transform: rotate(45deg);
+      }
+      ${c} .cm-shell-close::after { transform: rotate(-45deg); }
       ${c} .cm-shell-head { display: flex; align-items: center; gap: 12px; }
       ${c} .cm-shell-avatar { width: 36px; height: 36px; border-radius: 50%; background: ${accent}; flex: none; }
       ${c} .cm-shell-bar {
@@ -148,7 +195,8 @@ export function shellCss(containerId, { accent, elevation, palette }) {
       }
       ${palette ? `
       /* The Ask AI palette: just its input row. */
-      ${c} { gap: 0; padding: 14px; }
+      ${c} .cm-shell-outline { gap: 0; padding: 14px 64px 14px 14px; }
+      ${c} .cm-shell-close { top: 50%; margin-top: -20px; right: 12px; }
       ${c} .cm-shell-head,
       ${c} .cm-shell-body { display: none; }` : ''}
       @keyframes cm-shell-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }

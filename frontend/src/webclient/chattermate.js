@@ -1508,7 +1508,9 @@ import {
     // outline (loader/openShell.js) in place of the still-blank frame. A closed
     // launcher keeps its icon while the chat loads behind it.
     let widgetStarting = false
-    const openShell = createOpenShell(document, container)
+    const openShell = createOpenShell(document, container, {
+      onClose: function () { if (isOpen) toggleChat({ returnFocus: true }) },
+    })
     function setWidgetStarting(starting) {
       widgetStarting = starting
       showStartingState()

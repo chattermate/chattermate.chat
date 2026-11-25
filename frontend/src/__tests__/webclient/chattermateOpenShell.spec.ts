@@ -16,7 +16,7 @@ limitations under the License.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, bringUp, cleanupPage, flush, frame, fromFrame, handshake, loadLoader, resetPage } from './loaderHarness'
-import { SHELL_CLASS, SHELL_LABEL, createOpenShell, shellCss } from '@/webclient/loader/openShell.js'
+import { CLOSE_LABEL, SHELL_CLASS, SHELL_LABEL, createOpenShell, shellCss } from '@/webclient/loader/openShell.js'
 
 // A visitor who opens the chat before the widget inside the frame has started sees
 // the chat window's outline at once, instead of an empty window.
@@ -45,9 +45,24 @@ describe('chat window while the widget starts', () => {
     await loadLoader()
     api().open()
     expect(shell()).not.toBeNull()
-    expect(shell()!.getAttribute('role')).toBe('status')
     expect(shell()!.getAttribute('aria-busy')).toBe('true')
-    expect(shell()!.textContent).toBe(SHELL_LABEL)
+    const status = shell()!.querySelector('[role="status"]')!
+    expect(status.textContent).toBe(SHELL_LABEL)
+    // The close button is beside the status, not read out as part of it
+    expect(status.querySelector('button')).toBeNull()
+  })
+
+  it('can be closed from its own button, which hands focus back to the launcher', async () => {
+    await loadLoader()
+    api().open()
+    const close = shell()!.querySelector('button') as HTMLButtonElement
+    expect(close.getAttribute('aria-label')).toBe(CLOSE_LABEL)
+    expect(close.type).toBe('button')
+
+    close.click()
+    expect(api().isOpen()).toBe(false)
+    expect(shell()).toBeNull()
+    expect(document.activeElement).toBe(document.getElementById('chattermate-button'))
   })
 
   it('goes once the widget is ready, and doesn\'t come back on reopening', async () => {
@@ -134,7 +149,7 @@ describe('chat window while the widget starts', () => {
 describe('createOpenShell', () => {
   it('draws once however often it is shown, and redraws into an emptied container', () => {
     const host = document.createElement('div')
-    const open = createOpenShell(document, host)
+    const open = createOpenShell(document, host, { onClose: () => {} })
     open.show()
     open.show()
     expect(host.querySelectorAll(`.${SHELL_CLASS}`)).toHaveLength(1)
