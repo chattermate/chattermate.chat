@@ -1005,7 +1005,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # Settles the overlap between the lists above, so it comes after them
             if can_reach_a_person and (self.tools or host_action_functions):
                 changes_orders = any(extra.changes_orders for extra in getattr(self, 'extra_toolkits', []))
-                system_message += "\n\n" + tools_or_person_rules(changes_orders, urgent=self.urgent_rules_on)
+                system_message += "\n\n" + tools_or_person_rules(changes_orders)
         else:
             system_message = [
                 "You are a helpful customer service agent.",
@@ -1284,7 +1284,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             
         return response_content
 
-    async def _handle_transfer(self, response_content: ChatResponse, session_id: str, org_id: str, agent_id: str, customer_id: str, db, chat_repo: ChatRepository, transfer_group_id: str = None, lead_in: Optional[str] = None) -> ChatResponse:
+    async def _handle_transfer(self, response_content: ChatResponse, session_id: str, org_id: str, agent_id: str, customer_id: str, db, chat_repo: ChatRepository, transfer_group_id: str = None) -> ChatResponse:
         """
         Handle transfer to human logic including session updates, notifications, and availability checks.
         
@@ -1297,8 +1297,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
             db: Database session
             chat_repo: Chat repository instance
             transfer_group_id: Optional specific group ID to transfer to (for workflow transfers)
-            lead_in: The model's own words to show before the handover line
-                (urgent handovers only, see _urgent_lead_in)
             
         Returns:
             Updated ChatResponse object
@@ -1374,10 +1372,9 @@ Keep your responses concise and focused. Provide clear, actionable information i
             transfer_group_id=transfer_group_id if is_workflow_transfer else None
         )
         
-        handover_line = availability_response["message"]
         # Create ChatResponse object
         updated_response = ChatResponse(
-            message=f"{lead_in}\n\n{handover_line}" if lead_in else handover_line,
+            message=availability_response["message"],
             transfer_to_human=availability_response["transfer_to_human"],
             transfer_reason=availability_response.get("transfer_reason"),
             transfer_description=availability_response.get("transfer_description"),
@@ -1424,22 +1421,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
         })
 
         return updated_response
-
-    def _urgent_lead_in(self, response_content: ChatResponse, model_message: Optional[str],
-                        guardrail_rules: list) -> Optional[str]:
-        """What the model said on an urgent handover, kept to show before the
-        handover line: there it acknowledges what happened and, when someone may
-        be in danger, points them to emergency services. Every other handover
-        still replaces the model's reply. None unless the urgent rules are on,
-        the model marked the handover HIGH_PRIORITY_ISSUE, and the output
-        guardrail flagged nothing (a leak it replaced, or a scope refusal that
-        would read oddly before a handover). The model's own words are used,
-        before any product list or link stripping for the surface."""
-        if not self.urgent_rules_on or response_content.transfer_reason != TransferReasonType.HIGH_PRIORITY_ISSUE:
-            return None
-        if guardrail_rules:
-            return None
-        return (model_message or "").strip() or None
 
     def _shopify_fallback_cache_key(self):
         """Redis key for products a Shopify tool fetched during THIS turn, else None.
@@ -1670,7 +1651,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
         # Output guardrail: replace a reply that leaked policy text,
         # count the model's own scope refusals.
-        response_content.message, guardrail_rules = check_output(
+        response_content.message, _ = check_output(
             response_content.message,
             ctx=self._guardrail_ctx,
             surface=self._guardrail_surface,
@@ -1697,8 +1678,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 customer_id=customer_id,
                 db=db,
                 chat_repo=chat_repo,
-                transfer_group_id=None,  # Use agent's default group for regular transfers
-                lead_in=self._urgent_lead_in(response_content, model_message, guardrail_rules),
+                transfer_group_id=None  # Use agent's default group for regular transfers
             )
             return response_content
 

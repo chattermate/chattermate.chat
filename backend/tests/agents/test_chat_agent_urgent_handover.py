@@ -21,13 +21,12 @@ lead capture give way. They roll out per org behind AGENT_URGENT_HANDOVER_RULES.
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from app.agents.handover_prompt import (
-    _URGENT_REPLY_KEPT,
     LEAD_CAPTURE_YIELDS,
     LEAD_END_CHAT_AFTER_TWO_ASKS,
     LEAD_REQUIRED_FIELD_LEGACY,
@@ -38,8 +37,14 @@ from app.agents.handover_prompt import (
     URGENT_WITHOUT_HANDOVER,
     urgent_handover_on,
 )
+from app.agents.transfer_agent import (
+    BUSY_TEAM_INSTRUCTION,
+    BUSY_TEAM_TIMEOUT_MESSAGE,
+    TRANSFER_TIMEOUT_MESSAGE,
+    TransferResponseAgent,
+    get_agent_availability_response,
+)
 from app.core.config import Settings, settings
-from app.models.schemas.chat import ChatResponse, TransferReasonType
 from tests.agents.prompt_matrix import CASES, ORG_ID, build_agent, flat_prompt, golden_path, raw_prompt
 
 CAN_TRANSFER = "You have the ability to transfer this conversation to a human agent"
@@ -122,7 +127,7 @@ class TestPrompt:
         assert flat(URGENT_WITHOUT_HANDOVER) not in prompt
         assert CAN_TRANSFER in prompt
         for situation in ("an active dispute with another person or company", "police", "violence",
-                          "may be in danger", "local emergency services"):
+                          "may be in danger"):
             assert situation in prompt
         assert "Ask for nothing first, not even an email" in prompt
         assert "HIGH_PRIORITY_ISSUE" in prompt
@@ -133,7 +138,12 @@ class TestPrompt:
         assert flat(URGENT_WITHOUT_HANDOVER) in prompt
         assert flat(URGENT_HANDOVER_RULES) not in prompt
         assert "set transfer_to_human to true in this reply" not in prompt
-        assert "local emergency services" in prompt
+
+    @pytest.mark.parametrize("transfer", [True, False])
+    def test_what_to_say_about_danger_is_left_to_the_business(self, urgent_on, transfer):
+        """Emergency numbers and wording are the business's to write in its own instructions."""
+        prompt = flat_prompt(build_agent(transfer=transfer, groups=["support"]))
+        assert "emergency services" not in prompt
 
     def test_handover_on_with_no_group_is_told_it_cannot_hand_over(self, urgent_on):
         """Its handovers are dropped at the end of the turn, so saying it can
@@ -151,16 +161,6 @@ class TestPrompt:
     def test_an_ask_is_not_repeated(self, urgent_on, transfer):
         assert flat(NO_REPEAT_ASK_RULE) in flat_prompt(build_agent(transfer=transfer, groups=["support"]))
 
-    def test_an_agent_with_tools_is_told_the_urgent_reply_is_kept(self, urgent_on):
-        """Its tools-or-person rules say a handover replaces the reply; the
-        urgent handover is the one exception, or the model drops the
-        emergency line."""
-        prompt = flat_prompt(build_agent(transfer=True, groups=["support"], shopify=True))
-
-        assert "the customer sees nothing else you wrote that turn" in prompt
-        assert flat(_URGENT_REPLY_KEPT) in prompt
-        assert prompt.index(flat(URGENT_HANDOVER_RULES)) < prompt.index(flat(_URGENT_REPLY_KEPT))
-
     def test_a_workflow_step_gets_none_of_it(self, urgent_on, links_legacy):
         prompt = raw_prompt(build_agent(**CASES["workflow"]))
         assert prompt == golden_path("workflow").read_text(encoding="utf-8")
@@ -173,8 +173,7 @@ class TestPrompt:
         """Take the new rules out and every other part of the prompt is as recorded."""
         prompt = raw_prompt(build_agent(**CASES[case]))
         for added in ("\n" + NO_REPEAT_ASK_RULE, "\n" + URGENT_HANDOVER_RULES + "\n",
-                      "\n" + URGENT_WITHOUT_HANDOVER + "\n", TICKET_IDENTITY_SKIP_WHEN_URGENT,
-                      _URGENT_REPLY_KEPT):
+                      "\n" + URGENT_WITHOUT_HANDOVER + "\n", TICKET_IDENTITY_SKIP_WHEN_URGENT):
             prompt = prompt.replace(added, "", 1)
 
         assert prompt == golden_path(case).read_text(encoding="utf-8")
@@ -207,86 +206,70 @@ class TestTicketIdentity:
         assert flat(TICKET_IDENTITY_SKIP_WHEN_URGENT) not in flat_prompt(build_agent(transfer=False, ticketing=True))
 
 
-def urgent_reply(message="I'm sorry this happened. If you're in danger now, call local emergency services.",
-                 reason=TransferReasonType.HIGH_PRIORITY_ISSUE) -> ChatResponse:
-    return ChatResponse(message=message, transfer_to_human=True, transfer_reason=reason,
-                        transfer_description="Assault reported", end_chat=False,
-                        request_rating=False, create_ticket=False)
+def transfer_agent(busy: bool) -> TransferResponseAgent:
+    with patch('app.agents.transfer_agent.create_model', return_value=MagicMock()), \
+         patch('app.agents.transfer_agent.Agent') as agent_cls:
+        agent = TransferResponseAgent(api_key="k", model_name="gpt-4", busy_team_line=busy)
+    agent.instructions = agent_cls.call_args.kwargs["instructions"]
+    return agent
 
 
-def finished_turn(agent, reply: ChatResponse):
-    chat_repo = Mock()
-    chat_repo.create_message.return_value = SimpleNamespace(id=1)
-    with patch('app.agents.chat_agent.parse_response_content', return_value=reply):
-        return asyncio.run(agent._finish_turn(
-            Mock(), None, str(uuid4()), agent.org_id, agent.agent_id, agent.customer_id,
-            Mock(), chat_repo))
+def handover_prompt_for(agent: TransferResponseAgent) -> str:
+    agent.agent.arun = AsyncMock(return_value=MagicMock(content="ok"))
+    with patch('app.agents.transfer_agent.parse_response_content', return_value=SimpleNamespace(message="ok")):
+        asyncio.run(agent.get_transfer_response(
+            chat_history=[SimpleNamespace(message_type="user", message="I was attacked")],
+            business_hours={}, available_agents=2, is_business_hours=True))
+    return agent.agent.arun.await_args.kwargs["message"]
 
 
-class TestUrgentLeadIn:
-    """Setting transfer_to_human replaces the model's reply with the handover
-    line, so "call emergency services" would never reach the customer. On an
-    urgent handover the model's words now go first."""
+class TestBusyTeamHandoverLine:
+    """"Let me connect you" read as an instant reply; the customer then waited
+    23 minutes. The handover line now says the team is busy, has been
+    notified, and will be there as soon as possible."""
 
-    def _handover(self, agent, reply):
-        agent._handle_transfer = AsyncMock(return_value=reply)
-        finished_turn(agent, reply)
-        return agent._handle_transfer.await_args.kwargs["lead_in"]
+    def test_the_handover_line_says_the_team_is_busy_and_notified(self):
+        agent = transfer_agent(busy=True)
 
-    def test_an_urgent_handover_keeps_what_the_model_said(self, urgent_on):
-        agent = build_agent(transfer=True, groups=["support"])
-        assert self._handover(agent, urgent_reply()) == urgent_reply().message
+        assert BUSY_TEAM_INSTRUCTION in handover_prompt_for(agent)
+        assert any(BUSY_TEAM_INSTRUCTION in line for line in agent.instructions)
+        assert not any("better qualified agent" in line for line in agent.instructions)
 
-    def test_any_other_handover_still_replaces_it(self, urgent_on):
-        agent = build_agent(transfer=True, groups=["support"])
-        assert self._handover(agent, urgent_reply(reason=TransferReasonType.DIRECT_REQUEST)) is None
+    def test_unchanged_with_the_rules_off(self):
+        agent = transfer_agent(busy=False)
+        prompt = handover_prompt_for(agent)
 
-    def test_not_with_the_rules_off(self):
-        agent = build_agent(transfer=True, groups=["support"])
-        assert self._handover(agent, urgent_reply()) is None
+        assert BUSY_TEAM_INSTRUCTION not in prompt
+        assert "explain that you need to transfer to a human agent who can better assist them" in prompt
+        assert any("better qualified agent" in line for line in agent.instructions)
 
-    def test_not_when_the_model_wrote_nothing(self, urgent_on):
-        agent = build_agent(transfer=True, groups=["support"])
-        assert self._handover(agent, urgent_reply(message="")) is None
+    @pytest.mark.parametrize("busy, expected", [(True, BUSY_TEAM_TIMEOUT_MESSAGE), (False, TRANSFER_TIMEOUT_MESSAGE)])
+    def test_a_timed_out_handover_line_uses_the_same_wording(self, busy, expected):
+        agent = transfer_agent(busy=busy)
+        agent.agent.arun = AsyncMock(side_effect=asyncio.TimeoutError)
 
-    def test_not_when_the_output_guardrail_replaced_it(self, urgent_on):
-        agent = build_agent(transfer=True, groups=["support"])
-        with patch('app.agents.chat_agent.check_output', return_value=("Sorry, I can't share that.", ["leak"])):
-            assert self._handover(agent, urgent_reply()) is None
+        reply = asyncio.run(agent.get_transfer_response(
+            chat_history=[], business_hours={}, available_agents=1, is_business_hours=True))
 
-    def test_not_when_the_reply_was_a_scope_refusal(self, urgent_on):
-        agent = build_agent(transfer=True, groups=["support"])
-        reply = urgent_reply(message="I can only help with questions about this business.")
-        assert self._handover(agent, reply) is None
+        assert reply == {"message": expected, "transfer_to_human": True}
 
-    def test_the_models_own_words_survive_a_product_list(self, urgent_on):
-        """A channel reply with products gets a product list appended; the
-        lead-in is still what the model said."""
-        agent = build_agent(transfer=True, groups=["support"])
+    @pytest.mark.parametrize("org_listed", [True, False])
+    def test_it_follows_the_org_rollout(self, monkeypatch, org_listed):
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", ORG_ID if org_listed else str(uuid4()))
+        group = SimpleNamespace(id=str(uuid4()))
+        agent = SimpleNamespace(groups=[group], organization=SimpleNamespace(id=ORG_ID, business_hours=None),
+                                name="Reception", display_name=None, jira_enabled=False, id=str(uuid4()))
+        responder = MagicMock()
+        responder.get_transfer_response = AsyncMock(return_value={"message": "ok", "transfer_to_human": True})
 
-        def add_list(reply):
-            reply.message += "\n\n1. Board - 99.00"
+        with patch('app.agents.transfer_agent.CustomerRepository'), \
+             patch('app.agents.transfer_agent.GroupRepository') as groups, \
+             patch('app.agents.transfer_agent.is_within_business_hours', return_value=True), \
+             patch('app.agents.transfer_agent.release_connection'), \
+             patch('app.agents.transfer_agent.TransferResponseAgent', return_value=responder) as made:
+            groups.return_value.get_group_with_users.return_value = SimpleNamespace(users=[])
+            asyncio.run(get_agent_availability_response(
+                agent, None, [], MagicMock(), "k", "gpt-4", "OPENAI", str(uuid4())))
 
-        agent._products_for_surface = add_list
-        assert self._handover(agent, urgent_reply()) == urgent_reply().message
-
-    def test_the_customer_sees_it_before_the_handover_line(self, urgent_on):
-        agent = build_agent(transfer=True, groups=[SimpleNamespace(id=str(uuid4()))])
-        availability = {"message": "A member of our team will be with you shortly.", "transfer_to_human": True}
-        db = MagicMock()
-        db.query.return_value.join.return_value.filter.return_value.all.return_value = []
-        chat_repo = Mock()
-        chat_repo.get_session_history = AsyncMock(return_value=[])
-        chat_repo.create_message.return_value = SimpleNamespace(id=1)
-
-        with patch('app.agents.chat_agent.get_agent_availability_response', AsyncMock(return_value=availability)), \
-             patch('app.agents.chat_agent.notify_chat_event', AsyncMock()), \
-             patch('app.agents.chat_agent.SessionToAgentRepository'):
-            reply = asyncio.run(agent._handle_transfer(
-                urgent_reply(), str(uuid4()), agent.org_id, agent.agent_id, agent.customer_id,
-                db, chat_repo, lead_in="Please call local emergency services now."))
-
-        assert reply.message == ("Please call local emergency services now.\n\n"
-                                 "A member of our team will be with you shortly.")
-        stored = chat_repo.create_message.call_args.args[0]
-        assert stored["message"] == reply.message
+        assert made.call_args.kwargs["busy_team_line"] is org_listed

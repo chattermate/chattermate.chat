@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional
 import asyncio
 from agno.agent import Agent
 from app.agents.guardrail_policy import INJECTION_CLAUSE, visitor_data_block
+from app.agents.handover_prompt import urgent_handover_on
 from app.utils.agno_utils import create_model
 from app.repositories.customer import CustomerRepository
 from app.core.logger import get_logger
@@ -37,8 +38,30 @@ logger = get_logger(__name__)
 TRANSFER_TIMEOUT_MESSAGE = "Let me connect you with someone from our team."
 FOLLOW_UP_TIMEOUT_MESSAGE = "Our team will get back to you shortly."
 
+# The handover line while the team is around (rolled out with the urgent-handover
+# rules, see handover_prompt.urgent_handover_on). "Let me connect you" read as a
+# promise of an instant reply; a customer then waited 23 minutes in silence.
+# This sets the expectation instead: the team is busy, has been told, and will
+# be there as soon as it can.
+BUSY_TEAM_INSTRUCTION = (
+    "Say that all our team members are busy right now, that their request is important to us, "
+    "that you have already notified the team, and that someone will be with them as soon as possible. "
+    "Don't promise a time. Write it in the language the customer is using."
+)
+BUSY_TEAM_TIMEOUT_MESSAGE = (
+    "All our team members are busy right now, but your request is important to us. "
+    "I've already notified them, and someone will be with you as soon as possible."
+)
+_CONNECT_INSTRUCTION = (
+    "If within business hours and agents are available, explain that you need to transfer to a better qualified agent to help."
+)
+
 class TransferResponseAgent:
-    def __init__(self, api_key: str, model_name: str, model_type: str = "OPENAI", agent_name: Optional[str] = None, base_url: str = None):
+    def __init__(self, api_key: str, model_name: str, model_type: str = "OPENAI", agent_name: Optional[str] = None, base_url: str = None,
+                 busy_team_line: bool = False):
+        # With busy_team_line, a handover to a team that's around says it is
+        # busy and has been notified (BUSY_TEAM_INSTRUCTION)
+        self.busy_team_line = busy_team_line
         model = create_model(
             model_type=model_type,
             api_key=api_key,
@@ -51,7 +74,8 @@ class TransferResponseAgent:
         instructions = [
             INJECTION_CLAUSE,
             "You need to explain why you're transferring the chat to a another agent.",
-            "If within business hours and agents are available, explain that you need to transfer to a better qualified agent to help.",
+            ("If within business hours and agents are available: " + BUSY_TEAM_INSTRUCTION)
+            if busy_team_line else _CONNECT_INSTRUCTION,
             "If outside business hours or no agents available, apologize and explain that the team will contact them via email.",
             "Be empathetic and professional in your response.",
             "Keep responses concise and clear.",
@@ -126,6 +150,13 @@ class TransferResponseAgent:
         
         chat_history_text = "\n".join(formatted_history[-5:])  # Get last 5 messages
         
+        if self.busy_team_line:
+            transfer_step = (f"1. If within business hours ({is_business_hours}) and agents available "
+                             f"({available_agents} online): {BUSY_TEAM_INSTRUCTION}\n")
+        else:
+            transfer_step = (f"1. If within business hours ({is_business_hours}) and agents available ({available_agents} online), "
+                             f"explain that you need to transfer to a human agent who can better assist them.\n")
+
         prompt = (
             f"Based on the following context, generate an appropriate response for communicating the transfer of the chat to the different agent:\n\n"
             f"Business Context:\n{business_context}\n"
@@ -133,8 +164,7 @@ class TransferResponseAgent:
             f"{email_context}\n\n"
             f"{visitor_data_block('CONVERSATION', chat_history_text)}\n\n"
             f"Instructions for response:\n"
-            f"1. If within business hours ({is_business_hours}) and agents available ({available_agents} online), "
-            f"explain that you need to transfer to a human agent who can better assist them.\n"
+            f"{transfer_step}"
             f"2. If outside business hours or no agents available, say the team will follow up. "
             f"You have no tools here: never say you created a ticket. "
             f"{('Tell them the team will follow up at ' + customer_email + '. ') if customer_email else 'No email is on file. Simply reassure them that the team will follow up. Do NOT ask for an email; do NOT mention, reference, or link to any form; and never write a URL, a bracketed placeholder, or any email address. '}"
@@ -162,7 +192,7 @@ class TransferResponseAgent:
                 f"(will_transfer={will_transfer})"
             )
             return {
-                "message": TRANSFER_TIMEOUT_MESSAGE if will_transfer else FOLLOW_UP_TIMEOUT_MESSAGE,
+                "message": self._transfer_fallback() if will_transfer else FOLLOW_UP_TIMEOUT_MESSAGE,
                 "transfer_to_human": will_transfer
             }
 
@@ -173,6 +203,11 @@ class TransferResponseAgent:
             "message": response_content.message,
             "transfer_to_human": will_transfer
         }
+
+    def _transfer_fallback(self) -> str:
+        """The handover line to use when the model can't write one in time."""
+        return BUSY_TEAM_TIMEOUT_MESSAGE if self.busy_team_line else TRANSFER_TIMEOUT_MESSAGE
+
 
 async def get_agent_availability_response(
     agent,
@@ -257,7 +292,8 @@ async def get_agent_availability_response(
         model_name=model_name,
         model_type=model_type,
         agent_name=agent_name,
-        base_url=base_url
+        base_url=base_url,
+        busy_team_line=urgent_handover_on(getattr(org, 'id', None)),
     )
 
     # Check if Jira is enabled for this agent

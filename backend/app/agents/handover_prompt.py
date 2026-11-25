@@ -71,17 +71,12 @@ _TOOLS_OR_PERSON_RULES = """**Before you call any tool, decide: tool or person?*
 
 Setting transfer_to_human replaces your reply with a handover message, so the customer sees nothing else you wrote that turn. If you have an answer to give, give it and leave transfer_to_human off; they can still ask for a person."""
 
-# With the urgent rules on, the one handover whose message is kept
-_URGENT_REPLY_KEPT = " The one exception is an urgent handover (see Hand over now above): there your short message is shown first."
 
-
-def tools_or_person_rules(changes_orders: bool = False, urgent: bool = False) -> str:
+def tools_or_person_rules(changes_orders: bool = False) -> str:
     """The rules for an agent with tools that can also hand over. With
     `changes_orders`, its tools cancel or change orders themselves (refunds
-    always go to a person). With `urgent`, the urgent-handover rules are on,
-    whose message is not replaced."""
-    rules = _TOOLS_OR_PERSON_RULES.format(order_rule=_ORDER_TOOLS_DECIDE if changes_orders else _PERSON_DECIDES)
-    return rules + _URGENT_REPLY_KEPT if urgent else rules
+    always go to a person)."""
+    return _TOOLS_OR_PERSON_RULES.format(order_rule=_ORDER_TOOLS_DECIDE if changes_orders else _PERSON_DECIDES)
 
 
 TOOLS_OR_PERSON_RULES = tools_or_person_rules()
@@ -104,18 +99,14 @@ _TOLD_NOT_ACCUSED = (
 URGENT_HANDOVER_RULES = (
     f"**Hand over now:** when the customer describes {_URGENT_SITUATIONS}, set transfer_to_human to true "
     "in this reply, with transfer_reason HIGH_PRIORITY_ISSUE. Ask for nothing first, not even an email: "
-    "the team can get their details. For these handovers your message is shown before the handover line, "
-    "so keep it to one or two short sentences acknowledging what happened, and don't say you are "
-    "connecting them (that line follows yours). If someone may be in danger right now, tell them to "
-    f"contact local emergency services. {_TOLD_NOT_ACCUSED} Hand over instead."
+    f"the team can get their details. {_TOLD_NOT_ACCUSED} Hand over instead."
 )
 
 # For an agent that can't reach a person (handover off, or no group to route
 # to): never promise a handover it can't make.
 URGENT_WITHOUT_HANDOVER = (
     f"**Urgent situations:** when the customer describes {_URGENT_SITUATIONS}, don't keep asking "
-    "questions. If someone may be in danger right now, tell them to contact local emergency services. "
-    "If you can open a ticket, open one now with priority urgent, without asking for their email first. "
+    "questions. If you can open a ticket, open one now with priority urgent, without asking for their email first. "
     f"{_TOLD_NOT_ACCUSED} Say the team will follow up instead."
 )
 
