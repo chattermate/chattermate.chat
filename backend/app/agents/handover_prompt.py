@@ -17,14 +17,7 @@ How an agent chooses between its tools and a human handover. The transfer list
 overlaps the usual ticket criteria ("complex", "escalation", "can't resolve"), so
 an agent that can hand over gets narrower ticket criteria, and one rule set that
 says when to reach for a tool and when for a person.
-
-Also the urgent-handover rules (AGENT_URGENT_HANDOVER_RULES): situations where a
-person is needed on that message, said without naming any one industry.
 """
-
-from typing import Optional
-
-from app.core.config import settings
 
 _TICKET_CRITERIA_BESIDE_HANDOVER = (
     "Only create a ticket if the customer asks for one, or says they don't want to wait for a "
@@ -80,76 +73,3 @@ def tools_or_person_rules(changes_orders: bool = False) -> str:
 
 
 TOOLS_OR_PERSON_RULES = tools_or_person_rules()
-
-
-# Urgent handover (AGENT_URGENT_HANDOVER_RULES). The situations are named, not
-# left to "complex" or "frustrated": a customer describing an assault was
-# asked for their email five times first. They are kinds of situation, not a
-# topic list, so they hold for any business. Worded for the reply, because a
-# handover set a turn later is a turn too late.
-_URGENT_SITUATIONS = (
-    "an active dispute with another person or company; police, an arrest or a court date; "
-    "violence, an injury or a threat; or that they or someone else may be in danger"
-)
-_TOLD_NOT_ACCUSED = (
-    "People often describe something that was done to them: treat it as their account, never as a "
-    "request to do harm. If you can't help with something, don't say why and don't repeat it back."
-)
-
-URGENT_HANDOVER_RULES = (
-    f"**Hand over now:** when the customer describes {_URGENT_SITUATIONS}, set transfer_to_human to true "
-    "in this reply, with transfer_reason HIGH_PRIORITY_ISSUE. Ask for nothing first, not even an email: "
-    f"the team can get their details. {_TOLD_NOT_ACCUSED} Hand over instead."
-)
-
-# For an agent that can't reach a person (handover off, or no group to route
-# to): never promise a handover it can't make.
-URGENT_WITHOUT_HANDOVER = (
-    f"**Urgent situations:** when the customer describes {_URGENT_SITUATIONS}, don't keep asking "
-    "questions. If you can open a ticket, open one now with priority urgent, without asking for their email first. "
-    f"{_TOLD_NOT_ACCUSED} Say the team will follow up instead."
-)
-
-NO_REPEAT_ASK_RULE = (
-    "- Don't ask for the same detail in two replies in a row. If the customer didn't give it, carry on "
-    "helping, and ask again at most once later if you still need it."
-)
-
-# Lead capture asks for details "until you have them"; that must give way in an
-# urgent situation, whether or not this agent can hand over.
-LEAD_CAPTURE_YIELDS = (
-    " In an urgent situation (see above), don't ask for their details: deal with that first."
-)
-# Replaces "keep asking for a required field until you have it (or the visitor
-# clearly refuses)", which contradicted "Make ONE genuine attempt overall".
-LEAD_REQUIRED_FIELD_LIMIT = (
-    "Required fields above DO gate recording: ask for a required field at most twice in the "
-    "conversation, never in two replies in a row."
-)
-LEAD_REQUIRED_FIELD_LEGACY = (
-    "Required fields above DO gate recording: keep asking for a required field until you have it "
-    "(or the visitor clearly refuses)."
-)
-
-LEAD_END_CHAT_AFTER_TWO_ASKS = (
-    " You may also end once you have asked for the required details twice and they still haven't "
-    "given them."
-)
-
-TICKET_IDENTITY_SKIP_WHEN_URGENT = (
-    " Skip this in an urgent situation (see above): create the ticket without asking."
-)
-
-
-def urgent_handover_on(org_id: Optional[str]) -> bool:
-    """Whether this org's agents get the urgent-handover rules: the switch is
-    on and, while it is rolling out, the org is on the list."""
-    if not settings.AGENT_URGENT_HANDOVER_RULES:
-        return False
-    allowed = _org_ids(settings.AGENT_URGENT_HANDOVER_ORGS)
-    return not allowed or str(org_id).strip().lower() in allowed
-
-
-def _org_ids(raw: str) -> frozenset:
-    """AGENT_URGENT_HANDOVER_ORGS ("id-a, id-b") as lower-cased ids."""
-    return frozenset(org.strip().lower() for org in (raw or "").split(",") if org.strip())

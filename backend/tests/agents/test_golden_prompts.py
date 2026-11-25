@@ -28,7 +28,6 @@ from tests.agents.prompt_matrix import CASES, build_agent, golden_path, raw_prom
 # Every prompt switch, off. A new switch is added here with its off value.
 SWITCHES_OFF = {
     "AGENT_LINKS_DEFER_TO_INSTRUCTIONS": False,
-    "AGENT_URGENT_HANDOVER_RULES": False,
 }
 
 

@@ -50,19 +50,7 @@ from app.agents.structured_output import (
 )
 from app.agents.transfer_agent import get_agent_availability_response
 from app.agents.channel_products import with_product_list
-from app.agents.handover_prompt import (
-    LEAD_CAPTURE_YIELDS,
-    LEAD_END_CHAT_AFTER_TWO_ASKS,
-    LEAD_REQUIRED_FIELD_LEGACY,
-    LEAD_REQUIRED_FIELD_LIMIT,
-    NO_REPEAT_ASK_RULE,
-    TICKET_IDENTITY_SKIP_WHEN_URGENT,
-    URGENT_HANDOVER_RULES,
-    URGENT_WITHOUT_HANDOVER,
-    ticket_criteria,
-    tools_or_person_rules,
-    urgent_handover_on,
-)
+from app.agents.handover_prompt import ticket_criteria, tools_or_person_rules
 from app.agents.guardrail_policy import (
     GuardrailContext,
     apply_guardrail_policy,
@@ -394,9 +382,6 @@ class ChatAgent(ChatAgentMCPMixin):
         # messaging channel tag ('web', 'telegram', ...) and must never be
         # passed as `source`.
         self.channel = channel or 'web'
-        # Urgent-handover rules (handover_prompt.py), rolled out per org. Not for
-        # a workflow step: its handovers are explicit nodes the builder placed.
-        self.urgent_rules_on = urgent_handover_on(org_id) and not custom_system_prompt
         # Row id of the reply the last get_response stored (see get_response)
         self.last_bot_message_id = None
         # The handover card state stored on this turn's reply (handover_payload.py)
@@ -687,19 +672,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
 - NEVER make up or guess URLs, domain names, email addresses, phone numbers, prices, plan names, dates, or any other specific detail. Do not "complete" or "correct" a domain or link from memory.
 - Only state a URL, contact detail, price, or fact if it appears in the knowledge base, tool results, or your configuration. Reproduce it exactly as written — do not alter the spelling, domain (e.g. .com vs .club), or path.
 - If you don't have a specific detail from those sources, say you don't have it and offer to connect the visitor with the team, rather than providing a plausible-looking guess."""
-            if self.urgent_rules_on:
-                system_message += "\n" + NO_REPEAT_ASK_RULE
 
 
-
-            # Without a group the handover is dropped at the end of the turn, so a
-            # ticket stays the way to reach the team
-            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
-
-            # Add transfer instructions if enabled. With the urgent rules on, an
-            # agent that has nowhere to hand over is told so, rather than told it
-            # can transfer and then having every handover dropped.
-            if self.transfer_to_human and (can_reach_a_person or not self.urgent_rules_on):
+            
+            # Add transfer instructions if enabled
+            if self.transfer_to_human:
                 system_message += """
                 You have the ability to transfer this conversation to a human agent if needed. You should transfer the conversation if:
                 1. You are unable to answer the customer's question or solve their problem
@@ -725,10 +702,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 you cannot put them through from here, then help them yourself or open a ticket. If they
                 ask what the product can do, answer from the knowledge base, not from this setting.
                 """
-
-            if self.urgent_rules_on:
-                urgent_rules = URGENT_HANDOVER_RULES if can_reach_a_person else URGENT_WITHOUT_HANDOVER
-                system_message += "\n" + urgent_rules + "\n"
 
             # Add lead-capture instructions (enabled = a toggle, like transfer_to_human).
             # The agent collects details conversationally and reports them as structured
@@ -828,14 +801,12 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "(1) make sure lead_email holds the exact email the visitor gave, (2) set request_lead_capture "
                     "to true, (3) set lead_consent to true, and (4) write a short lead_summary qualifying this "
                     "lead. Do this even if OPTIONAL fields are still missing — NEVER keep asking for an optional "
-                    "field once you have " + trigger + ", and never ask for the same field twice. "
-                    + (LEAD_REQUIRED_FIELD_LIMIT if self.urgent_rules_on else LEAD_REQUIRED_FIELD_LEGACY) +
-                    " CRITICAL: request_lead_capture=true is INVALID unless lead_email is set. "
+                    "field once you have " + trigger + ", and never ask for the same field twice. Required fields "
+                    "above DO gate recording: keep asking for a required field until you have it (or the visitor "
+                    "clearly refuses). CRITICAL: request_lead_capture=true is INVALID unless lead_email is set. "
                     "Confirm back what you captured (e.g. 'Great — I'll have someone reach out at jane@acme.com'). "
                     "Make ONE genuine attempt overall; if they decline to share details, respect it and keep helping."
                 )
-                if self.urgent_rules_on:
-                    lc_prompt += LEAD_CAPTURE_YIELDS
                 if self.lead_capture_guidance:
                     lc_prompt += " Additional guidance from the business: " + self.lead_capture_guidance
                 system_message += lc_prompt
@@ -855,14 +826,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "declined to share them. When you do end, also generate a closing message in the message "
                     "field, e.g: Thank you for your time. Have a great day!"
                 )
-                if self.urgent_rules_on:
-                    # Asks are capped at two, so "until recorded or declined" could
-                    # otherwise never be met by a visitor who just doesn't answer
-                    system_message += LEAD_END_CHAT_AFTER_TWO_ASKS
             elif self.agent_data.ask_for_rating:
                 system_message += f"\n{end_chat_with_rating}"
             else:
                 system_message += f"\n{end_chat_without_rating}"
+            
+            # Without a group the handover is dropped at the end of the turn, so a
+            # ticket stays the way to reach the team
+            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
 
             # Add native ticketing instructions when AI ticketing drives the
             # ticket tools (explicit agent Jira config takes precedence below)
@@ -892,8 +863,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "customer_email and customer_name. Never invent an email or name; if the "
                         "customer declines, create the ticket without them."
                     )
-                    if self.urgent_rules_on:
-                        identity_instruction += TICKET_IDENTITY_SKIP_WHEN_URGENT
                 when_to_ticket = ticket_criteria(
                     can_reach_a_person,
                     "The issue is a technical problem you cannot resolve from the knowledge base",

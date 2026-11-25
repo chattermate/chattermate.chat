@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional
 import asyncio
 from agno.agent import Agent
 from app.agents.guardrail_policy import INJECTION_CLAUSE, visitor_data_block
-from app.agents.handover_prompt import urgent_handover_on
 from app.utils.agno_utils import create_model
 from app.repositories.customer import CustomerRepository
 from app.core.logger import get_logger
@@ -38,8 +37,8 @@ logger = get_logger(__name__)
 TRANSFER_TIMEOUT_MESSAGE = "Let me connect you with someone from our team."
 FOLLOW_UP_TIMEOUT_MESSAGE = "Our team will get back to you shortly."
 
-# The handover line while the team is around (rolled out with the urgent-handover
-# rules, see handover_prompt.urgent_handover_on). "Let me connect you" read as a
+# The handover line while the team is around (AGENT_HANDOVER_BUSY_LINE, rolled
+# out per org, see busy_team_line_on). "Let me connect you" read as a
 # promise of an instant reply; a customer then waited 23 minutes in silence.
 # This sets the expectation instead: the team is busy, has been told, and will
 # be there as soon as it can.
@@ -209,6 +208,20 @@ class TransferResponseAgent:
         return BUSY_TEAM_TIMEOUT_MESSAGE if self.busy_team_line else TRANSFER_TIMEOUT_MESSAGE
 
 
+def busy_team_line_on(org_id: Optional[str]) -> bool:
+    """Whether this org's handovers use the busy-team line: the switch is on
+    and, while it is rolling out, the org is on the list."""
+    if not settings.AGENT_HANDOVER_BUSY_LINE:
+        return False
+    allowed = _org_ids(settings.AGENT_HANDOVER_BUSY_LINE_ORGS)
+    return not allowed or str(org_id).strip().lower() in allowed
+
+
+def _org_ids(raw: str) -> frozenset:
+    """AGENT_HANDOVER_BUSY_LINE_ORGS ("id-a, id-b") as lower-cased ids."""
+    return frozenset(org.strip().lower() for org in (raw or "").split(",") if org.strip())
+
+
 async def get_agent_availability_response(
     agent,
     customer_id: str,
@@ -293,7 +306,7 @@ async def get_agent_availability_response(
         model_type=model_type,
         agent_name=agent_name,
         base_url=base_url,
-        busy_team_line=urgent_handover_on(getattr(org, 'id', None)),
+        busy_team_line=busy_team_line_on(getattr(org, 'id', None)),
     )
 
     # Check if Jira is enabled for this agent
