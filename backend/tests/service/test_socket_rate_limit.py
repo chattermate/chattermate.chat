@@ -36,6 +36,7 @@ def mock_redis():
         mock_client.setex = MagicMock()
         mock_client.incr = MagicMock()
         mock_client.ttl = MagicMock()
+        mock_client.eval = MagicMock(return_value=1)
         yield mock_client
 
 @pytest.fixture
@@ -127,6 +128,7 @@ async def test_socket_rate_limit_with_forwarded_ip(mock_redis):
     mock_redis.get.return_value = None  # No previous requests
     mock_redis.setex.return_value = True
     mock_redis.incr.return_value = 1  # First request
+    mock_redis.eval.return_value = 1  # First hit in the per-second window
     mock_redis.expire.return_value = True
     
     # Mock asyncio.wait_for to return Redis results directly
@@ -149,8 +151,9 @@ async def test_socket_rate_limit_with_forwarded_ip(mock_redis):
         mock_handler.assert_called_once_with('test_sid', 'test_arg')
         
         # Verify Redis interactions
-        assert mock_redis.get.call_count >= 2  # Called for both overall and rate limits
-        assert mock_redis.setex.call_count >= 2  # Called for both overall and rate limits
+        assert mock_redis.get.call_count >= 1  # Overall limit lookup
+        assert mock_redis.setex.call_count >= 1  # Overall limit counter created
+        assert mock_redis.eval.call_count == 1  # Per-second counter hit atomically
 
 @pytest.mark.asyncio
 async def test_socket_rate_limit_exceeded(mock_redis):
@@ -228,6 +231,7 @@ async def test_socket_rate_limit_with_real_ip(mock_redis):
     mock_redis.get.return_value = None  # No previous requests
     mock_redis.setex.return_value = True
     mock_redis.incr.return_value = 1  # First request
+    mock_redis.eval.return_value = 1  # First hit in the per-second window
     mock_redis.expire.return_value = True
     
     # Mock asyncio.wait_for to return Redis results directly
@@ -250,8 +254,9 @@ async def test_socket_rate_limit_with_real_ip(mock_redis):
         mock_handler.assert_called_once_with('test_sid', 'test_arg')
         
         # Verify Redis interactions
-        assert mock_redis.get.call_count >= 2  # Called for both overall and rate limits
-        assert mock_redis.setex.call_count >= 2  # Called for both overall and rate limits
+        assert mock_redis.get.call_count >= 1  # Overall limit lookup
+        assert mock_redis.setex.call_count >= 1  # Overall limit counter created
+        assert mock_redis.eval.call_count == 1  # Per-second counter hit atomically
 
 @pytest.mark.asyncio
 async def test_socket_rate_limit_redis_error(mock_redis):
@@ -396,7 +401,8 @@ async def test_rate_limit_per_second_exceeded(mock_redis):
     }
     
     # Configure Redis mock for rate limit check
-    mock_redis.get.side_effect = [b'50', b'1']  # Under overall limit but over rate limit
+    mock_redis.get.return_value = b'50'  # Under overall limit
+    mock_redis.eval.return_value = 2  # Second hit in a 1/sec window: over the rate limit
     mock_redis.ttl.return_value = 1  # 1 second remaining
     
     # Mock sio.emit to capture error messages
@@ -432,7 +438,8 @@ async def test_rate_limit_per_second_exceeded(mock_redis):
 @pytest.mark.parametrize("rps,expected", [
     (10, (1, 10)),
     (1, (1, 1)),
-    (2.5, (1, 2)),
+    (2.5, (1, 3)),
+    (1.9, (1, 2)),
     (0.5, (2, 1)),
     (0.3, (4, 1)),
     (0, (1, 1)),
@@ -443,3 +450,66 @@ def test_rate_window_is_always_a_valid_redis_expiry(rps, expected):
     window, max_requests = rate_window(rps)
     assert (window, max_requests) == expected
     assert window >= 1 and max_requests >= 1
+
+
+def _run_decorated(mock_redis, rps, eval_count, read_only=False):
+    """Call a decorated handler once with the given per-second setting and counter value."""
+    mock_handler = AsyncMock()
+    session = {
+        'enable_rate_limiting': True,
+        'overall_limit_per_ip': 100,
+        'requests_per_sec': rps,
+        'agent_id': TEST_AGENT_ID,
+    }
+    mock_redis.get.return_value = b'1'
+    mock_redis.ttl.return_value = 1
+    mock_redis.eval.return_value = eval_count
+    mock_emit = AsyncMock()
+
+    async def mock_wait_for(coro, timeout):
+        return await coro if isinstance(coro, asyncio.Future) else coro
+
+    async def run():
+        with patch('app.services.socket_rate_limit.settings.REDIS_ENABLED', True), \
+             patch('app.services.socket_rate_limit.sio.get_session', AsyncMock(return_value=session)), \
+             patch('app.services.socket_rate_limit.sio.get_environ', return_value={'REMOTE_ADDR': TEST_IP}), \
+             patch('app.services.socket_rate_limit.sio.emit', mock_emit), \
+             patch('asyncio.wait_for', side_effect=mock_wait_for):
+            decorated = socket_rate_limit(read_only=read_only)(mock_handler)
+            return await decorated('test_sid')
+
+    return run, mock_handler, mock_emit
+
+
+@pytest.mark.asyncio
+async def test_rate_above_one_per_sec_allows_up_to_the_cap(mock_redis):
+    """10 req/sec: hits 1..10 in the window pass with a valid 1s expiry; hit 11 is blocked."""
+    run, handler, emit = _run_decorated(mock_redis, 10, 10)
+    await run()
+    handler.assert_called_once()
+    emit.assert_not_called()
+    assert mock_redis.eval.call_args[0][2:] == (f"rate:{TEST_AGENT_ID}:{TEST_IP}", 1)
+
+    run, handler, emit = _run_decorated(mock_redis, 10, 11)
+    assert await run() is None
+    handler.assert_not_called()
+    assert 'too quickly' in emit.call_args[0][1]['error']
+
+
+@pytest.mark.asyncio
+async def test_blocked_message_never_says_negative_wait(mock_redis):
+    """A key with no TTL (ttl -1) still reports a positive wait."""
+    run, handler, emit = _run_decorated(mock_redis, 1.0, 2)
+    mock_redis.ttl.return_value = -1
+    await run()
+    assert 'wait 1 seconds' in emit.call_args[0][1]['error']
+
+
+@pytest.mark.asyncio
+async def test_read_only_events_skip_the_per_second_counter(mock_redis):
+    """Read-only events (history, state) don't use up the chat message budget."""
+    run, handler, emit = _run_decorated(mock_redis, 1.0, 99, read_only=True)
+    await run()
+    handler.assert_called_once()
+    mock_redis.eval.assert_not_called()
+

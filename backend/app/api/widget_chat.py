@@ -980,7 +980,7 @@ async def handle_widget_chat(sid, data):
 
 
 @sio.on('get_chat_history', namespace='/widget')
-@socket_rate_limit(namespace='/widget')
+@socket_rate_limit(namespace='/widget', read_only=True)
 async def get_widget_chat_history(sid):
     db = None
     try:
@@ -1588,7 +1588,7 @@ _workflow_starts = KeyedLock()
 
 
 @sio.on('get_workflow_state', namespace='/widget')
-@socket_rate_limit(namespace='/widget') 
+@socket_rate_limit(namespace='/widget', read_only=True)
 async def handle_get_workflow_state(sid):
     """Get current workflow state and execute next node if no chat history"""
     db = None

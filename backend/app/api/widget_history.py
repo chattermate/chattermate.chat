@@ -72,7 +72,7 @@ async def _run(sid: str, work):
 
 
 @sio.on('list_conversations', namespace=WIDGET_NAMESPACE)
-@socket_rate_limit(namespace=WIDGET_NAMESPACE)
+@socket_rate_limit(namespace=WIDGET_NAMESPACE, read_only=True)
 async def handle_list_conversations(sid, data=None):
     session, page = await _run(sid, lambda db, s: visitor_history.list_conversations(db, s, _field(data, 'cursor')))
     if session is not None:
@@ -81,7 +81,7 @@ async def handle_list_conversations(sid, data=None):
 
 
 @sio.on('get_conversation', namespace=WIDGET_NAMESPACE)
-@socket_rate_limit(namespace=WIDGET_NAMESPACE)
+@socket_rate_limit(namespace=WIDGET_NAMESPACE, read_only=True)
 async def handle_get_conversation(sid, data):
     session, conversation = await _run(sid, lambda db, s: visitor_history.get_conversation(
         db, s, _field(data, 'id'), _field(data, 'before')))
@@ -94,7 +94,7 @@ async def handle_get_conversation(sid, data):
 
 
 @sio.on('search_conversations', namespace=WIDGET_NAMESPACE)
-@socket_rate_limit(namespace=WIDGET_NAMESPACE)
+@socket_rate_limit(namespace=WIDGET_NAMESPACE, read_only=True)
 async def handle_search_conversations(sid, data):
     q = _field(data, 'q')
     session, result = await _run(sid, lambda db, s: visitor_history.search_conversations(db, s, q))
