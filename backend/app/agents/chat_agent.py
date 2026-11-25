@@ -50,7 +50,19 @@ from app.agents.structured_output import (
 )
 from app.agents.transfer_agent import get_agent_availability_response
 from app.agents.channel_products import with_product_list
-from app.agents.handover_prompt import ticket_criteria, tools_or_person_rules
+from app.agents.handover_prompt import (
+    LEAD_CAPTURE_YIELDS,
+    LEAD_END_CHAT_AFTER_TWO_ASKS,
+    LEAD_REQUIRED_FIELD_LEGACY,
+    LEAD_REQUIRED_FIELD_LIMIT,
+    NO_REPEAT_ASK_RULE,
+    TICKET_IDENTITY_SKIP_WHEN_URGENT,
+    URGENT_HANDOVER_RULES,
+    URGENT_WITHOUT_HANDOVER,
+    ticket_criteria,
+    tools_or_person_rules,
+    urgent_handover_on,
+)
 from app.agents.guardrail_policy import (
     GuardrailContext,
     apply_guardrail_policy,
@@ -382,6 +394,9 @@ class ChatAgent(ChatAgentMCPMixin):
         # messaging channel tag ('web', 'telegram', ...) and must never be
         # passed as `source`.
         self.channel = channel or 'web'
+        # Urgent-handover rules (handover_prompt.py), rolled out per org. Not for
+        # a workflow step: its handovers are explicit nodes the builder placed.
+        self.urgent_rules_on = urgent_handover_on(org_id) and not custom_system_prompt
         # Row id of the reply the last get_response stored (see get_response)
         self.last_bot_message_id = None
         # The handover card state stored on this turn's reply (handover_payload.py)
@@ -672,11 +687,19 @@ Keep your responses concise and focused. Provide clear, actionable information i
 - NEVER make up or guess URLs, domain names, email addresses, phone numbers, prices, plan names, dates, or any other specific detail. Do not "complete" or "correct" a domain or link from memory.
 - Only state a URL, contact detail, price, or fact if it appears in the knowledge base, tool results, or your configuration. Reproduce it exactly as written — do not alter the spelling, domain (e.g. .com vs .club), or path.
 - If you don't have a specific detail from those sources, say you don't have it and offer to connect the visitor with the team, rather than providing a plausible-looking guess."""
+            if self.urgent_rules_on:
+                system_message += "\n" + NO_REPEAT_ASK_RULE
 
 
-            
-            # Add transfer instructions if enabled
-            if self.transfer_to_human:
+
+            # Without a group the handover is dropped at the end of the turn, so a
+            # ticket stays the way to reach the team
+            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
+
+            # Add transfer instructions if enabled. With the urgent rules on, an
+            # agent that has nowhere to hand over is told so, rather than told it
+            # can transfer and then having every handover dropped.
+            if self.transfer_to_human and (can_reach_a_person or not self.urgent_rules_on):
                 system_message += """
                 You have the ability to transfer this conversation to a human agent if needed. You should transfer the conversation if:
                 1. You are unable to answer the customer's question or solve their problem
@@ -702,6 +725,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 you cannot put them through from here, then help them yourself or open a ticket. If they
                 ask what the product can do, answer from the knowledge base, not from this setting.
                 """
+
+            if self.urgent_rules_on:
+                urgent_rules = URGENT_HANDOVER_RULES if can_reach_a_person else URGENT_WITHOUT_HANDOVER
+                system_message += "\n" + urgent_rules + "\n"
 
             # Add lead-capture instructions (enabled = a toggle, like transfer_to_human).
             # The agent collects details conversationally and reports them as structured
@@ -801,12 +828,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "(1) make sure lead_email holds the exact email the visitor gave, (2) set request_lead_capture "
                     "to true, (3) set lead_consent to true, and (4) write a short lead_summary qualifying this "
                     "lead. Do this even if OPTIONAL fields are still missing — NEVER keep asking for an optional "
-                    "field once you have " + trigger + ", and never ask for the same field twice. Required fields "
-                    "above DO gate recording: keep asking for a required field until you have it (or the visitor "
-                    "clearly refuses). CRITICAL: request_lead_capture=true is INVALID unless lead_email is set. "
+                    "field once you have " + trigger + ", and never ask for the same field twice. "
+                    + (LEAD_REQUIRED_FIELD_LIMIT if self.urgent_rules_on else LEAD_REQUIRED_FIELD_LEGACY) +
+                    " CRITICAL: request_lead_capture=true is INVALID unless lead_email is set. "
                     "Confirm back what you captured (e.g. 'Great — I'll have someone reach out at jane@acme.com'). "
                     "Make ONE genuine attempt overall; if they decline to share details, respect it and keep helping."
                 )
+                if self.urgent_rules_on:
+                    lc_prompt += LEAD_CAPTURE_YIELDS
                 if self.lead_capture_guidance:
                     lc_prompt += " Additional guidance from the business: " + self.lead_capture_guidance
                 system_message += lc_prompt
@@ -826,14 +855,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "declined to share them. When you do end, also generate a closing message in the message "
                     "field, e.g: Thank you for your time. Have a great day!"
                 )
+                if self.urgent_rules_on:
+                    # Asks are capped at two, so "until recorded or declined" could
+                    # otherwise never be met by a visitor who just doesn't answer
+                    system_message += LEAD_END_CHAT_AFTER_TWO_ASKS
             elif self.agent_data.ask_for_rating:
                 system_message += f"\n{end_chat_with_rating}"
             else:
                 system_message += f"\n{end_chat_without_rating}"
-            
-            # Without a group the handover is dropped at the end of the turn, so a
-            # ticket stays the way to reach the team
-            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
 
             # Add native ticketing instructions when AI ticketing drives the
             # ticket tools (explicit agent Jira config takes precedence below)
@@ -863,6 +892,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "customer_email and customer_name. Never invent an email or name; if the "
                         "customer declines, create the ticket without them."
                     )
+                    if self.urgent_rules_on:
+                        identity_instruction += TICKET_IDENTITY_SKIP_WHEN_URGENT
                 when_to_ticket = ticket_criteria(
                     can_reach_a_person,
                     "The issue is a technical problem you cannot resolve from the knowledge base",
@@ -974,7 +1005,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # Settles the overlap between the lists above, so it comes after them
             if can_reach_a_person and (self.tools or host_action_functions):
                 changes_orders = any(extra.changes_orders for extra in getattr(self, 'extra_toolkits', []))
-                system_message += "\n\n" + tools_or_person_rules(changes_orders)
+                system_message += "\n\n" + tools_or_person_rules(changes_orders, urgent=self.urgent_rules_on)
         else:
             system_message = [
                 "You are a helpful customer service agent.",
@@ -1253,7 +1284,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             
         return response_content
 
-    async def _handle_transfer(self, response_content: ChatResponse, session_id: str, org_id: str, agent_id: str, customer_id: str, db, chat_repo: ChatRepository, transfer_group_id: str = None) -> ChatResponse:
+    async def _handle_transfer(self, response_content: ChatResponse, session_id: str, org_id: str, agent_id: str, customer_id: str, db, chat_repo: ChatRepository, transfer_group_id: str = None, lead_in: Optional[str] = None) -> ChatResponse:
         """
         Handle transfer to human logic including session updates, notifications, and availability checks.
         
@@ -1266,6 +1297,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
             db: Database session
             chat_repo: Chat repository instance
             transfer_group_id: Optional specific group ID to transfer to (for workflow transfers)
+            lead_in: The model's own words to show before the handover line
+                (urgent handovers only, see _urgent_lead_in)
             
         Returns:
             Updated ChatResponse object
@@ -1341,9 +1374,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
             transfer_group_id=transfer_group_id if is_workflow_transfer else None
         )
         
+        handover_line = availability_response["message"]
         # Create ChatResponse object
         updated_response = ChatResponse(
-            message=availability_response["message"],
+            message=f"{lead_in}\n\n{handover_line}" if lead_in else handover_line,
             transfer_to_human=availability_response["transfer_to_human"],
             transfer_reason=availability_response.get("transfer_reason"),
             transfer_description=availability_response.get("transfer_description"),
@@ -1390,6 +1424,22 @@ Keep your responses concise and focused. Provide clear, actionable information i
         })
 
         return updated_response
+
+    def _urgent_lead_in(self, response_content: ChatResponse, model_message: Optional[str],
+                        guardrail_rules: list) -> Optional[str]:
+        """What the model said on an urgent handover, kept to show before the
+        handover line: there it acknowledges what happened and, when someone may
+        be in danger, points them to emergency services. Every other handover
+        still replaces the model's reply. None unless the urgent rules are on,
+        the model marked the handover HIGH_PRIORITY_ISSUE, and the output
+        guardrail flagged nothing (a leak it replaced, or a scope refusal that
+        would read oddly before a handover). The model's own words are used,
+        before any product list or link stripping for the surface."""
+        if not self.urgent_rules_on or response_content.transfer_reason != TransferReasonType.HIGH_PRIORITY_ISSUE:
+            return None
+        if guardrail_rules:
+            return None
+        return (model_message or "").strip() or None
 
     def _shopify_fallback_cache_key(self):
         """Redis key for products a Shopify tool fetched during THIS turn, else None.
@@ -1620,7 +1670,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
         # Output guardrail: replace a reply that leaked policy text,
         # count the model's own scope refusals.
-        response_content.message, _ = check_output(
+        response_content.message, guardrail_rules = check_output(
             response_content.message,
             ctx=self._guardrail_ctx,
             surface=self._guardrail_surface,
@@ -1647,7 +1697,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 customer_id=customer_id,
                 db=db,
                 chat_repo=chat_repo,
-                transfer_group_id=None  # Use agent's default group for regular transfers
+                transfer_group_id=None,  # Use agent's default group for regular transfers
+                lead_in=self._urgent_lead_in(response_content, model_message, guardrail_rules),
             )
             return response_content
 
