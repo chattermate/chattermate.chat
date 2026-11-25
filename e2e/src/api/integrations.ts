@@ -78,3 +78,36 @@ export async function uninstallShopify(api: ApiClient, shopId: string, orgId: st
 export async function useShopForAgent(api: ApiClient, agentId: string, shopId: string): Promise<void> {
   await api.post(`/shopify/agent-config/${agentId}`, { data: { enabled: true, shop_id: shopId } })
 }
+
+/**
+ * A storefront form posted through Shopify's App Proxy (/apps/chattermate/<action>):
+ * Shopify signs the query with the app's secret before forwarding it. Returns the
+ * status and the JSON the storefront gets back.
+ */
+export async function storefrontAction(shopDomain: string, action: string, fields: object): Promise<{ status: number; body: Record<string, unknown> }> {
+  const params: Record<string, string> = {
+    shop: shopDomain, path_prefix: '/apps/chattermate', logged_in_customer_id: '',
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  }
+  // Shopify's App Proxy signature: the parameters as sorted key=value strings, joined with nothing
+  const message = Object.entries(params).map(([key, value]) => `${key}=${value}`).sort().join('')
+  params.signature = createHmac('sha256', env.shopifyApp.secret).update(message).digest('hex')
+  const context = await request.newContext(NO_COOKIES)
+  try {
+    const response = await context.post(`${env.apiUrl}/shopify/proxy/${action}`, { params, data: fields })
+    return { status: response.status(), body: await response.json() }
+  } finally {
+    await context.dispose()
+  }
+}
+
+/** Every item of `shopDomain` is on sale again in the fake Shopify (a restock). */
+export async function putBackOnSale(shopDomain: string): Promise<void> {
+  const context = await request.newContext()
+  try {
+    const response = await context.put(`${env.fakeExternalsUrl}/__shopify/back-on-sale/${shopDomain}`)
+    if (!response.ok()) throw new Error(`back on sale → ${response.status()}`)
+  } finally {
+    await context.dispose()
+  }
+}

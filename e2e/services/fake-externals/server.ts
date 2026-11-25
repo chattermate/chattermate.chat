@@ -61,6 +61,8 @@
 //   DELETE /__calls                                       forget every call
 //   PUT    /__faults/:id   { provider, action?, contains?, status, body?, times? }
 //   DELETE /__faults/:id
+//   PUT    /__shopify/back-on-sale/:shop                  every item is on sale again
+//                                                        at that shop (a restock)
 //
 // Run: node services/fake-externals/server.ts --port 14020
 
@@ -507,6 +509,26 @@ const shopifyProducts = [
   shopifyProduct(5, 'E2E Draft', [{ id: 555, onSale: true }], false),
 ]
 
+// Shops whose items are all on sale again (PUT /__shopify/back-on-sale/:shop)
+const backOnSale = new Set<string>()
+
+/** A variant's node as the restock check reads it, with its product. */
+function shopifyVariantNode(gid: string, shop: string) {
+  const product = shopifyProducts.find((p) => p.variants.edges.some((e) => e.node.id === gid))
+  const variant = product?.variants.edges.find((e) => e.node.id === gid)?.node
+  if (!product || !variant) return null
+  return {
+    id: gid, title: variant.title, availableForSale: variant.availableForSale || backOnSale.has(shop),
+    inventoryPolicy: 'DENY', inventoryQuantity: null, image: null,
+    product: {
+      id: product.id, title: product.title, handle: product.handle, publishedAt: product.publishedAt,
+      onlineStoreUrl: product.publishedAt ? `https://${shop}/products/${product.handle}` : null,
+      // Untracked: everyone waiting hears, not a few per unit
+      tracksInventory: false, featuredMedia: null,
+    },
+  }
+}
+
 /** The test shop the call is for: /shopify/<shop>.myshopify.com/admin/... */
 function shopOf(url: URL): string {
   return url.pathname.split('/').filter(Boolean)[1] ?? ''
@@ -605,6 +627,19 @@ function shopify({ action, body, url }: Call): Answer {
     const product = shopifyProducts.find((p) => p.id === variables.id) ?? null
     return ok({ data: { product } })
   }
+  if (query.includes('query StockAlertBrand')) {
+    // The alert email's sender name and the store's contact email (where a test goes)
+    return ok({ data: { shop: { name: 'E2E Store', contactEmail: `owner@${shopOf(url)}` } } })
+  }
+  if (query.includes('query StockAlertVariants')) {
+    // The restock check and the product page's sign-up: the waiting variants as they are now
+    const shop = shopOf(url)
+    const ids = Array.isArray(variables.ids) ? variables.ids.map(String) : []
+    return ok({ data: {
+      shop: { name: 'E2E Store', contactEmail: `owner@${shop}`, primaryDomain: { url: `https://${shop}` } },
+      nodes: ids.map((gid) => shopifyVariantNode(gid, shop)),
+    } })
+  }
   if (query.includes('query SearchProducts')) {
     return ok({ data: { products: { edges: shopifyProducts.map((node) => ({ node })), pageInfo: { hasNextPage: false, endCursor: null } } } })
   }
@@ -673,6 +708,11 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (faultPath && req.method === 'DELETE') {
     faults.delete(faultPath[1])
+    return send(res, 200, { ok: true })
+  }
+  const restocked = /^\/__shopify\/back-on-sale\/([\w.-]+)$/.exec(path)
+  if (restocked && req.method === 'PUT') {
+    backOnSale.add(restocked[1])
     return send(res, 200, { ok: true })
   }
 
