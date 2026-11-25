@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import math
 import redis
 import functools
 from app.core.config import settings
@@ -49,7 +50,42 @@ if settings.REDIS_ENABLED:
         redis_client = None
 
 
-def socket_rate_limit(namespace='/widget'):
+def rate_window(requests_per_sec):
+    """Return (window_seconds, max_requests) for a requests-per-second setting.
+
+    Redis expiry must be a whole number of seconds >= 1. Rates below 1/sec widen the
+    window (0.5/sec -> 1 request per 2s); rates of 1/sec or more allow that many
+    requests (rounded up) in a 1s window (10/sec -> 10, 1.9/sec -> 2 requests per 1s).
+    """
+    if not requests_per_sec or requests_per_sec <= 0:
+        return 1, 1
+    if requests_per_sec < 1:
+        return math.ceil(1 / requests_per_sec), 1
+    return 1, math.ceil(requests_per_sec)
+
+
+# Atomic fixed-window counter: INCR, and (re)apply the expiry when the key is new or has
+# lost its TTL, so a key can never outlive its window and block a visitor forever.
+_HIT_COUNTER_LUA = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 or redis.call('TTL', KEYS[1]) < 0 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+"""
+
+
+def hit_counter(key, window_seconds):
+    """Count one request against `key` for `window_seconds` and return the new count."""
+    return int(redis_client.eval(_HIT_COUNTER_LUA, 1, key, window_seconds))
+
+
+def seconds_phrase(seconds):
+    """'1 second' / '5 seconds', so the visitor never reads '1 seconds'."""
+    return f"{seconds} second" if seconds == 1 else f"{seconds} seconds"
+
+
+def socket_rate_limit(namespace='/widget', read_only=False):
     """
     Socket rate limiting decorator for socketio event handlers
     
@@ -61,6 +97,8 @@ def socket_rate_limit(namespace='/widget'):
     2. Rate limit: Maximum requests per second (requests_per_sec)
     
     :param namespace: The socketio namespace to use (default: '/widget')
+    :param read_only: Read-only events (history, state lookups) skip the per-second counter so
+        they don't use up the budget for chat messages; the daily per-IP limit still applies.
     """
     def decorator(func):
         @functools.wraps(func)
@@ -154,7 +192,7 @@ def socket_rate_limit(namespace='/widget'):
                                 if seconds > 0 and minutes < 5:  # Only show seconds for short waits
                                     time_msg += f" and {seconds} seconds"
                             else:
-                                time_msg = f"{seconds} seconds"
+                                time_msg = seconds_phrase(seconds)
                             
                             logger.warning(f"Rate limit exceeded for {client_ip} - daily limit of {overall_limit} requests")
                             await sio.emit('error', {
@@ -170,50 +208,35 @@ def socket_rate_limit(namespace='/widget'):
                         )
                     
                     # Check rate limit (requests per second)
-                    # Convert to window in seconds (e.g., 1 req/sec = 1 req per 1 second window)
-                    rate_window = int(1 / requests_per_sec) if requests_per_sec > 0 else 1
-                    rate_key = f"rate:{agent_id}:{client_ip}"
+                    if not read_only:
+                        window_seconds, max_requests = rate_window(requests_per_sec)
+                        rate_key = f"rate:{agent_id}:{client_ip}"
                     
-                    rate_current = await asyncio.wait_for(
-                        loop.run_in_executor(None, redis_client.get, rate_key),
-                        timeout=5.0
-                    )
-                    
-
-                    if rate_current is None:
-                        # First request, set initial count
-                        await asyncio.wait_for(
-                            loop.run_in_executor(None, redis_client.setex, rate_key, rate_window, 1),
+                        rate_count = await asyncio.wait_for(
+                            loop.run_in_executor(None, hit_counter, rate_key, window_seconds),
                             timeout=5.0
                         )
-                    else:
-                        rate_current = int(rate_current)
-                        if rate_current >= 1:  # Only 1 request allowed per rate window
-                            # Calculate time until reset
+
+                        if rate_count > max_requests:
                             ttl = await asyncio.wait_for(
                                 loop.run_in_executor(None, redis_client.ttl, rate_key),
                                 timeout=5.0
                             )
-                            
+                            ttl = max(ttl, 1)
+
                             logger.warning(f"Rate limit exceeded for {client_ip} - frequency limit of {requests_per_sec} req/sec")
                             await sio.emit('error', {
-                                'error': f"You're sending messages too quickly. Please wait {ttl} seconds before sending another message.",
+                                'error': f"You're sending messages too quickly. Please wait {seconds_phrase(ttl)} before sending another message.",
                                 'type': 'rate_limit_error'
                             }, to=sid, namespace=namespace)
                             return None
-                        
-                        # Increment counter
-                        await asyncio.wait_for(
-                            loop.run_in_executor(None, redis_client.incr, rate_key),
-                            timeout=5.0
-                        )
                 
                 except asyncio.TimeoutError:
-                    logger.error("Redis operation timed out")
+                    logger.error("Redis operation timed out; rate limit failing open")
                 except (redis.ConnectionError, redis.TimeoutError) as e:
-                    logger.error(f"Redis operation error: {str(e)}")
+                    logger.error(f"Redis operation error; rate limit failing open: {str(e)}")
                 except Exception as e:
-                    logger.error(f"Unexpected error in rate limit: {str(e)}", exc_info=True)
+                    logger.error(f"Unexpected error in rate limit; failing open: {str(e)}", exc_info=True)
                 
                 # If we get here, rate limiting passed or was skipped
                 return await func(sid, *args, **kwargs)
