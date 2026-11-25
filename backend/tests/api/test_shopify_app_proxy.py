@@ -296,3 +296,41 @@ class TestProxyActions:
         monkeypatch.setattr(proxy, "run_proxy_action", broken)
         response = TestClient(app).post("/api/v1/shopify/proxy/notify", json={})
         assert response.status_code == 503 and response.json() == {"error": "unavailable"}
+
+
+class TestProxyPages:
+    """Storefront pages served through the App Proxy (run_proxy_page)."""
+
+    @pytest.fixture
+    def page(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._pages, "leave", lambda db, shop, params, method: (
+            seen.append((shop.shop_domain, params.get("t"), method)) or (200, "<p>done</p>")))
+        return seen
+
+    def test_a_signed_request_reaches_the_page_with_its_store_and_method(self, db, store, page):
+        for method in ("GET", "POST"):
+            assert proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, t="abc"), method) == (200, "<p>done</p>")
+        assert page == [(store.shop_domain, "abc", "GET"), (store.shop_domain, "abc", "POST")]
+
+    def test_a_bad_signature_an_unknown_page_or_store_get_nothing(self, db, store, page):
+        assert proxy.run_proxy_page(db, "leave", _signed("wrong-secret", shop=store.shop_domain), "GET")[0] == 401
+        assert proxy.run_proxy_page(db, "nope", _signed(shop=store.shop_domain), "GET")[0] == 404
+        assert proxy.run_proxy_page(db, "leave", _signed(shop="nobody.myshopify.com"), "GET")[0] == 404
+        assert page == []
+
+    def test_a_page_lives_under_the_app_proxy_on_the_stores_domain(self):
+        assert (proxy.storefront_page_url("https://shop.example/", "leave", t="a b")
+                == "https://shop.example/apps/chattermate/page/leave?t=a+b")
+
+    def test_the_route_serves_html_never_cached_nor_referred_on(self, monkeypatch):
+        from app.main import app
+        monkeypatch.setattr(proxy, "run_proxy_page", lambda db, name, query, method: (200, f"<p>{method}</p>"))
+        client = TestClient(app)
+        for method in ("get", "post"):
+            response = getattr(client, method)("/api/v1/shopify/proxy/page/leave?t=x")
+            assert response.status_code == 200 and response.text == f"<p>{method.upper()}</p>"
+            assert response.headers["content-type"].startswith("text/html")
+            assert "no-store" in response.headers["cache-control"]
+            assert response.headers["referrer-policy"] == "no-referrer"

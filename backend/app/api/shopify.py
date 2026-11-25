@@ -19,7 +19,7 @@ import traceback
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.utils.domain_check import InvalidWebsite, website_update
 from app.repositories.organization import OrganizationRepository
@@ -1004,6 +1004,26 @@ async def storefront_proxy_action(action: str, request: Request):
         logger.error(f"Storefront action {action} failed: {e}")
         status_code, result = 503, {'error': 'unavailable'}
     return JSONResponse(result, status_code=status_code, headers=PROXY_NO_STORE)
+
+
+@router.api_route("/proxy/page/{name}", methods=["GET", "POST"])
+async def storefront_proxy_page(name: str, request: Request):
+    """Shopify forwards the storefront's /apps/chattermate/page/<name> here,
+    signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
+    The body is never read (a mail client's one-click POST carries nothing we use)."""
+    query = list(request.query_params.multi_items())
+
+    def _work():
+        with SessionLocal() as db:
+            return shopify_app_proxy.run_proxy_page(db, name, query, request.method)
+
+    try:
+        status_code, html = await asyncio.to_thread(_work)
+    except Exception as e:
+        logger.error(f"Storefront page {name} failed: {e}")
+        status_code, html = 503, shopify_app_proxy.NOT_FOUND_PAGE
+    # The page's token is in its URL: kept from caches and from links onward
+    return HTMLResponse(html, status_code=status_code, headers={**PROXY_NO_STORE, "Referrer-Policy": "no-referrer"})
 
 
 @router.get("/proxy/identity")

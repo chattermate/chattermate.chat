@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import time
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from urllib.parse import urlencode
 
 import requests
 from sqlalchemy.orm import Session
@@ -195,4 +196,45 @@ def run_proxy_action(db: Session, name: str, query: Sequence[Tuple[str, str]],
     if shop is None or not shop.is_installed or shop.organization_id is None:
         return 200, dict(UNAVAILABLE)
     return action(db, shop, params, fields if isinstance(fields, dict) else {})
+
+
+# ---- Pages: storefront pages served through the App Proxy ----
+
+# Where the App Proxy lives on a storefront (shopify.app.toml: prefix/subpath), and
+# under it the pages extensions register: /apps/chattermate/page/<name>
+STOREFRONT_PREFIX = '/apps/chattermate'
+PAGE_PATH = 'page'
+
+# (db, the installed and linked store, the signed query, "GET" or "POST") ->
+# (HTTP status, HTML). Shopify shows the HTML as it is, on the store's own domain.
+ProxyPage = Callable[[Session, ShopifyShop, Dict[str, str], str], Tuple[int, str]]
+_pages: Dict[str, ProxyPage] = {}
+NOT_FOUND_PAGE = '<!doctype html><meta charset="utf-8"><title>Not found</title><p>This page doesn\'t exist.</p>'
+
+
+def register_proxy_page(name: str, page: ProxyPage) -> None:
+    """Serve GET and POST /apps/chattermate/page/<name> on the storefront
+    (enterprise features register theirs at start)."""
+    _pages[name] = page
+
+
+def storefront_page_url(store_url: str, name: str, **params: str) -> str:
+    """A registered page's address on the store's own domain."""
+    query = f"?{urlencode(params)}" if params else ''
+    return f"{store_url.rstrip('/')}{STOREFRONT_PREFIX}/{PAGE_PATH}/{name}{query}"
+
+
+def run_proxy_page(db: Session, name: str, query: Sequence[Tuple[str, str]], method: str) -> Tuple[int, str]:
+    """A signed storefront page: 404 for no such page or a store that isn't
+    installed and linked, 401 for a bad or stale signature."""
+    page = _pages.get(name)
+    if page is None:
+        return 404, NOT_FOUND_PAGE
+    if not signature_valid(query, settings.SHOPIFY_API_SECRET):
+        return 401, NOT_FOUND_PAGE
+    params = dict(query)
+    shop = ShopifyShopRepository(db).get_shop_by_domain(params.get('shop') or '')
+    if shop is None or not shop.is_installed or shop.organization_id is None:
+        return 404, NOT_FOUND_PAGE
+    return page(db, shop, params, method)
 
