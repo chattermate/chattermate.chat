@@ -1006,8 +1006,7 @@ async def storefront_proxy_action(action: str, request: Request):
     return JSONResponse(result, status_code=status_code, headers=PROXY_NO_STORE)
 
 
-@router.api_route("/proxy/page/{name}", methods=["GET", "POST"])
-async def storefront_proxy_page(name: str, request: Request):
+async def _storefront_page(name: str, request: Request) -> HTMLResponse:
     """Shopify forwards the storefront's /apps/chattermate/page/<name> here,
     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
     The body is never read (a mail client's one-click POST carries nothing we use)."""
@@ -1024,6 +1023,19 @@ async def storefront_proxy_page(name: str, request: Request):
         status_code, html = 503, shopify_app_proxy.NOT_FOUND_PAGE
     # The page's token is in its URL: kept from caches and from links onward
     return HTMLResponse(html, status_code=status_code, headers={**PROXY_NO_STORE, "Referrer-Policy": "no-referrer"})
+
+
+# One route per method, so each has a stable OpenAPI operation id
+@router.get("/proxy/page/{name}", response_class=HTMLResponse)
+async def storefront_proxy_page(name: str, request: Request):
+    """A storefront page opened through the App Proxy (_storefront_page)."""
+    return await _storefront_page(name, request)
+
+
+@router.post("/proxy/page/{name}", response_class=HTMLResponse)
+async def storefront_proxy_page_post(name: str, request: Request):
+    """A storefront page's form, or a mail client's one-click, through the App Proxy (_storefront_page)."""
+    return await _storefront_page(name, request)
 
 
 @router.get("/proxy/identity")

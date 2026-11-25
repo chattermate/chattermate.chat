@@ -5437,19 +5437,15 @@ export interface paths {
         };
         /**
          * Storefront Proxy Page
-         * @description Shopify forwards the storefront's /apps/chattermate/page/<name> here,
-         *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
-         *     The body is never read (a mail client's one-click POST carries nothing we use).
+         * @description A storefront page opened through the App Proxy (_storefront_page).
          */
-        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__post"];
+        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
         put?: never;
         /**
-         * Storefront Proxy Page
-         * @description Shopify forwards the storefront's /apps/chattermate/page/<name> here,
-         *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
-         *     The body is never read (a mail client's one-click POST carries nothing we use).
+         * Storefront Proxy Page Post
+         * @description A storefront page's form, or a mail client's one-click, through the App Proxy (_storefront_page).
          */
-        post: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__post"];
+        post: operations["storefront_proxy_page_post_api_v1_shopify_proxy_page__name__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21088,7 +21084,7 @@ export interface operations {
             };
         };
     };
-    storefront_proxy_page_api_v1_shopify_proxy_page__name__post: {
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21105,7 +21101,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */
@@ -21119,7 +21115,7 @@ export interface operations {
             };
         };
     };
-    storefront_proxy_page_api_v1_shopify_proxy_page__name__post: {
+    storefront_proxy_page_post_api_v1_shopify_proxy_page__name__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21136,7 +21132,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */
