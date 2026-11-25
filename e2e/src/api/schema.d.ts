@@ -5407,6 +5407,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shopify/proxy/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Storefront Proxy Action
+         * @description Shopify forwards a storefront POST to /apps/chattermate/<action> here,
+         *     signed (shopify_app_proxy.run_proxy_action). Never cached.
+         */
+        post: operations["storefront_proxy_action_api_v1_shopify_proxy__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shopify/proxy/page/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront Proxy Page
+         * @description A storefront page opened through the App Proxy (_storefront_page).
+         */
+        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
+        put?: never;
+        /**
+         * Storefront Proxy Page Post
+         * @description A storefront page's form, or a mail client's one-click, through the App Proxy (_storefront_page).
+         */
+        post: operations["storefront_proxy_page_post_api_v1_shopify_proxy_page__name__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shopify/proxy/identity": {
         parameters: {
             query?: never;
@@ -21004,6 +21049,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    storefront_proxy_action_api_v1_shopify_proxy__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storefront_proxy_page_post_api_v1_shopify_proxy_page__name__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

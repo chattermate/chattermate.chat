@@ -98,7 +98,7 @@ def _render_body(template: dict, components: Optional[list]) -> str:
 
 async def _approved_outbound_template(db: Session, account: ChannelAccount,
                                       name: str, language: str,
-                                      *, starts_conversation: bool) -> dict:
+                                      *, starts_conversation: bool, customer_asked: bool = False) -> dict:
     """The template this send is allowed to use, or the reason it isn't.
 
     `starts_conversation` decides whether the Utility/Authentication rule
@@ -106,7 +106,9 @@ async def _approved_outbound_template(db: Session, account: ChannelAccount,
     to a send that opens a thread with someone who never wrote to us. Reaching
     an existing conversation is the reopen case: the customer did message us,
     which is why Meta accepts Marketing there — and why the inbox picker has
-    never been category-gated.
+    never been category-gated. `customer_asked` is the same case reached
+    later: the customer wrote to ask for exactly this message (a back-in-stock
+    sign-up), so the rule about uninvited contact doesn't apply.
     """
     repo = ChannelAccountRepository(db)
     credentials = repo.get_credentials(account)
@@ -129,7 +131,7 @@ async def _approved_outbound_template(db: Session, account: ChannelAccount,
         raise OutboundError(404, f"No template named {name} in {language} on this account")
     if str(template.get("status", "")).upper() != "APPROVED":
         raise OutboundError(400, f"Template {name} is not approved yet")
-    if starts_conversation and \
+    if starts_conversation and not customer_asked and \
             str(template.get("category", "")).upper() not in OUTBOUND_CATEGORIES:
         raise OutboundError(
             400,
@@ -199,6 +201,7 @@ async def start_outbound_conversation(
     customer_id: Optional[UUID] = None,
     customer_name: Optional[str] = None,
     source: MessageSource,
+    customer_asked: bool = False,
 ) -> OutboundSent:
     """Start (or rejoin) a WhatsApp conversation by phone number.
 
@@ -230,7 +233,8 @@ async def start_outbound_conversation(
     existing = conv_repo.get_active(account.id, wa_id)
 
     template = await _approved_outbound_template(
-        db, account, template_name, language, starts_conversation=existing is None)
+        db, account, template_name, language, starts_conversation=existing is None,
+        customer_asked=customer_asked)
 
     if existing is not None:
         # An open conversation already carries this number; send there instead

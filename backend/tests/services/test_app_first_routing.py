@@ -329,3 +329,90 @@ async def test_the_app_and_the_event_share_the_message_id(db, account, use_test_
     await process_channel_message(account.id, _inbound())
 
     assert handler.await_args.args[0].event_id == events[0].event_id
+
+
+# --- Codes and keywords the business answers itself (register_text_handler) ------------------------
+
+@pytest.mark.asyncio
+async def test_a_text_handler_answers_without_the_ai(
+        db, account, use_test_db, test_ai_config, quiet_channel, events):
+    from app.channels.app_hooks import register_text_handler
+    register_text_handler(AsyncMock(return_value="You're on the list."))
+    app = AsyncMock(return_value=True)
+    register_inbound_handler(app)
+
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()) as create_async, \
+         patch.object(channel_chat, "notify_customer", AsyncMock()) as notify:
+        await process_channel_message(account.id, _inbound("Notify me. Ref BIS-1-abc"))
+
+    create_async.assert_not_awaited()
+    app.assert_not_awaited()
+    notify.assert_awaited_once()
+    assert notify.await_args.args[2] == "You're on the list."
+    assert db.query(ChatHistory).filter_by(message_type="user").one().message == "Notify me. Ref BIS-1-abc"
+    assert [(e.kind, e.handled_by) for e in events] == [(EventKind.INBOUND, HandledBy.APP)]
+
+
+@pytest.mark.asyncio
+async def test_a_text_handler_answers_even_when_a_human_holds_the_chat(
+        db, account, use_test_db, quiet_channel, test_user):
+    from app.channels.app_hooks import register_text_handler
+    register_text_handler(AsyncMock(return_value=""))
+    await process_channel_message(account.id, _inbound("first"))
+    session = db.query(SessionToAgent).one()
+    session.user_id = test_user.id
+    db.commit()
+
+    with patch.object(channel_chat, "notify_customer", AsyncMock()) as notify, \
+         patch.object(channel_chat, "relay_stored_message", AsyncMock()):
+        await process_channel_message(account.id, _inbound("STOP", "wamid.IN2"))
+    notify.assert_not_awaited()  # "" is handled with nothing to say
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handler", [
+    AsyncMock(return_value=None),
+    AsyncMock(side_effect=RuntimeError("store down")),
+])
+async def test_a_text_handler_that_passes_or_fails_leaves_it_to_the_ai(
+        db, account, use_test_db, test_ai_config, quiet_channel, handler):
+    from app.channels.app_hooks import register_text_handler
+    register_text_handler(handler)
+    fake = _fake_agent()
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake)), \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock(return_value=DeliveryResult(ok=True))):
+        await process_channel_message(account.id, _inbound("hello"))
+    fake.get_response.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_slow_text_handler_is_skipped(db, account, use_test_db, monkeypatch):
+    from app.channels.app_hooks import register_text_handler
+    monkeypatch.setattr(app_first_routing, "TEXT_HANDLER_TIMEOUT_SECONDS", 0.01)
+
+    async def slow(context):
+        await asyncio.sleep(1)
+        return "late"
+    register_text_handler(slow)
+    second = AsyncMock(return_value="second")
+    register_text_handler(second)
+    session = SimpleNamespace(session_id="s1")
+    reply = await app_first_routing.text_reply(db, account, session, "c1", _inbound(), datetime.now(timezone.utc))
+    assert reply == "second"
+
+
+@pytest.mark.asyncio
+async def test_a_marketing_template_may_start_a_thread_the_customer_asked_for(db, account, monkeypatch):
+    """A back-in-stock sign-up: the customer wrote first, asking for exactly this."""
+    from app.services import whatsapp_outbound
+    template = {"name": "back_in_stock", "language": "en", "status": "APPROVED", "category": "MARKETING",
+                "components": [{"type": "BODY", "text": "{{1}} is back"}]}
+    monkeypatch.setattr(whatsapp_outbound, "fetch_message_templates", AsyncMock(return_value=(True, [template])))
+    monkeypatch.setattr(ChannelAccountRepository, "get_credentials",
+                        lambda self, a: {"waba_id": "W1", "access_token": "tok"})
+    with pytest.raises(whatsapp_outbound.OutboundError, match="Marketing"):
+        await whatsapp_outbound._approved_outbound_template(db, account, "back_in_stock", "en",
+                                                            starts_conversation=True)
+    found = await whatsapp_outbound._approved_outbound_template(db, account, "back_in_stock", "en",
+                                                                starts_conversation=True, customer_asked=True)
+    assert found["name"] == "back_in_stock"

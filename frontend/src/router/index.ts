@@ -331,6 +331,12 @@ const allRoutes = hasEnterpriseModule
         component: loadEnterpriseComponent(moduleImports.shopifyCustomize),
         meta: { requiresAuth: false }, // Session token auth instead
       },
+      {
+        path: '/shopify/automations',
+        name: 'shopify-automations',
+        component: loadEnterpriseComponent(moduleImports.shopifyAutomations),
+        meta: { requiresAuth: false }, // Session token auth instead
+      },
     ]
   : baseRoutes
 

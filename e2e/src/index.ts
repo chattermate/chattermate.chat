@@ -10,7 +10,7 @@ export { notificationsFor, type AppNotification } from './api/notifications'
 export { findPerson, type Person } from './api/people'
 export { customizeAgent, uploadLauncherLogo } from './api/customization'
 export { connectCrm, disconnectCrm, syncPersonToCrm, type CrmProvider } from './api/crm'
-export { connectJira, disconnectJira, fakeJira, installShopify, openShopifyApp, routeTicketsToJira, uninstallShopify, useShopForAgent } from './api/integrations'
+export { connectJira, disconnectJira, fakeJira, installShopify, openShopifyApp, openStorefrontPage, putBackOnSale, routeTicketsToJira, storefrontAction, uninstallShopify, useShopForAgent } from './api/integrations'
 export { publishWorkflow, type WorkflowGraph } from './api/workflows'
 export {
   askHelpCenter, createArticle, enableHelpCenter, helpCenterChat, setArticleStatus, setHelpCenterChat, turnOnAskAi, type Article, type HelpCenterChat,

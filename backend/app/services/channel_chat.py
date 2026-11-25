@@ -44,7 +44,7 @@ from app.repositories.channels import (
 )
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
-from app.services.app_first_routing import announce_inbound, app_claims
+from app.services.app_first_routing import announce_inbound, app_claims, text_reply
 from app.services.chat_notifications import (
     notify_new_channel_chat_once, notify_team_chat_waits, team_not_yet_notified,
 )
@@ -124,14 +124,15 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # can land while we wait, so the customer's message keeps the time it
         # arrived and still sorts before it.
         received_at = datetime.now(timezone.utc)
-        if await app_claims(db, account, session_record, customer_id, inbound, received_at):
-            stored = _store_customer_message(db, inbound, session_record, agent_id,
-                                             customer_id, org_id, account, created_at=received_at)
-            await relay_stored_message(session_record, stored, USER_MESSAGE)
-            if adapter is not None:
-                await adapter.mark_read(account, inbound.external_message_id)
-            await announce_inbound(account, session_record, customer_id, inbound,
-                                   HandledBy.APP, received_at)
+        # A code or keyword the business answers itself (no AI reply spent)
+        reply = await text_reply(db, account, session_record, customer_id, inbound, received_at)
+        handled_by_app = (reply is not None
+                          or await app_claims(db, account, session_record, customer_id, inbound, received_at))
+        if handled_by_app:
+            await _keep_app_handled(db, adapter, account, session_record, inbound, agent_id,
+                                    customer_id, org_id, received_at)
+            if reply:
+                await notify_customer(db, session_record, reply, channels_only=True)
             return
 
         # From here the team (AI or inbox) is answering
@@ -438,6 +439,19 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
         extra=team_not_yet_notified(),
     )
     return session_record, conversation, True
+
+
+async def _keep_app_handled(db: Session, adapter, account: ChannelAccount, session_record,
+                            inbound: InboundMessage, agent_id, customer_id, org_id, received_at) -> None:
+    """A message an installed app (or a code the business answers) took: kept
+    in the conversation and on the dashboard, marked read, and announced as
+    the app's, with no AI reply."""
+    stored = _store_customer_message(db, inbound, session_record, agent_id,
+                                     customer_id, org_id, account, created_at=received_at)
+    await relay_stored_message(session_record, stored, USER_MESSAGE)
+    if adapter is not None:
+        await adapter.mark_read(account, inbound.external_message_id)
+    await announce_inbound(account, session_record, customer_id, inbound, HandledBy.APP, received_at)
 
 
 def _store_customer_message(db: Session, inbound: InboundMessage, session_record,

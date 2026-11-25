@@ -78,3 +78,64 @@ export async function uninstallShopify(api: ApiClient, shopId: string, orgId: st
 export async function useShopForAgent(api: ApiClient, agentId: string, shopId: string): Promise<void> {
   await api.post(`/shopify/agent-config/${agentId}`, { data: { enabled: true, shop_id: shopId } })
 }
+
+/** Where the app's App Proxy is on a storefront until the merchant moves it. */
+const DEFAULT_PROXY_PATH = '/apps/chattermate'
+
+/**
+ * A storefront form posted through Shopify's App Proxy (/apps/chattermate/<action>,
+ * or `proxyPath` where the merchant moved it): Shopify signs the query with the
+ * app's secret before forwarding it. Returns the
+ * status and the JSON the storefront gets back.
+ */
+export async function storefrontAction(shopDomain: string, action: string, fields: object, proxyPath = DEFAULT_PROXY_PATH): Promise<{ status: number; body: Record<string, unknown> }> {
+  const context = await request.newContext(NO_COOKIES)
+  try {
+    const response = await context.post(`${env.apiUrl}/shopify/proxy/${action}`, { params: proxySigned(shopDomain, {}, proxyPath), data: fields })
+    return { status: response.status(), body: await response.json() }
+  } finally {
+    await context.dispose()
+  }
+}
+
+/**
+ * Opens a storefront page under the App Proxy (`https://<store>/apps/chattermate/…`,
+ * as an email links to it) the way Shopify forwards it: its query plus Shopify's
+ * signed parameters. Returns the status and the HTML.
+ */
+export async function openStorefrontPage(shopDomain: string, link: string, method: 'GET' | 'POST' = 'GET'): Promise<{ status: number; html: string }> {
+  const url = new URL(link)
+  // The proxy's path is the first two segments (/apps/chattermate, or where the merchant moved it)
+  const [, prefix, subpath] = /^(\/[^/]+\/[^/]+)\/(.+)$/.exec(url.pathname) ?? []
+  if (!prefix || !subpath) throw new Error(`not an App Proxy page: ${link}`)
+  const params = proxySigned(shopDomain, Object.fromEntries(url.searchParams), prefix)
+  const context = await request.newContext(NO_COOKIES)
+  try {
+    const response = await context.fetch(`${env.apiUrl}/shopify/proxy/${subpath}`, { method, params })
+    return { status: response.status(), html: await response.text() }
+  } finally {
+    await context.dispose()
+  }
+}
+
+/** `query` plus the parameters Shopify adds when it forwards a storefront request, signed with the app's secret. */
+function proxySigned(shopDomain: string, query: Record<string, string>, proxyPath: string): Record<string, string> {
+  const params: Record<string, string> = {
+    ...query, shop: shopDomain, path_prefix: proxyPath, logged_in_customer_id: '',
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  }
+  // Shopify's App Proxy signature: the parameters as sorted key=value strings, joined with nothing
+  const message = Object.entries(params).map(([key, value]) => `${key}=${value}`).sort().join('')
+  return { ...params, signature: createHmac('sha256', env.shopifyApp.secret).update(message).digest('hex') }
+}
+
+/** Every item of `shopDomain` is on sale again in the fake Shopify (a restock). */
+export async function putBackOnSale(shopDomain: string): Promise<void> {
+  const context = await request.newContext()
+  try {
+    const response = await context.put(`${env.fakeExternalsUrl}/__shopify/back-on-sale/${shopDomain}`)
+    if (!response.ok()) throw new Error(`back on sale → ${response.status()}`)
+  } finally {
+    await context.dispose()
+  }
+}

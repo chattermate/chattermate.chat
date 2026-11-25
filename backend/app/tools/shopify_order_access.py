@@ -80,6 +80,17 @@ def _written_in(value: str, text: str, part_of_a_word: str) -> bool:
     return re.search(rf"(?<![{part_of_a_word}]){re.escape(value)}(?![a-z0-9@_-])", text) is not None
 
 
+def _email_written_in(customer_email: str, written: str) -> bool:
+    # a@b.co is not in x.a@b.co
+    return _written_in(normalise_email(customer_email), written, r"a-z0-9@.+_\-")
+
+
+def email_written_by_customer(customer_email: Optional[str], customer_messages: Iterable[str]) -> bool:
+    """True when the customer wrote this email themselves in the conversation
+    (not, say, the agent guessing one)."""
+    return is_email(customer_email) and _email_written_in(customer_email, "\n".join(customer_messages).lower())
+
+
 def missing_from_chat(customer_email: str, order_number: str, customer_messages: Iterable[str],
                       verified_email: Optional[str] = None) -> Optional[str]:
     """What the customer has not written themselves, or None when they gave both.
@@ -87,9 +98,9 @@ def missing_from_chat(customer_email: str, order_number: str, customer_messages:
     Inputs must already pass order_lookup_problem."""
     written = "\n".join(customer_messages).lower()
     proven = bool(verified_email) and normalise_email(verified_email) == normalise_email(customer_email)
-    # a@b.co is not in x.a@b.co, but 1001 is in "No.1001"
-    if not proven and not _written_in(normalise_email(customer_email), written, r"a-z0-9@.+_\-"):
+    if not proven and not _email_written_in(customer_email, written):
         return EMAIL_REQUIRED
+    # 1001 is in "No.1001"
     if not _written_in(normalise_order_number(order_number), written, r"a-z0-9@_\-"):
         return ORDER_NUMBER_REQUIRED
     return None
