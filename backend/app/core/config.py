@@ -316,9 +316,9 @@ class Settings(BaseSettings):
     # AGENT_URGENT_HANDOVER_ORGS        -> comma-separated org ids to roll it out to
     #                                      first; empty = every org once it's on.
     AGENT_URGENT_HANDOVER_RULES: bool = os.getenv("AGENT_URGENT_HANDOVER_RULES", "false").lower() == "true"
-    AGENT_URGENT_HANDOVER_ORGS: frozenset = frozenset(
-        org.strip().lower() for org in os.getenv("AGENT_URGENT_HANDOVER_ORGS", "").split(",") if org.strip()
-    )
+    # Kept as the raw string (split by urgent_handover_on): a set-typed field is
+    # JSON-decoded from the environment, so "org-a,org-b" would fail at startup.
+    AGENT_URGENT_HANDOVER_ORGS: str = os.getenv("AGENT_URGENT_HANDOVER_ORGS", "")
 
     # Help center (public FAQ site)
     # How the public help center URL is advertised (live_url):

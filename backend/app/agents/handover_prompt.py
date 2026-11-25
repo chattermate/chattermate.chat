@@ -155,5 +155,10 @@ def urgent_handover_on(org_id: Optional[str]) -> bool:
     on and, while it is rolling out, the org is on the list."""
     if not settings.AGENT_URGENT_HANDOVER_RULES:
         return False
-    allowed = settings.AGENT_URGENT_HANDOVER_ORGS
+    allowed = _org_ids(settings.AGENT_URGENT_HANDOVER_ORGS)
     return not allowed or str(org_id).strip().lower() in allowed
+
+
+def _org_ids(raw: str) -> frozenset:
+    """AGENT_URGENT_HANDOVER_ORGS ("id-a, id-b") as lower-cased ids."""
+    return frozenset(org.strip().lower() for org in (raw or "").split(",") if org.strip())

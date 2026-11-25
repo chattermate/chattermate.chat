@@ -38,7 +38,7 @@ from app.agents.handover_prompt import (
     URGENT_WITHOUT_HANDOVER,
     urgent_handover_on,
 )
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.models.schemas.chat import ChatResponse, TransferReasonType
 from tests.agents.prompt_matrix import CASES, ORG_ID, build_agent, flat_prompt, golden_path, raw_prompt
 
@@ -59,7 +59,7 @@ def links_legacy(monkeypatch):
 @pytest.fixture
 def urgent_on(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
-    monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", frozenset())
+    monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", "")
 
 
 class TestRollout:
@@ -69,7 +69,7 @@ class TestRollout:
 
     def test_an_org_list_limits_it_to_those_orgs(self, monkeypatch):
         monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
-        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", frozenset({ORG_ID}))
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", ORG_ID)
 
         assert urgent_handover_on(ORG_ID) is True
         assert urgent_handover_on(str(uuid4())) is False
@@ -77,20 +77,39 @@ class TestRollout:
 
     def test_an_org_off_the_list_keeps_its_old_prompt(self, monkeypatch, links_legacy):
         monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
-        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", frozenset({str(uuid4())}))
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", str(uuid4()))
 
         prompt = raw_prompt(build_agent(**CASES["transfer_with_group"]))
         assert prompt == golden_path("transfer_with_group").read_text(encoding="utf-8")
 
     def test_the_list_ignores_case(self, monkeypatch):
         monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
-        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", frozenset({ORG_ID.lower()}))
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", ORG_ID.lower())
 
         assert urgent_handover_on(ORG_ID.upper()) is True
 
+    def test_a_list_of_orgs_with_spaces_matches_each(self, monkeypatch):
+        other = str(uuid4())
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", True)
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", f" {other} , {ORG_ID.upper()},")
+
+        assert urgent_handover_on(ORG_ID) is True
+        assert urgent_handover_on(other) is True
+        assert urgent_handover_on(str(uuid4())) is False
+
+    def test_the_settings_load_a_comma_separated_list_from_the_environment(self, monkeypatch):
+        # A set-typed field is JSON-decoded from the environment and crashed startup
+        monkeypatch.setenv("AGENT_URGENT_HANDOVER_RULES", "true")
+        monkeypatch.setenv("AGENT_URGENT_HANDOVER_ORGS", f"{ORG_ID}, other-org")
+
+        loaded = Settings()
+
+        assert loaded.AGENT_URGENT_HANDOVER_RULES is True
+        assert loaded.AGENT_URGENT_HANDOVER_ORGS == f"{ORG_ID}, other-org"
+
     def test_the_switch_off_wins_over_the_list(self, monkeypatch):
         monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_RULES", False)
-        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", frozenset({ORG_ID}))
+        monkeypatch.setattr(settings, "AGENT_URGENT_HANDOVER_ORGS", ORG_ID)
 
         assert urgent_handover_on(ORG_ID) is False
 
