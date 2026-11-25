@@ -242,6 +242,35 @@ describe('frame-session', () => {
       session.setHostPageUrl(42)
       expect(session.reportedPageUrl()).toBe(`${HOST}/checkout`)
     })
+
+    it('gives each message the page the loader last reported, with its title', async () => {
+      const session = await loadFrame()
+      session.setHostPageUrl(`${HOST}/products/blue-hoodie`, 'Blue Hoodie')
+      expect(session.currentHostPage()).toEqual({ url: `${HOST}/products/blue-hoodie`, title: 'Blue Hoodie' })
+    })
+  })
+
+  describe('the page the visitor is on, without a loader report', () => {
+    it('reads a same-origin parent page', async () => {
+      host.document.title = 'Blue Hoodie'
+      const session = await loadFrame({ query: '' })
+      expect(session.currentHostPage()).toEqual({ url: host.location.href, title: 'Blue Hoodie' })
+    })
+
+    it('falls back to the referrer under a cross-origin parent', async () => {
+      const session = await loadFrame({ query: '' })
+      Object.defineProperty(window, 'parent', {
+        value: { get location() { throw new DOMException('cross-origin', 'SecurityError') } }, configurable: true,
+      })
+      vi.spyOn(document, 'referrer', 'get').mockReturnValue(`${HOST}/products/x`)
+      expect(session.currentHostPage()).toEqual({ url: `${HOST}/products/x`, title: null })
+    })
+
+    it('has no page when nothing embeds the widget', async () => {
+      const session = await loadFrame({ query: '', framed: false })
+      vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://google.com/')
+      expect(session.currentHostPage()).toBeNull()
+    })
   })
 
   describe('embedded without the loader', () => {

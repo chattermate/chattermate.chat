@@ -36,7 +36,7 @@ export function useOnboardingTestChat() {
     connect,
     setToken,
     cleanup: socketCleanup,
-  } = useWidgetSocket()
+  } = useWidgetSocket({ sendsPage: false })
 
   // Older builds persisted the socket's token to localStorage 'ctid'. Nothing writes
   // it from here any more, but the removal stays: a token left by one of those builds

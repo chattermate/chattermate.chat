@@ -34,6 +34,7 @@ from app.services.contact_capture import build_handoff_contact_form
 from app.services.reply_ui import TurnEvents
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
+from app.services.visitor_page import PAGE_SESSION_KEY, page_context
 from app.services.lead_capture import record_lead_from_response
 
 logger = get_logger(__name__)
@@ -91,6 +92,8 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
             host_prompt_context(session.get('host_prompt')),
             # An earlier conversation the visitor chose to continue, for this one only
             _continued_context(session),
+            # Last: it can change with every message
+            page_context(session.get(PAGE_SESSION_KEY)),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=choice_limits_for(session),
