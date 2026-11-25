@@ -50,7 +50,7 @@ from app.models.lead_capture import (
     LeadAssignmentMode, CrmSyncTarget,
 )
 from app.models.channels import (
-    ChannelAccount, ChannelType, ChannelConversation, AgentChannelConfig,
+    ChannelAccount, ChannelType, ChannelConversation, AgentChannelConfig, ChannelOptOut,
 )
 from app.models.faq_generation_job import (
     FAQGenerationJob, FAQJobType, FAQJobStatus, FAQJobStage,
@@ -128,7 +128,7 @@ __all__ = [
     "ChannelAccount",
     "ChannelType",
     "ChannelConversation",
-    "AgentChannelConfig",
+    "AgentChannelConfig", "ChannelOptOut",
     "FAQGenerationJob",
     "FAQJobType",
     "FAQJobStatus",

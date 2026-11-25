@@ -17,7 +17,8 @@ Extension points on the channel pipeline.
 
 An extension can see every channel message in and out and every delivery
 receipt (event listeners), and can claim an inbound message before the AI
-answers it (the inbound handler). Nothing here knows who the extension is:
+answers it (the inbound handler). A tap on a button the business sent can be
+claimed by the prefix of its payload (button handlers). Nothing here knows who the extension is:
 load_extensions imports whatever is installed, and the extension registers
 itself. Without one, every hook is a no-op.
 
@@ -29,7 +30,7 @@ import enum
 import importlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from app.channels.base import InboundMessage, InteractiveMessage, StatusEvent
@@ -108,10 +109,15 @@ EventListener = Callable[[ChannelEvent], Awaitable[None]]
 # sent, like a back-in-stock sign-up): the reply to send, "" for none, or None
 # when the message isn't for it
 TextHandler = Callable[[InboundContext], Awaitable[Optional[str]]]
+ButtonHandler = Callable[[InboundContext], Awaitable[Optional[str]]]
+
+# A button payload's owner is the text before its first ':' ("cod:confirm:<token>")
+BUTTON_PREFIX_SEPARATOR = ":"
 
 _inbound_handler: Optional[InboundHandler] = None
 _event_listeners: List[EventListener] = []
 _text_handlers: List[TextHandler] = []
+_button_handlers: Dict[str, ButtonHandler] = {}
 _extensions_loaded = False
 
 
@@ -145,6 +151,27 @@ def register_text_handler(handler: TextHandler) -> None:
 
 def text_handlers() -> List[TextHandler]:
     return list(_text_handlers)
+
+
+def register_button_handler(prefix: str, handler: ButtonHandler) -> None:
+    """Claim taps on buttons whose payload starts with "<prefix>:". A claimed
+    tap goes to this handler alone, whoever holds the chat: never to the AI, a
+    person or an installed app. The handler answers with the text to send back
+    ("" or None for nothing).
+
+    It runs inside the webhook, so it must only record the tap and queue the
+    work (app_first_routing.BUTTON_HANDLER_TIMEOUT_SECONDS), never call
+    another service that can be slow. One handler per prefix."""
+    if not prefix or BUTTON_PREFIX_SEPARATOR in prefix:
+        raise ValueError(f"A button prefix is a non-empty word without '{BUTTON_PREFIX_SEPARATOR}'")
+    _button_handlers[prefix] = handler
+
+
+def button_handler_for(payload: Optional[str]) -> Optional[ButtonHandler]:
+    """The handler that owns this button payload, if any."""
+    if not payload or BUTTON_PREFIX_SEPARATOR not in payload:
+        return None
+    return _button_handlers.get(payload.split(BUTTON_PREFIX_SEPARATOR, 1)[0])
 
 
 def register_event_listener(listener: EventListener) -> None:
@@ -194,6 +221,7 @@ def reset() -> None:
     global _inbound_handler, _extensions_loaded
     _inbound_handler = None
     _text_handlers.clear()
+    _button_handlers.clear()
     _event_listeners.clear()
     _extensions_loaded = False
 

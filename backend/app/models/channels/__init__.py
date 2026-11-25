@@ -17,10 +17,13 @@ limitations under the License.
 from app.models.channels.channel_account import ChannelAccount, ChannelType
 from app.models.channels.channel_conversation import ChannelConversation
 from app.models.channels.agent_channel_config import AgentChannelConfig
+from app.models.channels.channel_opt_out import ChannelOptOut, OptOutSource
 
 __all__ = [
     "ChannelAccount",
     "ChannelType",
     "ChannelConversation",
     "AgentChannelConfig",
+    "ChannelOptOut",
+    "OptOutSource",
 ]

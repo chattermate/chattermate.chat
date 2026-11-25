@@ -148,6 +148,9 @@ class SendResult:
     # True when the platform rejected the account's credentials (expired or
     # revoked token): nothing will send until the account is reconnected
     auth_failed: bool = False
+    # The platform's own error code (Graph error.code), for callers that
+    # decide between retrying and giving up (a queue of business messages)
+    error_code: Optional[int] = None
 
 
 @dataclass

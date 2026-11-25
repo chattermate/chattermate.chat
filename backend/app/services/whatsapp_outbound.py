@@ -15,9 +15,10 @@ limitations under the License.
 """
 
 import re
+import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ from app.channels import get_adapter
 from app.channels.app_hooks import OutboundRecord, emit_channel_event, outbound_event
 from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE, MessageSource
 from app.services.channel_chat import placeholder_name
+from app.services.channel_opt_outs import is_opted_out
 from app.services.business_message import remember_business_message
 from app.services.channel_status import record_sent
 from app.services.chat_notifications import team_not_yet_notified
@@ -61,15 +63,52 @@ class OutboundSent:
     external_message_id: Optional[str]
 
 
+class OutboundReason:
+    """Why a send was refused, for callers that decide what happens next (a
+    queue retries a failed send but never an opted-out contact)."""
+    OPTED_OUT = "opted_out"
+    BAD_NUMBER = "bad_number"
+    NO_AGENT = "no_agent"
+    NOT_CONNECTED = "not_connected"
+    TEMPLATE_MISSING = "template_missing"
+    TEMPLATE_NOT_APPROVED = "template_not_approved"
+    TEMPLATE_CATEGORY = "template_category"
+    TEMPLATES_UNREADABLE = "templates_unreadable"
+    SEND_FAILED = "send_failed"
+
+
 class OutboundError(Exception):
     """A refused or failed outbound send. Carries the HTTP status the API
     route should answer with, so the Phase-2 scheduler can reuse the service
-    without importing anything web-shaped."""
+    without importing anything web-shaped, plus why (`reason`) and, for a
+    send WhatsApp refused, Meta's error code."""
 
-    def __init__(self, status_code: int, detail: str):
+    def __init__(self, status_code: int, detail: str, reason: str = OutboundReason.SEND_FAILED,
+                 meta_code: Optional[int] = None):
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+        self.reason = reason
+        self.meta_code = meta_code
+
+
+# An account's templates, read from Meta at most this often for a template
+# already approved (one that isn't is always read again: its review may be done)
+TEMPLATE_CACHE_SECONDS = 600
+_template_cache: Dict[Tuple[str, str], Tuple[float, list]] = {}
+
+
+def forget_templates() -> None:
+    """Drop the cached template lists (tests, or after creating a template)."""
+    _template_cache.clear()
+
+
+def _find_template(templates: list, name: str, language: str) -> Optional[dict]:
+    return next((t for t in templates if t.get("name") == name and t.get("language") == language), None)
+
+
+def _is_approved(template: Optional[dict]) -> bool:
+    return template is not None and str(template.get("status", "")).upper() == "APPROVED"
 
 
 def _render_body(template: dict, components: Optional[list]) -> str:
@@ -115,28 +154,33 @@ async def _approved_outbound_template(db: Session, account: ChannelAccount,
     waba_id = credentials.get("waba_id")
     if not waba_id:
         raise OutboundError(400, "Reconnect this number with its WhatsApp "
-                                 "Business Account ID to send templates")
+                                 "Business Account ID to send templates", OutboundReason.NOT_CONNECTED)
 
-    ok, data = await fetch_message_templates(waba_id, credentials["access_token"])
-    if not ok:
-        if graph_auth_refused(data):
-            repo.record_auth_failure(account, graph_detail(data, "Authentication Error"))
-        raise OutboundError(502, "Could not read the account's templates from Meta")
+    key = (str(account.id), str(waba_id))
+    cached = _template_cache.get(key)
+    template = _find_template(cached[1], name, language) if cached and cached[0] > time.monotonic() else None
+    if not _is_approved(template):
+        ok, data = await fetch_message_templates(waba_id, credentials["access_token"])
+        if not ok:
+            if graph_auth_refused(data):
+                repo.record_auth_failure(account, graph_detail(data, "Authentication Error"))
+            raise OutboundError(502, "Could not read the account's templates from Meta",
+                                OutboundReason.TEMPLATES_UNREADABLE)
+        _template_cache[key] = (time.monotonic() + TEMPLATE_CACHE_SECONDS, data)
+        template = _find_template(data, name, language)
 
-    template = next(
-        (t for t in data if t.get("name") == name and t.get("language") == language),
-        None,
-    )
     if template is None:
-        raise OutboundError(404, f"No template named {name} in {language} on this account")
-    if str(template.get("status", "")).upper() != "APPROVED":
-        raise OutboundError(400, f"Template {name} is not approved yet")
+        raise OutboundError(404, f"No template named {name} in {language} on this account",
+                            OutboundReason.TEMPLATE_MISSING)
+    if not _is_approved(template):
+        raise OutboundError(400, f"Template {name} is not approved yet", OutboundReason.TEMPLATE_NOT_APPROVED)
     if starts_conversation and not customer_asked and \
             str(template.get("category", "")).upper() not in OUTBOUND_CATEGORIES:
         raise OutboundError(
             400,
             "Only Utility and Authentication templates can start a conversation. "
             "Marketing templates need the customer to have messaged you first.",
+            OutboundReason.TEMPLATE_CATEGORY,
         )
     return template
 
@@ -219,13 +263,17 @@ async def start_outbound_conversation(
     """
     phone = normalize_phone(to)
     if phone is None:
-        raise OutboundError(400, "Enter the number in international format, e.g. +91 12345 67890")
+        raise OutboundError(400, "Enter the number in international format, e.g. +91 12345 67890",
+                            OutboundReason.BAD_NUMBER)
     wa_id = to_wa_id(phone)
+    if is_opted_out(db, account, phone):
+        raise OutboundError(409, "This person replied STOP, so this number can't message them first",
+                            OutboundReason.OPTED_OUT)
 
     agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)
     if agent_id is None:
         raise OutboundError(400, "Route an agent to this number first — "
-                                 "otherwise nobody would answer the reply")
+                                 "otherwise nobody would answer the reply", OutboundReason.NO_AGENT)
 
     # Resolved BEFORE the template is validated: whether this opens a thread or
     # rejoins one decides which rules the template must satisfy.
@@ -289,7 +337,8 @@ async def start_outbound_conversation(
                 db.rollback()
                 logger.error(f"Could not roll back the empty outbound thread for "
                              f"session {session_id}: {e}")
-        raise OutboundError(502, result.error or "WhatsApp did not accept the message")
+        raise OutboundError(502, result.error or "WhatsApp did not accept the message",
+                            OutboundReason.SEND_FAILED, meta_code=result.error_code)
 
     rendered = _render_body(template, components)
     stored = ChatRepository(db).create_message({
