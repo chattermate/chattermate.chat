@@ -88,6 +88,7 @@ const time = computed(() =>
 
 .meta {
   font-size: 11px;
-  color: var(--muted2);
+  /* --muted2 is under 4.5:1 on the note's amber tint in the light theme */
+  color: var(--muted);
 }
 </style>
