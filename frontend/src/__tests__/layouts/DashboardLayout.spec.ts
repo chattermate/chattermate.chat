@@ -102,6 +102,7 @@ const makeRouter = () =>
       { path: '/analytics', component: Page },
       { path: '/conversations', component: Page },
       { path: '/knowledge', name: 'knowledge', component: Page },
+      { path: '/settings/user', name: 'user-settings', component: Page },
     ]
   })
 
@@ -287,4 +288,12 @@ describe('DashboardLayout - notifications off on this device', () => {
 
     expect(wrapper.find('.push-off-dot').exists()).toBe(false)
   })
+
+  it('leaves the banner off User Settings, which has its own notice', async () => {
+    const { wrapper } = await mountAt('/settings/user')
+
+    expect(wrapper.findComponent({ name: 'PushOffNotice' }).exists()).toBe(false)
+    expect(wrapper.find('.push-off-dot').exists()).toBe(true)
+  })
 })
+

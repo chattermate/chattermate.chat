@@ -236,8 +236,9 @@ const openNotificationsFromSheet = () => {
                 <!-- Not on the knowledge page (it lists the failed source itself), nor on
                      full-page layouts, whose .content is a fixed 100vh with no room for it -->
                 <FailedSourceNotice v-if="!props.hideHeader && route.name !== 'knowledge'" />
-                <!-- Pages without the header (Inbox) show a slim strip of their own -->
-                <PushOffNotice v-if="!props.hideHeader" variant="banner" />
+                <!-- Pages without the header (Inbox) show a slim strip of their own; User
+                     Settings has its own notice in the Notifications card -->
+                <PushOffNotice v-if="!props.hideHeader && route.name !== 'user-settings'" variant="banner" />
                 <slot></slot>
             </main>
         </div>

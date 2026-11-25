@@ -241,4 +241,24 @@ describe('usePushStatus', () => {
     window.dispatchEvent(new Event('focus'))
     expect(mocks.enableNotifications).toHaveBeenCalledTimes(1)
   })
+
+  it('stops registering on its own once signed out', async () => {
+    await load()
+    firebase.permission.value = 'denied'
+    window.dispatchEvent(new Event('chattermate:signed-out'))
+
+    vi.stubGlobal('Notification', { permission: 'granted' })
+    window.dispatchEvent(new Event('focus'))
+
+    expect(mocks.enableNotifications).not.toHaveBeenCalled()
+  })
+
+  it('asks about Shopify each time a surface mounts', async () => {
+    const { mod } = await load()
+    expect(mod.usePushStatus().reason.value).toBe('off')
+
+    state.embedded = true
+    expect(mod.usePushStatus().reason.value).toBeNull()
+  })
 })
+

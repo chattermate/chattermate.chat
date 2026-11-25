@@ -23,6 +23,7 @@ import {
   syncNotificationPermission,
 } from '@/services/firebase'
 import { isShopifyEmbedded } from '@/pwa/register'
+import { onSignedOut } from '@/utils/sessionEvents'
 import { enableNotifications } from './useNotifications'
 import { usePWAInstall } from './usePWAInstall'
 
@@ -54,7 +55,6 @@ const snoozedAt = ref(readSnoozedAt())
 const busy = ref(false)
 // The first-time floating card is up: the landing banner would only repeat it
 const floatingPromptOpen = ref(false)
-const embedded = isShopifyEmbedded()
 const { isIOS, isStandalone } = usePWAInstall()
 let watching = false
 
@@ -68,19 +68,32 @@ const onPermissionMaybeChanged = () => {
   }
 }
 
+let permissionStatus: PermissionStatus | null = null
+
 const startWatching = () => {
   if (watching || typeof window === 'undefined') return
   watching = true
   isPushSupported().then((supported) => { pushSupported.value = supported })
   navigator.permissions
     ?.query({ name: 'notifications' as PermissionName })
-    .then((status) => status.addEventListener('change', onPermissionMaybeChanged))
+    .then((status) => {
+      permissionStatus = status
+      status.addEventListener('change', onPermissionMaybeChanged)
+    })
     .catch(() => { /* no Permissions API for notifications: the focus check covers it */ })
   window.addEventListener('focus', onPermissionMaybeChanged)
 }
 
-const reason = computed<PushOffReason | null>(() => {
-  if (embedded) return null
+// Signed out, there's no one to register for; the next dashboard mount watches again
+onSignedOut(() => {
+  if (!watching) return
+  watching = false
+  permissionStatus?.removeEventListener('change', onPermissionMaybeChanged)
+  permissionStatus = null
+  window.removeEventListener('focus', onPermissionMaybeChanged)
+})
+
+const deviceReason = computed<PushOffReason | null>(() => {
   if (isIOS && !isStandalone.value) return 'install'
   // Unknown yet, or a browser with no push at all: nothing to offer
   if (pushSupported.value !== true) return null
@@ -105,7 +118,7 @@ const turnOn = async (): Promise<void> => {
   if (busy.value) return
   busy.value = true
   try {
-    if (reason.value === 'failed') await refreshFCMToken()
+    if (deviceReason.value === 'failed') await refreshFCMToken()
     else await enableNotifications()
   } finally {
     busy.value = false
@@ -133,6 +146,9 @@ export const setFloatingPromptOpen = (open: boolean) => {
  */
 export function usePushStatus() {
   startWatching()
+  // Per caller, not module-wide: the same tab can move between the dashboard
+  // and /shopify pages, and each surface asks as it mounts
+  const reason = computed(() => (isShopifyEmbedded() ? null : deviceReason.value))
 
   return {
     reason,
