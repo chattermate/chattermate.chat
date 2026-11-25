@@ -69,7 +69,7 @@ test.describe('notifications off on this device', () => {
     await expect(pushNotices.bell).not.toHaveAccessibleName(/off on this device$/)
   })
 
-  test('"Not now" puts the landing banner off across pages and reloads; the drawer line and bell dot stay @shell', async ({ dashboard, pushDevice, pushNotices }) => {
+  test('"Not now" puts the landing banner off across pages and reloads; the drawer line, inbox strip and bell dot stay @shell', async ({ dashboard, pushDevice, pushNotices }) => {
     await pushDevice.setPermission('prompt')
     await pushNotices.firstAskPutOff(8)
     await dashboard.goto('/ai-agents')
@@ -83,9 +83,10 @@ test.describe('notifications off on this device', () => {
     await pushNotices.openDrawer()
     await expect(pushNotices.drawerLine).toHaveAccessibleName(OFF)
 
-    // The inbox strip shares the same "Not now"
+    // The inbox strip stays: a missed notification there is a chat left waiting
     await dashboard.goto('/conversations')
-    await expect(pushNotices.landing).toBeHidden()
+    await expect(pushNotices.landing).toHaveAccessibleName(OFF)
+    await expect(pushNotices.landing.getByRole('button')).toHaveText(['Turn on'])
   })
 
   test('a first visit gets the floating card, not the banner too; its "Not now" holds the banner back @shell', async ({ dashboard, pushDevice, pushNotices }) => {

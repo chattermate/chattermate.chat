@@ -37,7 +37,7 @@ import { usePWAInstall } from './usePWAInstall'
  */
 export type PushOffReason = 'off' | 'blocked' | 'install' | 'failed'
 
-/** "Not now" on the landing banner hides it (not the panel line or bell dot) for this long. */
+/** "Not now" on the landing banner hides it (not the drawer line, inbox strip or bell dot) for this long. */
 export const LANDING_SNOOZE_KEY = 'cm-push-banner-snoozed-at'
 export const LANDING_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000
 

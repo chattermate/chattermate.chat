@@ -150,19 +150,18 @@ describe('PushOffNotice', () => {
     expect(wrapper.find('.push-off-dismiss').exists()).toBe(true)
   })
 
-  it('inbox strip is one short line with Turn on and a close', async () => {
+  it('inbox strip is one short line with Turn on, and nothing to put it off', () => {
     const wrapper = mountNotice('strip')
 
     expect(wrapper.find('.push-off-text').text()).toBe('Notifications are off')
     expect(wrapper.find('.push-off-cta').text()).toBe('Turn on')
-    await wrapper.find('[aria-label="Not now"]').trigger('click')
-    expect(push.snoozeLanding).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('button').map((button) => button.text())).toEqual(['Turn on'])
   })
 
-  it('banner and strip hide while snoozed', () => {
+  it('"Not now" hides the banner, but the inbox strip stays while push is off', () => {
     push.landing.value = false
     expect(mountNotice('banner').find('.push-off').exists()).toBe(false)
-    expect(mountNotice('strip').find('.push-off').exists()).toBe(false)
+    expect(mountNotice('strip').find('.push-off').exists()).toBe(true)
   })
 
   it('shows nothing anywhere while push works', () => {

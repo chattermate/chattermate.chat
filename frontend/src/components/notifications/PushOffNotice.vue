@@ -25,7 +25,8 @@ import UnblockGuide from './UnblockGuide.vue'
  * "Notifications are off on this device", in three places:
  * - panel: a line in the notification drawer, shown while push is off (no dismiss)
  * - banner: full width at the top of header pages ("Not now" hides it for 7 days)
- * - strip: one slim line above the inbox list (same 7-day "Not now")
+ * - strip: one slim line above the inbox list, shown while push is off (no
+ *   dismiss): the inbox is where a missed notification costs a waiting chat
  */
 const props = defineProps<{
   variant: 'panel' | 'banner' | 'strip'
@@ -47,8 +48,9 @@ const onAction = () => {
 watch(reason, (now) => {
   if (now !== 'blocked') guideOpen.value = false
 })
+// Only the banner can be put off; the drawer line and inbox strip stay
 const visible = computed(() =>
-  props.variant === 'panel' ? !!copy.value : !!copy.value && showLandingNotice.value
+  props.variant === 'banner' ? !!copy.value && showLandingNotice.value : !!copy.value
 )
 </script>
 
@@ -79,16 +81,6 @@ const visible = computed(() =>
       </button>
       <button v-if="copy.action" type="button" class="push-off-cta" :disabled="busy" @click="onAction">
         {{ copy.action }}
-      </button>
-      <button
-        v-if="variant === 'strip'"
-        type="button"
-        class="push-off-close"
-        aria-label="Not now"
-        title="Not now"
-        @click="snoozeLanding"
-      >
-        <font-awesome-icon icon="fa-solid fa-xmark" aria-hidden="true" />
       </button>
     </div>
     <UnblockGuide v-if="guideOpen" :browser="browser" @close="guideOpen = false" />
@@ -137,8 +129,7 @@ const visible = computed(() =>
   flex-shrink: 0;
 }
 
-.push-off-dismiss,
-.push-off-close {
+.push-off-dismiss {
   background: none;
   border: none;
   /* --muted2 falls short of 4.5:1 on the amber background in the light theme */
@@ -149,8 +140,7 @@ const visible = computed(() =>
   transition: var(--transition-fast);
 }
 
-.push-off-dismiss:hover,
-.push-off-close:hover {
+.push-off-dismiss:hover {
   color: var(--text);
 }
 
@@ -213,15 +203,6 @@ const visible = computed(() =>
 .push-off--strip .push-off-cta {
   padding: 5px 10px;
   font-size: 12.5px;
-}
-
-.push-off--strip .push-off-close {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @media (max-width: 640px) {

@@ -1,6 +1,9 @@
 import type { Locator, Page } from '@playwright/test'
 import { step } from '../support/step'
 
+// The headings of the four states: off, blocked, iPhone Safari, failed
+const PUSH_OFF_TITLE = /^(Notifications are (off on this device|blocked in this browser)|Add ChatterMate to your Home Screen|Couldn't set up notifications)$/
+
 /**
  * "Notifications are off on this device": the line in the notification
  * drawer, the landing banner (header pages) or inbox strip, the bell, and the
@@ -28,9 +31,9 @@ export class PushNotices {
     return this.drawer.getByRole('status')
   }
 
-  /** The banner on header pages, or the slim strip above the inbox list. */
+  /** The banner on header pages, or the slim strip above the inbox list. Named by its heading. */
   get landing(): Locator {
-    return this.page.getByRole('main').getByRole('status').filter({ has: this.page.getByRole('button', { name: 'Not now' }) })
+    return this.page.getByRole('main').getByRole('status', { name: PUSH_OFF_TITLE })
   }
 
   /** The first-time floating card. */
