@@ -304,6 +304,13 @@ class Settings(BaseSettings):
     GUARDRAIL_EVENTS_ENABLED: bool = os.getenv("GUARDRAIL_EVENTS_ENABLED", "true").lower() == "true"
     GUARDRAIL_STORE_EXCERPT: bool = os.getenv("GUARDRAIL_STORE_EXCERPT", "true").lower() == "true"
 
+    # Chat agent prompt changes, each switchable so turning one off restores
+    # the prompt it replaced byte for byte (tests/agents/test_golden_prompts.py).
+    # AGENT_LINKS_DEFER_TO_INSTRUCTIONS -> the "share URLs from search results"
+    #                                      rule gives way when the agent's own
+    #                                      instructions say not to share links.
+    AGENT_LINKS_DEFER_TO_INSTRUCTIONS: bool = os.getenv("AGENT_LINKS_DEFER_TO_INSTRUCTIONS", "true").lower() == "true"
+
     # Help center (public FAQ site)
     # How the public help center URL is advertised (live_url):
     #   "path"      -> {BACKEND_URL}/help/{slug}, served same-origin as the API.
