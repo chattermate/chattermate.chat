@@ -5428,6 +5428,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shopify/proxy/page/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront Proxy Page
+         * @description Shopify forwards the storefront's /apps/chattermate/page/<name> here,
+         *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
+         *     The body is never read (a mail client's one-click POST carries nothing we use).
+         */
+        get: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
+        put?: never;
+        /**
+         * Storefront Proxy Page
+         * @description Shopify forwards the storefront's /apps/chattermate/page/<name> here,
+         *     signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
+         *     The body is never read (a mail client's one-click POST carries nothing we use).
+         */
+        post: operations["storefront_proxy_page_api_v1_shopify_proxy_page__name__get"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shopify/proxy/identity": {
         parameters: {
             query?: never;
@@ -21035,6 +21063,68 @@ export interface operations {
             header?: never;
             path: {
                 action: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storefront_proxy_page_api_v1_shopify_proxy_page__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
             };
             cookie?: never;
         };
