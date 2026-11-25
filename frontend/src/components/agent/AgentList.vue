@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 
 import type { Agent } from '@/types/agent';
+import { AGENT_ONLINE_TOAST, AGENT_OFFLINE_TOAST } from '@/utils/agentStatus'
 import type { Widget } from '@/types/widget';
 import { resolveUploadUrl } from '@/config/api'
 import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
@@ -68,7 +69,7 @@ const toggleAgentActive = async (agent: Agent) => {
         const updated = await agentService.updateAgent(agent.id, { is_active: !agent.is_active })
         const idx = agents.value.findIndex(a => a.id === agent.id)
         if (idx !== -1) agents.value[idx] = updated
-        toast.success(updated.is_active ? 'Agent is now online' : 'Agent set offline')
+        toast.success(updated.is_active ? AGENT_ONLINE_TOAST : AGENT_OFFLINE_TOAST)
     } catch (err) {
         console.error('Failed to toggle agent status:', err)
         toast.error('Failed to update agent status')

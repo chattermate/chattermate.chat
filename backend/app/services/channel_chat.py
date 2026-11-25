@@ -45,7 +45,9 @@ from app.repositories.channels import (
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
 from app.services.app_first_routing import announce_inbound, app_claims, text_reply
-from app.services.chat_notifications import notify_new_channel_chat_once, team_not_yet_notified
+from app.services.chat_notifications import (
+    notify_new_channel_chat_once, notify_team_chat_waits, team_not_yet_notified,
+)
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
 from app.services.conversation_token import VERIFIED_SCOPE
@@ -76,10 +78,12 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
 
         adapter = get_adapter(account.channel_type)
 
+        # With no agent assigned the message still reaches the team's inbox;
+        # only the AI stays out of it (see agent_uses_ai below).
         agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)
         if agent_id is None:
-            logger.warning(f"No agent configured for {account.channel_type} account {account.id}")
-            return
+            logger.info(f"No agent assigned to {account.channel_type} account {account.id}; "
+                        f"queueing the message for the team")
 
         org_id = str(account.organization_id)
         customer_id = _get_or_create_customer(db, account, inbound, org_id)
@@ -99,11 +103,12 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             if state:
                 ChannelConversationRepository(db).merge_extra(conversation, state)
 
-        # A human-only agent answers nothing — the chat waits in the inbox for
+        # An agent that doesn't answer with AI (Offline, AI replies off, or no
+        # agent assigned) answers nothing — the chat waits in the inbox for
         # someone to pick it up, so it takes the same path as one a human
         # already holds.
-        agent = AgentRepository(db).get_agent(agent_id)
-        agent_uses_ai = agent.ai_replies_enabled if agent else True
+        agent = AgentRepository(db).get_agent(agent_id) if agent_id is not None else None
+        agent_uses_ai = agent is not None and agent.answers_with_ai
         # The plan can switch the AI off too, for this message only: the
         # conversation stays as it is, so the AI is back as soon as it's allowed
         ai_config = AIConfigRepository(db).get_active_config(account.organization_id)
@@ -130,7 +135,9 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             return
 
         # From here the team (AI or inbox) is answering
-        await notify_new_channel_chat_once(db, session_record, conversation)
+        announced = await notify_new_channel_chat_once(db, session_record, conversation)
+        if not agent_uses_ai:
+            await notify_team_chat_waits(db, session_record, announced=announced)
 
         # Human is handling (or a transfer is pending, or this agent never uses
         # AI): store + relay to the agent dashboard, never run the bot.
@@ -379,6 +386,11 @@ def _agent_changed(session_record, agent_id) -> bool:
     return str(session_record.agent_id) != str(agent_id)
 
 
+def _id_or_none(value) -> Optional[str]:
+    """An id as a string, keeping None as None (str(None) is "None")."""
+    return str(value) if value is not None else None
+
+
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,
                            agent_id, customer_id: str, org_id: str):
     """Find the open session for this platform conversation or start a new one.
@@ -406,7 +418,7 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
     session_id = str(uuid.uuid4())
     session_record = session_repo.create_session(
         session_id=session_id,
-        agent_id=str(agent_id),
+        agent_id=_id_or_none(agent_id),
         customer_id=customer_id,
         organization_id=org_id,
         channel=account.channel_type,
@@ -449,7 +461,7 @@ def _store_customer_message(db: Session, inbound: InboundMessage, session_record
         "message_type": "user",
         "session_id": str(session_record.session_id),
         "organization_id": org_id,
-        "agent_id": str(agent_id),
+        "agent_id": _id_or_none(agent_id),
         "customer_id": customer_id,
         "attributes": inbound_attributes(inbound, account.channel_type),
     }

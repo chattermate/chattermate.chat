@@ -20,6 +20,7 @@ from uuid import uuid4
 import pytest
 
 from app.api import widget_chat
+from app.models.agent import Agent
 from app.models.session_to_agent import SessionStatus
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
@@ -61,6 +62,13 @@ def chat(db, test_widget, test_ai_config, test_customer, sio, monkeypatch):
                      customer_id=test_customer.id)
     monkeypatch.setattr(widget_chat, "_own_session", lambda repo, session, active_only=True: live)
     return live
+
+
+def set_agent(db, agent_id, **values):
+    agent = db.query(Agent).filter(Agent.id == agent_id).one()
+    for name, value in values.items():
+        setattr(agent, name, value)
+    db.commit()
 
 
 def plan_says(monkeypatch, allowed):
@@ -141,7 +149,7 @@ class TestWidgetWithAiOff:
 
     async def test_a_human_only_agents_queued_chat_costs_no_model_call(self, db, chat, sio, monkeypatch):
         plan_says(monkeypatch, False)
-        sio.get_session.return_value["ai_replies_enabled"] = False
+        set_agent(db, chat.agent_id, ai_replies_enabled=False)
         chat.status = SessionStatus.TRANSFERRED
         # With groups, the queued reply would be written by the availability model.
         monkeypatch.setattr(widget_chat.JiraRepository, "get_agent_with_jira_config",
@@ -164,6 +172,38 @@ class TestWidgetWithAiOff:
         asked.assert_not_called()
         history = await ChatRepository(db).get_session_history(str(chat.session_id))
         assert [m.message_type for m in history] == ["user"]
+
+    async def test_setting_the_agent_offline_stops_the_ai_in_an_open_chat(self, db, chat, sio, monkeypatch):
+        plan_says(monkeypatch, True)
+
+        create_async, _ = await send("one")
+        assert create_async.await_count == 1
+
+        set_agent(db, chat.agent_id, is_active=False)
+        create_async, _ = await send("two")
+
+        create_async.assert_not_awaited()
+        assert "chat_reply" in event_names(sio)
+
+    async def test_an_agent_set_offline_mid_chat_pages_the_team_once(self, db, chat, sio, monkeypatch):
+        plan_says(monkeypatch, True)
+        paged = AsyncMock()
+        monkeypatch.setattr("app.services.chat_notifications.notify_new_chat", paged)
+        real = SessionToAgentRepository(db).get_session(str(chat.session_id))
+        monkeypatch.setattr(widget_chat, "_own_session", lambda repo, s, active_only=True: real)
+        # The AI answered the opening message (the model is faked, so store it here)
+        ChatRepository(db).create_message({
+            "message": "one", "message_type": "user", "session_id": str(chat.session_id),
+            "organization_id": str(chat.organization_id), "agent_id": str(chat.agent_id),
+            "customer_id": str(chat.customer_id)})
+
+        set_agent(db, chat.agent_id, is_active=False)
+        await send("two")
+        await send("three")
+
+        assert paged.await_count == 1
+        db.refresh(real)
+        assert real.handed_over_at is not None
 
     async def test_the_check_runs_on_every_message_not_at_connect(self, chat, sio, monkeypatch):
         asked = MagicMock(return_value=False)

@@ -15,6 +15,8 @@ limitations under the License.
 """
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, Enum as SQLEnum, ForeignKey, JSON, Table, Float, func
+from sqlalchemy import and_
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.brand import BRAND_COLORS
@@ -110,7 +112,9 @@ class Agent(Base):
     agent_type = Column(SQLEnum(AgentType), nullable=False)
     _instructions = Column('instructions', Text, nullable=False)
     tools = Column(Text)  # Stored as JSON array of tool configurations
-    is_active = Column(Boolean, default=False)
+    # Online/Offline. Offline stops the AI answering (see answers_with_ai); a
+    # new agent starts Online, as the dashboard creates it.
+    is_active = Column(Boolean, default=True)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"))
     is_default = Column(Boolean, default=False)
     transfer_to_human = Column(Boolean, default=False, nullable=False)
@@ -188,6 +192,18 @@ class Agent(Base):
         foreign_keys="[Workflow.agent_id]",
         back_populates="agent"
     )
+
+    @hybrid_property
+    def answers_with_ai(self) -> bool:
+        """The AI replies to this agent's chats: it is Online and AI replies are
+        on. Offline, or with AI replies off, every chat waits for the team.
+        Only an explicit False counts, so a row with neither set still answers."""
+        return self.is_active is not False and self.ai_replies_enabled is not False
+
+    @answers_with_ai.expression
+    def answers_with_ai(cls):
+        return and_(cls.is_active.isnot(False), cls.ai_replies_enabled.isnot(False))
+
     @property
     def instructions(self):
         """Get instructions as a list"""

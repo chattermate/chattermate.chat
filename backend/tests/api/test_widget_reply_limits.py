@@ -54,7 +54,7 @@ def chat(db, monkeypatch, test_widget, test_customer, test_ai_config):
     held = {"user_id": None}
     monkeypatch.setattr(widget_chat, "_own_session", lambda repo, s, active_only=True: MagicMock(
         session_id=session["session_id"], status=widget_chat.SessionStatus.OPEN,
-        user_id=held["user_id"], workflow_id=None))
+        user_id=held["user_id"], workflow_id=None, agent_id=test_widget.agent_id))
     monkeypatch.setattr(widget_chat, "notify_new_chat", AsyncMock())
     model = AsyncMock(side_effect=ModelCalled)
     monkeypatch.setattr(widget_chat, "create_widget_agent", model)

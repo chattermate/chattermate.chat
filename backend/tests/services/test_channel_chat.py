@@ -93,12 +93,77 @@ def mock_sio(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_drops_message_when_no_agent_routed(db, account, use_test_db, test_ai_config):
-    with patch.object(channel_chat, "ChatAgent") as mock_agent:
-        await process_channel_message(account.id, make_inbound())
-        mock_agent.create_async.assert_not_called()
-    # No session created
-    assert db.query(ChannelConversation).count() == 0
+async def test_a_channel_with_no_agent_still_reaches_the_team(db, account, use_test_db,
+                                                             test_ai_config, mock_sio):
+    """Unassigning the agent stops the AI, not the inbox: the message is kept
+    and waits for the team, exactly like an agent with AI replies off."""
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()) as create_async, \
+         patch("app.services.chat_notifications.notify_new_chat", AsyncMock()) as notified, \
+         patch("app.services.human_routing.deliver_to_customer",
+               AsyncMock(return_value=DeliveryResult(ok=True))) as ack:
+        await process_channel_message(account.id, make_inbound("anyone there?"))
+        create_async.assert_not_awaited()
+        assert notified.await_count == 1
+        assert ack.await_count == 1
+        assert ack.await_args.args[2]['message'] == HUMAN_ONLY_ACK
+
+    conversation = db.query(ChannelConversation).one()
+    session = db.query(SessionToAgent).filter_by(session_id=conversation.session_id).one()
+    assert session.agent_id is None
+    assert session.status == SessionStatus.OPEN and session.user_id is None
+    stored = db.query(ChatHistory).filter_by(session_id=session.session_id,
+                                             message_type="user").one()
+    assert stored.agent_id is None
+
+
+@pytest.mark.asyncio
+async def test_an_agent_set_offline_mid_chat_pages_the_team_once(db, routed_account, use_test_db,
+                                                                 test_ai_config, test_agent, mock_sio):
+    response = SimpleNamespace(message="ok", transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=response)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock()), \
+         patch("app.services.chat_notifications.notify_new_chat", AsyncMock()) as paged:
+        await process_channel_message(routed_account.id, make_inbound("hi"))
+        assert paged.await_count == 1  # the new chat, as before
+
+        test_agent.is_active = False
+        db.commit()
+        await process_channel_message(routed_account.id, make_inbound("still there?"))
+        await process_channel_message(routed_account.id, make_inbound("hello?"))
+        # Once for the chat that now waits for them, not for every message
+        assert paged.await_count == 2
+
+    session = db.query(SessionToAgent).one()
+    assert session.handed_over_at is not None
+
+
+@pytest.mark.asyncio
+async def test_assigning_an_agent_again_starts_a_fresh_ai_session(db, account, use_test_db,
+                                                                  test_ai_config, test_agent, mock_sio):
+    with patch("app.services.human_routing.deliver_to_customer",
+               AsyncMock(return_value=DeliveryResult(ok=True))):
+        await process_channel_message(account.id, make_inbound("before"))
+    AgentChannelConfigRepository(db).set_agent(account.id, test_agent.id)
+
+    response = SimpleNamespace(message="hi", transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=response)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)) as create_async, \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
+        await process_channel_message(account.id, make_inbound("after"))
+        create_async.assert_awaited_once()
+
+    sessions = {s.agent_id: s for s in db.query(SessionToAgent).all()}
+    assert set(sessions) == {None, test_agent.id}
+    # The unassigned thread is retired so the agent starts clean
+    assert sessions[None].status == SessionStatus.CLOSED
+    assert sessions[test_agent.id].status == SessionStatus.OPEN
 
 
 @pytest.mark.asyncio
@@ -369,14 +434,17 @@ async def test_human_handling_relays_and_skips_bot(db, routed_account, use_test_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("switched_off", ["ai_replies_enabled", "is_active"])
 async def test_human_only_agent_never_runs_the_bot(db, routed_account, use_test_db,
-                                                   test_ai_config, test_agent, mock_sio):
-    """AI switched off on the agent: relay to the dashboard, never model.
+                                                   test_ai_config, test_agent, mock_sio,
+                                                   switched_off):
+    """AI replies off, or the agent set Offline: relay to the dashboard, never
+    model.
 
     No transfer either — the chat simply waits for someone to pick it up, so
     the customer gets no automated reply.
     """
-    test_agent.ai_replies_enabled = False
+    setattr(test_agent, switched_off, False)
     db.commit()
 
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock()) as create_async, \
@@ -698,7 +766,7 @@ class TestChoices:
     @pytest.mark.asyncio
     async def test_human_path_stores_and_relays_the_tap(self, db, whatsapp_account, use_test_db, mock_sio):
         with patch.object(channel_chat.AgentRepository, "get_agent",
-                          return_value=SimpleNamespace(ai_replies_enabled=False, channel_quick_replies=False)), \
+                          return_value=SimpleNamespace(answers_with_ai=False, channel_quick_replies=False)), \
              patch.object(channel_chat, "notify_customer", AsyncMock()):
             await process_channel_message(whatsapp_account.id, _wa_tap())
 

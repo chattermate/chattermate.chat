@@ -57,7 +57,7 @@ from app.repositories.agent import AgentRepository
 from app.services.agent_rooms import (
     USER_MESSAGE, emit_to_org_inbox, is_org_inbox_room, may_join_org_inbox, relay_stored_message,
 )
-from app.services.chat_notifications import notify_new_chat
+from app.services.chat_notifications import notify_new_chat, notify_team_chat_waits
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
     HUMAN_ONLY_ACK,
@@ -432,9 +432,6 @@ async def widget_connect(sid, environ, auth):
             'requests_per_sec': requests_per_sec,
             'messages_per_customer_per_minute': agent.messages_per_customer_per_minute if agent else None,
             'replies_per_customer_per_day': agent.replies_per_customer_per_day if agent else None,
-            # Cached like use_workflow: read once per connection so the
-            # human-only check costs no query per message.
-            'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
             'use_workflow': agent.use_workflow if agent else False,
             # The agent may offer its choices as buttons (the same switch as on
             # the messaging channels)
@@ -669,8 +666,11 @@ async def handle_widget_chat(sid, data):
         # the message to fall through to the plain store-and-relay at the end,
         # exactly like a chat a human already holds. notify_new_chat above has
         # already told the team it is waiting.
-        # Older sessions predate the cached flag, so default to answering.
-        agent_uses_ai = session.get('ai_replies_enabled', True)
+        # Read per message, not at connect: setting the agent Offline (or AI
+        # replies off) must stop the AI in chats that are already open.
+        agent_uses_ai = AgentRepository(db).answers_with_ai(active_session.agent_id)
+        if not agent_uses_ai:
+            await notify_team_chat_waits(db, active_session, announced=is_first_customer_message)
         # The plan can switch the AI off too, for this message only. Read per
         # message, not at connect: a socket can stay open past the limit.
         # Asked for human-only agents as well: a queued chat's availability
@@ -980,7 +980,7 @@ async def handle_widget_chat(sid, data):
 
 
 @sio.on('get_chat_history', namespace='/widget')
-@socket_rate_limit(namespace='/widget')
+@socket_rate_limit(namespace='/widget', read_only=True)
 async def get_widget_chat_history(sid):
     db = None
     try:
@@ -1588,7 +1588,7 @@ _workflow_starts = KeyedLock()
 
 
 @sio.on('get_workflow_state', namespace='/widget')
-@socket_rate_limit(namespace='/widget') 
+@socket_rate_limit(namespace='/widget', read_only=True)
 async def handle_get_workflow_state(sid):
     """Get current workflow state and execute next node if no chat history"""
     db = None

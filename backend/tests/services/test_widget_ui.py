@@ -64,7 +64,7 @@ class TestBothVisitorRoutesServeTheRedesign:
             widget_position=WidgetPosition.FLOATING,
             customization_metadata=metadata,
         )
-        return SimpleNamespace(customization=customization, organization_id=uuid4(), ai_replies_enabled=True)
+        return SimpleNamespace(customization=customization, organization_id=uuid4(), answers_with_ai=True)
 
     @pytest.mark.parametrize("metadata", [{"widget_ui": {"version": 1}}, {}])
     def test_get_route(self, metadata):

@@ -403,6 +403,9 @@ import {
   // (so the "Chat Unavailable" card stays reachable), or a timeout as a last resort.
   let buttonRevealed = false
   let revealTimeoutId = null
+  // The pending opening-line timer, so destroy() can cancel it instead of letting it
+  // fire against a torn-down page.
+  let peekTimeoutId = null
   const onRevealCallbacks = []
   const LOGO_REVEAL_WAIT_MS = 1500
 
@@ -1612,6 +1615,10 @@ import {
         clearTimeout(revealTimeoutId)
         revealTimeoutId = null
       }
+      if (peekTimeoutId) {
+        clearTimeout(peekTimeoutId)
+        peekTimeoutId = null
+      }
       onRevealCallbacks.length = 0
       config.unreadCount = 0
       config.hasOpened = false
@@ -2114,7 +2121,8 @@ import {
     // launcher that isn't on screen yet; a returning visitor's cached look can
     // reveal it straight away).
     onReveal(() => {
-      setTimeout(() => {
+      peekTimeoutId = setTimeout(() => {
+        peekTimeoutId = null
         if (isDestroyed || isOpen || !shouldShowInitiation()) return
         if (panel.show('', getRandomInitiationMessage())) markInitiationShown()
       }, PEEK_DWELL_MS)

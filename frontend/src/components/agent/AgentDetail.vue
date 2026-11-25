@@ -18,6 +18,7 @@ limitations under the License.
 import { useRouter } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
+import { AGENT_ONLINE_TOAST, AGENT_OFFLINE_TOAST } from '@/utils/agentStatus'
 import { getApiUrl, getWidgetUrl, resolveUploadUrl } from '@/config/api'
 import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbVariantToKeep, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
@@ -629,7 +630,7 @@ const handleStatusToggle = async (event: Event) => {
         // Update storage to keep data in sync
         agentStorage.updateAgent(updatedAgent)
         
-        toast.success(`Agent ${newStatus ? 'activated' : 'deactivated'} successfully`, {
+        toast.success(newStatus ? AGENT_ONLINE_TOAST : AGENT_OFFLINE_TOAST, {
             duration: 3000,
             closeButton: true
         })
@@ -818,7 +819,8 @@ onMounted(async () => {
                             <div class="status-toggle">
                                 <label class="status-switch">
                                     <input 
-                                        type="checkbox" 
+                                        type="checkbox"
+                                        aria-label="Agent online"
                                         :checked="agentData.is_active"
                                         @change="handleStatusToggle"
                                     >

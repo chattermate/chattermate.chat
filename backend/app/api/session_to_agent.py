@@ -225,9 +225,13 @@ async def release_chat_to_ai(
 
         if session.status == SessionStatus.CLOSED:
             raise HTTPException(status_code=400, detail="This chat is closed")
-        if session.agent is not None and session.agent.ai_replies_enabled is False:
+        if session.agent is None:
+            raise HTTPException(status_code=400, detail="This chat has no agent")
+        if not session.agent.answers_with_ai:
             raise HTTPException(
-                status_code=400, detail="This agent doesn't answer with AI")
+                status_code=400,
+                detail=("This agent is offline" if session.agent.is_active is False
+                        else "This agent doesn't answer with AI"))
         if (session.user_id is None and session.group_id is None
                 and session.status == SessionStatus.OPEN):
             raise HTTPException(

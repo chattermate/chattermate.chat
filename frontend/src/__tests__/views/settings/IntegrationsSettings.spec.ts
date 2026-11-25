@@ -245,13 +245,13 @@ describe('IntegrationsSettings: accounts no agent answers', () => {
   it('warns on the card that messages are not answered', async () => {
     const wrapper = await mountWith([page('1', null)])
     expect(wrapper.find('[data-testid="no-agent-messenger"]').text())
-      .toContain("No agent: messages aren't answered.")
+      .toContain("No agent: messages wait in your inbox.")
   })
 
   it('names only the Pages without an agent', async () => {
     const wrapper = await mountWith([page('1', 'ag1', 'Shop'), page('2', null, 'Demo')])
     expect(wrapper.find('[data-testid="no-agent-messenger"]').text())
-      .toContain("No agent on Demo: messages aren't answered.")
+      .toContain("No agent on Demo: messages wait in your inbox.")
   })
 
   it('Assign agent opens the Page that has none', async () => {

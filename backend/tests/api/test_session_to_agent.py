@@ -903,6 +903,8 @@ def test_release_takes_a_chat_out_of_the_queue(
     ("closed", "This chat is closed"),
     ("ai", "The AI is already handling this chat"),
     ("human_only_agent", "This agent doesn't answer with AI"),
+    ("offline_agent", "This agent is offline"),
+    ("no_agent", "This chat has no agent"),
 ])
 def test_release_refuses_when_there_is_nothing_to_hand_back(
     client_with_error_mock, db, user_with_manage_chats_permission, create_chat_session,
@@ -913,6 +915,10 @@ def test_release_refuses_when_there_is_nothing_to_hand_back(
         session.status = SessionStatus.CLOSED
     elif state == "ai":
         session.user_id = None
+    elif state == "offline_agent":
+        test_agent.is_active = False
+    elif state == "no_agent":
+        session.agent_id = None
     else:
         test_agent.ai_replies_enabled = False
     db.commit()

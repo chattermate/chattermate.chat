@@ -328,6 +328,7 @@ class TestHandleWidgetChat:
         mock_session = MagicMock()
         mock_session.session_id = session_id
         mock_session.workflow_id = test_workflow.id
+        mock_session.agent_id = test_widget.agent_id
         mock_session.status = SessionStatus.OPEN
         mock_session.user_id = None  # No human agent
         mock_session.current_node_id = None
