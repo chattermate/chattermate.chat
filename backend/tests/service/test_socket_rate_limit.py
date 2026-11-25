@@ -428,3 +428,18 @@ async def test_rate_limit_per_second_exceeded(mock_redis):
         assert args[0] == 'error'
         assert 'You\'re sending messages too quickly' in args[1]['error']
         assert result is None 
+
+@pytest.mark.parametrize("rps,expected", [
+    (10, (1, 10)),
+    (1, (1, 1)),
+    (2.5, (1, 2)),
+    (0.5, (2, 1)),
+    (0.3, (4, 1)),
+    (0, (1, 1)),
+    (None, (1, 1)),
+])
+def test_rate_window_is_always_a_valid_redis_expiry(rps, expected):
+    from app.services.socket_rate_limit import rate_window
+    window, max_requests = rate_window(rps)
+    assert (window, max_requests) == expected
+    assert window >= 1 and max_requests >= 1

@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import math
 import redis
 import functools
 from app.core.config import settings
@@ -47,6 +48,20 @@ if settings.REDIS_ENABLED:
     except Exception as e:
         logger.error(f"Failed to initialize Redis client: {str(e)}")
         redis_client = None
+
+
+def rate_window(requests_per_sec):
+    """Return (window_seconds, max_requests) for a requests-per-second setting.
+
+    Redis expiry must be a whole number of seconds >= 1. Rates below 1/sec widen the
+    window (0.5/sec -> 1 request per 2s); rates of 1/sec or more allow that many
+    requests in a 1s window (10/sec -> 10 requests per 1s).
+    """
+    if not requests_per_sec or requests_per_sec <= 0:
+        return 1, 1
+    if requests_per_sec < 1:
+        return math.ceil(1 / requests_per_sec), 1
+    return 1, math.floor(requests_per_sec)
 
 
 def socket_rate_limit(namespace='/widget'):
@@ -170,8 +185,7 @@ def socket_rate_limit(namespace='/widget'):
                         )
                     
                     # Check rate limit (requests per second)
-                    # Convert to window in seconds (e.g., 1 req/sec = 1 req per 1 second window)
-                    rate_window = int(1 / requests_per_sec) if requests_per_sec > 0 else 1
+                    window_seconds, max_requests = rate_window(requests_per_sec)
                     rate_key = f"rate:{agent_id}:{client_ip}"
                     
                     rate_current = await asyncio.wait_for(
@@ -183,12 +197,12 @@ def socket_rate_limit(namespace='/widget'):
                     if rate_current is None:
                         # First request, set initial count
                         await asyncio.wait_for(
-                            loop.run_in_executor(None, redis_client.setex, rate_key, rate_window, 1),
+                            loop.run_in_executor(None, redis_client.setex, rate_key, window_seconds, 1),
                             timeout=5.0
                         )
                     else:
                         rate_current = int(rate_current)
-                        if rate_current >= 1:  # Only 1 request allowed per rate window
+                        if rate_current >= max_requests:
                             # Calculate time until reset
                             ttl = await asyncio.wait_for(
                                 loop.run_in_executor(None, redis_client.ttl, rate_key),
