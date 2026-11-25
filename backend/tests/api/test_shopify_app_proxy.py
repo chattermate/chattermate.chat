@@ -228,3 +228,155 @@ class TestStoreVerifiedEmail:
     def test_anything_else_proves_nothing(self, claims):
         assert proxy.store_verified_email(claims) is None
 
+
+
+class TestProxyActions:
+    """Storefront forms posted through the App Proxy (run_proxy_action)."""
+
+    @pytest.fixture
+    def action(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._actions, "notify", lambda db, shop, params, fields: (
+            seen.append((shop.shop_domain, params.get("shop"), fields)) or (200, {"status": "ok"})))
+        return seen
+
+    def test_a_signed_post_reaches_the_action_with_its_store(self, db, store, action):
+        status, body = proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {"email": "a@x.com"})
+        assert (status, body) == (200, {"status": "ok"})
+        assert action == [(store.shop_domain, store.shop_domain, {"email": "a@x.com"})]
+
+    def test_an_unknown_action_is_not_found(self, db, store, action):
+        assert proxy.run_proxy_action(db, "nope", _signed(shop=store.shop_domain), {})[0] == 404
+
+    def test_a_bad_signature_is_refused(self, db, store, action):
+        query = _signed("wrong-secret", shop=store.shop_domain)
+        assert proxy.run_proxy_action(db, "notify", query, {})[0] == 401
+        assert action == []
+
+    def test_the_store_comes_from_the_signed_query_not_the_form(self, db, store, action):
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {"shop": "victim.myshopify.com"})
+        assert action[0][0] == store.shop_domain
+
+    @pytest.mark.parametrize("change", ["uninstalled", "unlinked", "unknown"])
+    def test_a_store_not_installed_and_linked_is_unavailable(self, db, store, action, change):
+        domain = store.shop_domain
+        if change == "uninstalled":
+            store.is_installed = False
+        elif change == "unlinked":
+            store.organization_id = None
+        else:
+            domain = "nobody.myshopify.com"
+        db.commit()
+        assert proxy.run_proxy_action(db, "notify", _signed(shop=domain), {}) == (200, {"status": "unavailable"})
+        assert action == []
+
+    def test_fields_that_arent_an_object_reach_the_action_as_empty(self, db, store, action):
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), ["a@x.com"])
+        assert action[0][2] == {}
+
+    def test_the_route_refuses_big_or_broken_bodies_and_never_caches(self, monkeypatch):
+        from app.api import shopify as shopify_api
+        from app.main import app
+        monkeypatch.setattr(proxy, "run_proxy_action", lambda db, name, query, fields: (200, {"status": "ok"}))
+        client = TestClient(app)
+        ok = client.post("/api/v1/shopify/proxy/notify", json={"email": "a@x.com"})
+        assert ok.status_code == 200 and "no-store" in ok.headers["cache-control"]
+        big = client.post("/api/v1/shopify/proxy/notify", content=b"x" * (shopify_api.PROXY_ACTION_MAX_BYTES + 1))
+        assert big.status_code == 413
+        broken = client.post("/api/v1/shopify/proxy/notify", content=b"{nope",
+                             headers={"Content-Type": "application/json"})
+        assert broken.status_code == 400
+
+    def test_a_failing_action_answers_unavailable(self, monkeypatch):
+        from app.main import app
+
+        def broken(db, name, query, fields):
+            raise RuntimeError("db down")
+        monkeypatch.setattr(proxy, "run_proxy_action", broken)
+        response = TestClient(app).post("/api/v1/shopify/proxy/notify", json={})
+        assert response.status_code == 503 and response.json() == {"error": "unavailable"}
+
+
+class TestProxyPages:
+    """Storefront pages served through the App Proxy (run_proxy_page)."""
+
+    @pytest.fixture
+    def page(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._pages, "leave", lambda db, shop, params, method: (
+            seen.append((shop.shop_domain, params.get("t"), method)) or (200, "<p>done</p>")))
+        return seen
+
+    def test_a_signed_request_reaches_the_page_with_its_store_and_method(self, db, store, page):
+        for method in ("GET", "POST"):
+            assert proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, t="abc"), method) == (200, "<p>done</p>")
+        assert page == [(store.shop_domain, "abc", "GET"), (store.shop_domain, "abc", "POST")]
+
+    def test_a_bad_signature_an_unknown_page_or_store_get_nothing(self, db, store, page):
+        assert proxy.run_proxy_page(db, "leave", _signed("wrong-secret", shop=store.shop_domain), "GET")[0] == 401
+        assert proxy.run_proxy_page(db, "nope", _signed(shop=store.shop_domain), "GET")[0] == 404
+        assert proxy.run_proxy_page(db, "leave", _signed(shop="nobody.myshopify.com"), "GET")[0] == 404
+        assert page == []
+
+    def test_a_page_lives_under_the_app_proxy_on_the_stores_domain(self):
+        assert (proxy.storefront_page_url("https://shop.example/", "leave", {"t": "a b"})
+                == "https://shop.example/apps/chattermate/page/leave?t=a+b")
+        assert (proxy.storefront_page_url("https://shop.example", "leave", {"t": "x"}, prefix="/a/alerts")
+                == "https://shop.example/a/alerts/page/leave?t=x")
+
+
+class TestStorefrontPrefix:
+    """Where a store has the App Proxy, kept from Shopify's signed requests."""
+
+    @pytest.fixture
+    def page(self, monkeypatch):
+        monkeypatch.setattr(proxy.settings, "SHOPIFY_API_SECRET", SECRET)
+        monkeypatch.setitem(proxy._pages, "leave", lambda db, shop, params, method: (200, "ok"))
+        monkeypatch.setitem(proxy._actions, "notify", lambda db, shop, params, fields: (200, {"status": "ok"}))
+
+    def test_a_store_on_the_default_path_keeps_nothing(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+        assert proxy.storefront_prefix(store) == "/apps/chattermate"
+
+    def test_a_moved_proxy_is_kept_from_a_page_or_an_action_and_moving_back_clears_it(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, path_prefix="/a/alerts"), "GET")
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/a/alerts"
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain, path_prefix="/tools/chattermate"), {})
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/tools/chattermate"
+        proxy.run_proxy_action(db, "notify", _signed(shop=store.shop_domain), {})
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    @pytest.mark.parametrize("prefix", ["", "/evil/chattermate", "/apps/", "/apps/a/b", "https://x.example/apps/c",
+                                        "/apps/" + "x" * 61, "/apps/chatter mate"])
+    def test_a_path_shopify_couldnt_have_sent_is_not_kept(self, db, store, page, prefix):
+        proxy.run_proxy_page(db, "leave", _signed(shop=store.shop_domain, path_prefix=prefix), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    def test_an_unsigned_request_changes_nothing(self, db, store, page):
+        proxy.run_proxy_page(db, "leave", _signed("wrong-secret", shop=store.shop_domain, path_prefix="/a/x"), "GET")
+        db.refresh(store)
+        assert store.storefront_proxy_prefix is None
+
+    def test_the_identity_call_keeps_it_too(self, db, store, test_widget, signed_in):
+        proxy.identity_token(db, _query(test_widget, path_prefix="/community/cm"))
+        db.refresh(store)
+        assert proxy.storefront_prefix(store) == "/community/cm"
+
+    def test_the_route_serves_html_never_cached_nor_referred_on(self, monkeypatch):
+        from app.main import app
+        monkeypatch.setattr(proxy, "run_proxy_page", lambda db, name, query, method: (200, f"<p>{method}</p>"))
+        client = TestClient(app)
+        for method in ("get", "post"):
+            response = getattr(client, method)("/api/v1/shopify/proxy/page/leave?t=x")
+            assert response.status_code == 200 and response.text == f"<p>{method.upper()}</p>"
+            assert response.headers["content-type"].startswith("text/html")
+            assert "no-store" in response.headers["cache-control"]
+            assert response.headers["referrer-policy"] == "no-referrer"

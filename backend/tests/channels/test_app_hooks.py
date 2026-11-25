@@ -129,3 +129,13 @@ async def test_a_slow_listener_is_cut_off(monkeypatch):
     await emit_channel_event(_event())
 
     assert calls == ["a:1"]
+
+
+def test_a_text_handler_registered_twice_runs_once():
+    """Extensions can load more than once (tests, reloads): a handler is kept once."""
+    app_hooks.reset()
+    handler = AsyncMock(return_value=None)
+    app_hooks.register_text_handler(handler)
+    app_hooks.register_text_handler(handler)
+    assert app_hooks.text_handlers() == [handler]
+    app_hooks.reset()

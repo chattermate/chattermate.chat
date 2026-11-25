@@ -25,16 +25,23 @@ A shop's conversations are found through its organization. The shop row is
 deleted on uninstall, before shop/redact arrives 48 hours later, so the
 uninstall is recorded with the organization it belonged to and every request
 falls back to that record.
+
+An installed extension that keeps its own records of a store's shoppers
+registers a redact hook (register_redact_hook): customers/redact and
+shop/redact run every hook in the same transaction as the core erasure. It
+registers a data-request hook (register_data_request_hook) too, so a
+customers/data_request counts what it holds about that customer.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.channels.app_hooks import load_extensions
 from app.core.logger import get_logger
 from app.models.session_to_agent import SessionToAgent
 from app.models.shopify.agent_shopify_config import AgentShopifyConfig
@@ -50,6 +57,7 @@ TOPIC_SHOP_DISCONNECTED = "shop/disconnected"
 TOPIC_DATA_REQUEST = "customers/data_request"
 TOPIC_CUSTOMERS_REDACT = "customers/redact"
 TOPIC_SHOP_REDACT = "shop/redact"
+REDACT_TOPICS = (TOPIC_CUSTOMERS_REDACT, TOPIC_SHOP_REDACT)
 # The events that remember which organization a removed shop belonged to.
 OWNERSHIP_TOPICS = (TOPIC_APP_UNINSTALLED, TOPIC_SHOP_DISCONNECTED)
 
@@ -63,6 +71,67 @@ STATUS_AWAITING_EXPORT = "awaiting_export"
 # The channel widget_chat stamps on a conversation served by an agent wired to
 # a Shopify store — the conversations shop/redact is about.
 SHOPIFY_CHANNEL = "shopify"
+
+
+@dataclass
+class RedactRequest:
+    """The customer a hook acts on: one customer of a store (email and phone as
+    Shopify sent them), or, for shop/redact, every shopper of the store when
+    both are None. organization_id is None when the store's organization is
+    unknown."""
+    topic: str
+    shop_domain: str
+    organization_id: Optional[UUID]
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+# Erases an extension's rows for the request, staged on the caller's session
+# (never committing), and returns how many it deleted.
+RedactHook = Callable[[Session, RedactRequest], int]
+
+# {name: hook}; the name is what the compliance record counts its rows under
+_redact_hooks: Dict[str, RedactHook] = {}
+
+
+def register_redact_hook(name: str, hook: RedactHook) -> None:
+    _redact_hooks[name] = hook
+
+
+# Counts an extension's rows about the request's customer (read only)
+DataRequestHook = Callable[[Session, RedactRequest], int]
+
+# {name: hook}; the name is what the data request records its count under
+_data_request_hooks: Dict[str, DataRequestHook] = {}
+
+
+def register_data_request_hook(name: str, hook: DataRequestHook) -> None:
+    _data_request_hooks[name] = hook
+
+
+def reset_redact_hooks() -> None:
+    """Forget every registration (tests)."""
+    _redact_hooks.clear()
+    _data_request_hooks.clear()
+
+
+def _run_redact_hooks(db: Session, request: RedactRequest) -> ErasureResult:
+    """Every registered hook. One that fails fails the request, so Shopify
+    retries it: an erasure is never recorded as done with rows left behind."""
+    # The extension registers its hooks when its hooks module loads
+    load_extensions()
+    result = ErasureResult()
+    for name, hook in list(_redact_hooks.items()):
+        result.add(name, hook(db, request))
+    return result
+
+
+def _held_by_extensions(db: Session, request: RedactRequest) -> Dict[str, int]:
+    """What each extension holds about the customer, by hook name; only
+    hooks that hold something are listed."""
+    load_extensions()
+    held = {name: hook(db, request) for name, hook in list(_data_request_hooks.items())}
+    return {name: count for name, count in held.items() if count}
 
 
 @dataclass
@@ -179,12 +248,18 @@ def handle_data_request(db: Session, payload: Dict[str, Any],
     """
     def work(organization_id: UUID):
         customer = payload.get("customer") or {}
-        customer_ids = customer_erasure.find_customer_ids(
-            db, organization_id, customer.get("email"), customer.get("phone"))
-        found = ErasureResult()  # nothing erased; only the ids are recorded
-        if not customer_ids:
+        email, phone = customer.get("email"), customer.get("phone")
+        customer_ids = customer_erasure.find_customer_ids(db, organization_id, email, phone)
+        held = _held_by_extensions(db, RedactRequest(
+            topic=TOPIC_DATA_REQUEST, shop_domain=payload.get("shop_domain") or "",
+            organization_id=organization_id, email=email, phone=phone))
+        found = ErasureResult()  # nothing erased; only what is held is recorded
+        if not customer_ids and not held:
             return STATUS_NO_MATCH, found
-        found.details["customer_ids"] = sorted(str(cid) for cid in customer_ids)
+        if customer_ids:
+            found.details["customer_ids"] = sorted(str(cid) for cid in customer_ids)
+        if held:
+            found.details["held"] = held
         return STATUS_AWAITING_EXPORT, found
 
     return _run(db, TOPIC_DATA_REQUEST, payload, webhook_id,
@@ -209,6 +284,15 @@ def _run(db: Session, topic: str, payload: Dict[str, Any], webhook_id: Optional[
             _delete_shop_row(db, shop_domain)
     else:
         status, outcome = work(organization_id)
+    if topic in REDACT_TOPICS and shop_domain:
+        customer = payload.get("customer") or {}
+        erased = _run_redact_hooks(db, RedactRequest(
+            topic=topic, shop_domain=shop_domain, organization_id=organization_id,
+            email=customer.get("email") if topic == TOPIC_CUSTOMERS_REDACT else None,
+            phone=customer.get("phone") if topic == TOPIC_CUSTOMERS_REDACT else None))
+        outcome.merge(erased)
+        if status == STATUS_NO_MATCH and erased.counts:
+            status = STATUS_COMPLETED
     result = outcome.record()
 
     db.add(ShopifyComplianceEvent(

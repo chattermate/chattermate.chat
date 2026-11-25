@@ -39,6 +39,9 @@ class ShopifyShop(Base):
     refresh_token_expires_at = Column(DateTime, nullable=True)
     scope = Column(String, nullable=True)
     is_installed = Column(Boolean, default=False)
+    # Where the storefront has the app's App Proxy when the merchant moved it from
+    # /apps/chattermate (shopify_app_proxy.remember_storefront_prefix); NULL = the default
+    storefront_proxy_prefix = Column(String(80), nullable=True)
     
     # OAuth state for CSRF protection
     oauth_state = Column(String, nullable=True)

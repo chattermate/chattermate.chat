@@ -19,7 +19,7 @@ import traceback
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.utils.domain_check import InvalidWebsite, website_update
 from app.repositories.organization import OrganizationRepository
@@ -964,6 +964,80 @@ async def shopify_shop_redact_webhook(request: Request, db: Session = Depends(ge
 
 # ---- App Proxy: the storefront's signed-in customer (shopify_app_proxy.py) ----
 
+# Storefront forms posted through the App Proxy; the largest body read
+PROXY_ACTION_MAX_BYTES = 4096
+# Proxy answers are about one shopper: never kept by Shopify or a browser
+PROXY_NO_STORE = {"Cache-Control": "no-store, private"}
+
+
+async def _limited_body(request: Request, limit: int) -> Optional[bytes]:
+    """The request body, or None once it passes `limit` bytes: an oversized
+    body is never read whole, whatever its Content-Length says."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+@router.post("/proxy/{action}")
+async def storefront_proxy_action(action: str, request: Request):
+    """Shopify forwards a storefront POST to /apps/chattermate/<action> here,
+    signed (shopify_app_proxy.run_proxy_action). Never cached."""
+    query = list(request.query_params.multi_items())
+    body = await _limited_body(request, PROXY_ACTION_MAX_BYTES)
+    if body is None:
+        return JSONResponse({'error': 'too_large'}, status_code=413, headers=PROXY_NO_STORE)
+    try:
+        fields = json.loads(body) if body else {}
+    except ValueError:
+        return JSONResponse({'error': 'invalid_json'}, status_code=400, headers=PROXY_NO_STORE)
+
+    def _work():
+        with SessionLocal() as db:
+            return shopify_app_proxy.run_proxy_action(db, action, query, fields)
+
+    try:
+        status_code, result = await asyncio.to_thread(_work)
+    except Exception as e:
+        logger.error(f"Storefront action {action} failed: {e}")
+        status_code, result = 503, {'error': 'unavailable'}
+    return JSONResponse(result, status_code=status_code, headers=PROXY_NO_STORE)
+
+
+async def _storefront_page(name: str, request: Request) -> HTMLResponse:
+    """Shopify forwards the storefront's /apps/chattermate/page/<name> here,
+    signed (shopify_app_proxy.run_proxy_page): a page on the store's own domain.
+    The body is never read (a mail client's one-click POST carries nothing we use)."""
+    query = list(request.query_params.multi_items())
+
+    def _work():
+        with SessionLocal() as db:
+            return shopify_app_proxy.run_proxy_page(db, name, query, request.method)
+
+    try:
+        status_code, html = await asyncio.to_thread(_work)
+    except Exception as e:
+        logger.error(f"Storefront page {name} failed: {e}")
+        status_code, html = 503, shopify_app_proxy.NOT_FOUND_PAGE
+    # The page's token is in its URL: kept from caches and from links onward
+    return HTMLResponse(html, status_code=status_code, headers={**PROXY_NO_STORE, "Referrer-Policy": "no-referrer"})
+
+
+# One route per method, so each has a stable OpenAPI operation id
+@router.get("/proxy/page/{name}", response_class=HTMLResponse)
+async def storefront_proxy_page(name: str, request: Request):
+    """A storefront page opened through the App Proxy (_storefront_page)."""
+    return await _storefront_page(name, request)
+
+
+@router.post("/proxy/page/{name}", response_class=HTMLResponse)
+async def storefront_proxy_page_post(name: str, request: Request):
+    """A storefront page's form, or a mail client's one-click, through the App Proxy (_storefront_page)."""
+    return await _storefront_page(name, request)
+
+
 @router.get("/proxy/identity")
 async def storefront_identity(request: Request):
     """Shopify forwards the storefront's /apps/chattermate/identity here, signed.
@@ -980,4 +1054,4 @@ async def storefront_identity(request: Request):
     except Exception as e:
         logger.error(f"Storefront identity failed: {e}")
         result = None
-    return JSONResponse(result or {"token": None}, headers={"Cache-Control": "no-store, private"})
+    return JSONResponse(result or {"token": None}, headers=PROXY_NO_STORE)

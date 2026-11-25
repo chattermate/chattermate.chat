@@ -91,6 +91,8 @@ const moduleImports = {
   shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
   shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue',
   shopifyCustomize: '/src/modules/enterprise/views/ShopifyCustomizeView.vue',
+  // Back-in-stock alerts by email (the app's Automations page)
+  shopifyAutomations: '/src/modules/enterprise/views/ShopifyAutomationsView.vue',
   shopifyAppBridge: '/src/modules/enterprise/plugins/shopifyAppBridge.ts',
   shopifyAppBridgeUtilities: '/src/modules/enterprise/plugins/shopifyAppBridgeUtilities.ts',
   shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',
