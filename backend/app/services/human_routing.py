@@ -46,6 +46,8 @@ QUEUED_FOR_HUMAN_NOTICE = (
 # about transferring or passing anything on — there was no AI in the
 # conversation to hand it over. It exists so the visitor is not left staring at
 # an empty thread wondering whether the message arrived.
+# The e2e suite checks this exact text (e2e/src/api/agents.ts TEAM_WILL_REPLY):
+# change both together.
 HUMAN_ONLY_ACK = (
     "Thanks for your message. Someone from our team will reply here shortly."
 )

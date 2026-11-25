@@ -57,7 +57,7 @@ from app.repositories.agent import AgentRepository
 from app.services.agent_rooms import (
     USER_MESSAGE, emit_to_org_inbox, is_org_inbox_room, may_join_org_inbox, relay_stored_message,
 )
-from app.services.chat_notifications import notify_new_chat
+from app.services.chat_notifications import notify_new_chat, notify_team_chat_waits
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
     HUMAN_ONLY_ACK,
@@ -669,6 +669,8 @@ async def handle_widget_chat(sid, data):
         # Read per message, not at connect: setting the agent Offline (or AI
         # replies off) must stop the AI in chats that are already open.
         agent_uses_ai = AgentRepository(db).answers_with_ai(active_session.agent_id)
+        if not agent_uses_ai:
+            await notify_team_chat_waits(db, active_session, announced=is_first_customer_message)
         # The plan can switch the AI off too, for this message only. Read per
         # message, not at connect: a socket can stay open past the limit.
         # Asked for human-only agents as well: a queued chat's availability

@@ -185,6 +185,26 @@ class TestWidgetWithAiOff:
         create_async.assert_not_awaited()
         assert "chat_reply" in event_names(sio)
 
+    async def test_an_agent_set_offline_mid_chat_pages_the_team_once(self, db, chat, sio, monkeypatch):
+        plan_says(monkeypatch, True)
+        paged = AsyncMock()
+        monkeypatch.setattr("app.services.chat_notifications.notify_new_chat", paged)
+        real = SessionToAgentRepository(db).get_session(str(chat.session_id))
+        monkeypatch.setattr(widget_chat, "_own_session", lambda repo, s, active_only=True: real)
+        # The AI answered the opening message (the model is faked, so store it here)
+        ChatRepository(db).create_message({
+            "message": "one", "message_type": "user", "session_id": str(chat.session_id),
+            "organization_id": str(chat.organization_id), "agent_id": str(chat.agent_id),
+            "customer_id": str(chat.customer_id)})
+
+        set_agent(db, chat.agent_id, is_active=False)
+        await send("two")
+        await send("three")
+
+        assert paged.await_count == 1
+        db.refresh(real)
+        assert real.handed_over_at is not None
+
     async def test_the_check_runs_on_every_message_not_at_connect(self, chat, sio, monkeypatch):
         asked = MagicMock(return_value=False)
         monkeypatch.setattr(widget_chat, "plan_allows_ai", asked)

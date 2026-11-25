@@ -45,7 +45,9 @@ from app.repositories.channels import (
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
 from app.services.app_first_routing import announce_inbound, app_claims
-from app.services.chat_notifications import notify_new_channel_chat_once, team_not_yet_notified
+from app.services.chat_notifications import (
+    notify_new_channel_chat_once, notify_team_chat_waits, team_not_yet_notified,
+)
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
 from app.services.conversation_token import VERIFIED_SCOPE
@@ -132,7 +134,9 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             return
 
         # From here the team (AI or inbox) is answering
-        await notify_new_channel_chat_once(db, session_record, conversation)
+        announced = await notify_new_channel_chat_once(db, session_record, conversation)
+        if not agent_uses_ai:
+            await notify_team_chat_waits(db, session_record, announced=announced)
 
         # Human is handling (or a transfer is pending, or this agent never uses
         # AI): store + relay to the agent dashboard, never run the bot.

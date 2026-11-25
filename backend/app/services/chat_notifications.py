@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.models.session_to_agent import SessionStatus
 from app.repositories.channels import ChannelConversationRepository
 from app.repositories.user import UserRepository
 from app.services.notifications import ChatNotificationEvent, notify_chat_event
@@ -84,7 +86,7 @@ def team_not_yet_notified() -> dict:
     return {TEAM_NOTIFIED: False}
 
 
-async def notify_new_channel_chat_once(db: Session, session, conversation) -> None:
+async def notify_new_channel_chat_once(db: Session, session, conversation) -> bool:
     """notify_new_chat for a channel thread, at most once. A thread can start
     without needing the team — an external app answered it, or the business
     sent the first message — so the moment to tell them is the first time it
@@ -92,15 +94,38 @@ async def notify_new_channel_chat_once(db: Session, session, conversation) -> No
 
     The flag is claimed under the conversation's row lock, so two first
     messages processed at once page the team once. A thread a human already
-    holds is marked without paging anyone."""
+    holds is marked without paging anyone. Returns whether the team was
+    paged."""
     if conversation is None or (conversation.extra or {}).get(TEAM_NOTIFIED) is not False:
-        return
+        return False
     previous = ChannelConversationRepository(db).merge_extra(conversation, {TEAM_NOTIFIED: True})
     if (previous or {}).get(TEAM_NOTIFIED) is not False:
-        return  # another process claimed it first
+        return False  # another process claimed it first
     if getattr(session, 'user_id', None) is not None:
-        return
+        return False
     await notify_new_chat(db, session)
+    return True
+
+
+async def notify_team_chat_waits(db: Session, session, announced: bool) -> None:
+    """An open chat nobody holds, whose agent doesn't answer with AI (Offline,
+    AI replies off, or no agent): it is the team's now. Stamps when it was
+    handed to them, which starts its wait and keeps it out of "resolved by
+    AI", and pages them once. The stamp is the "told" mark: a chat switched
+    Offline mid-conversation pages on its next message, not on every one.
+    `announced` is True when the same message already paged them as a new chat.
+
+    Never raises — the customer's message must still be stored."""
+    try:
+        if (session is None or session.user_id is not None or session.handed_over_at is not None
+                or session.status != SessionStatus.OPEN):
+            return
+        session.handed_over_at = datetime.now(timezone.utc)
+        db.commit()
+        if not announced:
+            await notify_new_chat(db, session)
+    except Exception as e:
+        logger.error(f"Error telling the team a chat waits: {e}")
 
 
 async def notify_chat_assigned(db: Session, session, user_id, assigned_by: Optional[str] = None) -> None:

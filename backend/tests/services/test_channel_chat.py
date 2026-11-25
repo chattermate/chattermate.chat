@@ -117,6 +117,31 @@ async def test_a_channel_with_no_agent_still_reaches_the_team(db, account, use_t
 
 
 @pytest.mark.asyncio
+async def test_an_agent_set_offline_mid_chat_pages_the_team_once(db, routed_account, use_test_db,
+                                                                 test_ai_config, test_agent, mock_sio):
+    response = SimpleNamespace(message="ok", transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=response)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock()), \
+         patch("app.services.chat_notifications.notify_new_chat", AsyncMock()) as paged:
+        await process_channel_message(routed_account.id, make_inbound("hi"))
+        assert paged.await_count == 1  # the new chat, as before
+
+        test_agent.is_active = False
+        db.commit()
+        await process_channel_message(routed_account.id, make_inbound("still there?"))
+        await process_channel_message(routed_account.id, make_inbound("hello?"))
+        # Once for the chat that now waits for them, not for every message
+        assert paged.await_count == 2
+
+    session = db.query(SessionToAgent).one()
+    assert session.handed_over_at is not None
+
+
+@pytest.mark.asyncio
 async def test_assigning_an_agent_again_starts_a_fresh_ai_session(db, account, use_test_db,
                                                                   test_ai_config, test_agent, mock_sio):
     with patch("app.services.human_routing.deliver_to_customer",

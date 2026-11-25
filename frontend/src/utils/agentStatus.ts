@@ -16,5 +16,5 @@ limitations under the License.
 
 /** Toasts for the agent's Online/Offline switch. Offline stops the AI: every
  *  chat waits for the team until the agent is back online. */
-export const AGENT_ONLINE_TOAST = 'Agent is online. The AI is answering chats.'
+export const AGENT_ONLINE_TOAST = 'Agent is online.'
 export const AGENT_OFFLINE_TOAST = 'Agent is offline. Chats now wait for your team.'
