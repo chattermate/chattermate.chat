@@ -184,7 +184,6 @@ defineExpose({ focus: () => input.value?.focus() })
           :placeholder="isNote ? 'Write a note for your team' : 'Type a message or paste a screenshot'"
           :aria-label="isNote ? 'Note for your team' : 'Reply to the customer'"
           :disabled="!isNote && !canSend"
-          :aria-expanded="suggestions.length > 0"
           aria-autocomplete="list"
           :aria-controls="suggestions.length ? 'mention-suggestions' : undefined"
           :aria-activedescendant="suggestions.length ? `mention-${suggestions[highlighted].id}` : undefined"

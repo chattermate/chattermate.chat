@@ -104,14 +104,34 @@ export function setupPWA() {
  * when no SW gets registered (vite dev, or a failed registration), so race it
  * against a timeout instead of hanging callers forever.
  */
-// Generous enough for a cold first install on low-end devices; a miss only
-// delays token registration to the next visit.
+// Generous enough for a cold first install on most devices; past it, a worker
+// still installing is waited for (see below).
 const SW_READY_TIMEOUT_MS = 8000
 
 export async function getSWRegistration(): Promise<ServiceWorkerRegistration | undefined> {
   if (!('serviceWorker' in navigator) || isShopifyEmbedded()) return undefined
-  return Promise.race([
+  const ready = await Promise.race([
     navigator.serviceWorker.ready,
     new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), SW_READY_TIMEOUT_MS)),
   ])
+  if (ready) return ready
+
+  // A slow first install is still a worker on its way: wait it out, so push
+  // registers this visit instead of reading as failed. No worker at all (vite
+  // dev, a failed registration) is still undefined.
+  const pending = await navigator.serviceWorker.getRegistration().catch(() => undefined)
+  const worker = pending?.installing ?? pending?.waiting
+  if (!pending || !worker) return undefined
+  return (await activates(worker)) ? pending : undefined
 }
+
+// Resolves true once the worker activates, false if it is thrown away
+const activates = (worker: ServiceWorker): Promise<boolean> =>
+  new Promise((resolve) => {
+    const check = () => {
+      if (worker.state === 'activated') resolve(true)
+      else if (worker.state === 'redundant') resolve(false)
+    }
+    worker.addEventListener('statechange', check)
+    check()
+  })
