@@ -261,6 +261,29 @@ import {
     }
   }
 
+  // The launcher's look from the frame page itself (FRAME_LOOK), sent as the page
+  // parses: on a slow network the widget's own CUSTOMIZATION_UPDATE comes seconds
+  // later, after its bundle, handshake and bootstrap. Taken only from our frame and
+  // only before its handshake, so the widget's update always follows and wins.
+  // Never cached: until FRAME_READY nothing says the frame is still on our origin (a
+  // frame elsewhere on the page can navigate it), so a look from it may restyle the
+  // launcher for this page view, never for the next one.
+  function applyEarlyLook(event) {
+    const target = frameWindow()
+    if (!target || event.source !== target || frameOrigin) return
+    const look = event.data.data
+    if (!look || typeof look !== 'object' || Array.isArray(look)) return
+    applyLook({
+      ...look,
+      // As the widget sends it for an agent with no colour of its own
+      chat_bubble_color: look.chat_bubble_color || DEFAULT_LAUNCHER_COLOR,
+      // The panel's framing only matters once it opens, and is the widget's to send
+      panel: config.panel,
+    })
+    updateStyles()
+    revealWhenLogoReady()
+  }
+
   // Keyed by the widget ID at the time of use: init() may set it after load.
   function lookCache() {
     let storage = null
@@ -2267,6 +2290,11 @@ import {
   // Add message listener for customization updates
   window.addEventListener('message', function (event) {
     if (!event.data || typeof event.data.type !== 'string') return
+    // Before the handshake, so checked against the frame's window alone (see applyEarlyLook)
+    if (event.data.type === 'FRAME_LOOK') {
+      applyEarlyLook(event)
+      return
+    }
     // Only the widget iframe may drive the loader (hide/restyle/close).
     if (!isFromWidgetFrame(event)) return
     // The Ask AI palette reports how tall its content is, so the box hugs a short

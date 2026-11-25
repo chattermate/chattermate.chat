@@ -154,6 +154,36 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
                          runs_workflow=agent_runs_workflow(db, agent))
 
 
+def launcher_look(db: Session, widget: Widget) -> Optional[dict]:
+    """The launcher fields of the widget's CUSTOMIZATION_UPDATE (useWidgetCustomization.ts),
+    as the frame page sends them before the widget has started.
+
+    Only what draws the launcher, which every visitor sees on the page anyway, so
+    the page may carry it for an agent that only talks to identified visitors too.
+    Gated by the plan exactly as the widget's own copy is. None when the widget
+    serves no agent.
+    """
+    agent = WidgetRepository(db).get_widget_agent(widget)
+    if not agent:
+        return None
+    customization = agent.customization
+    if not customization:
+        metadata, logo_url = launcher.uncustomized_defaults()['customization_metadata'], None
+    else:
+        metadata, logo_url = launcher.for_visitors(db, agent)
+    return {
+        "chat_bubble_color": customization.chat_bubble_color if customization else None,
+        "chat_style": _chat_style(customization) if customization else None,
+        "widget_display": metadata.get('widget_display'),
+        "launcher": metadata.get(launcher.LAUNCHER_KEY),
+        "launcher_logo_url": logo_url,
+    }
+
+
+def _chat_style(customization) -> str:
+    return customization.chat_style.value if customization.chat_style else "CHATBOT"
+
+
 async def _customization(db: Session, agent: Agent) -> dict:
     customization = agent.customization
     if not customization:
@@ -172,7 +202,7 @@ async def _customization(db: Session, agent: Agent) -> dict:
         "accent_color": customization.accent_color,
         "font_family": customization.font_family,
         "photo_url": photo_url,
-        "chat_style": customization.chat_style.value if customization.chat_style else "CHATBOT",
+        "chat_style": _chat_style(customization),
         "widget_position": customization.widget_position.value if customization.widget_position else "FLOATING",
         "welcome_title": customization.welcome_title,
         "welcome_subtitle": customization.welcome_subtitle,
