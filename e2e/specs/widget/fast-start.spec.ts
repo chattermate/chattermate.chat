@@ -70,3 +70,66 @@ test.describe('widget fast start', () => {
     await expect(widget.launcher).not.toHaveCSS('background-color', 'rgb(16, 185, 129)')
   })
 })
+
+test.describe('opening the chat before it has loaded', () => {
+  test('the chat window opens at once with its outline, and becomes the chat when it loads @widget', async ({ agent, widget, llm }) => {
+    await llm.script(agent, (s) => s.otherwise().reply('Ready now.'))
+    await widget.embed({ chatHeldBack: true })
+    await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeVisible()
+    await expect(widget.launcher).toHaveAttribute('aria-expanded', 'true')
+
+    await widget.letChatLoad()
+    await expect(widget.loadingWindow).toBeHidden()
+    await widget.expectReady()
+    await widget.send('Hi')
+    await expect(widget.lastAgentMessage()).toHaveText('Ready now.', AI_REPLY)
+  })
+
+  test('closing it early takes the outline away, and reopening brings it back @widget', async ({ widget }) => {
+    await widget.embed({ chatHeldBack: true })
+    await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeVisible()
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeHidden()
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeVisible()
+  })
+
+  test('the site\'s own trigger opens the outline at once with the launcher hidden @widget', async ({ widget }) => {
+    await widget.embed({ chatHeldBack: true, withTriggerButton: true, config: { launcher: false } })
+    await widget.api('open')
+    await expect(widget.loadingWindow).toBeVisible()
+  })
+
+  for (const displayMode of ['sidebar-right', 'search-bar'] as const) {
+    test(`the outline also shows in the ${displayMode} layout @widget`, async ({ widget }) => {
+      await widget.embed({ chatHeldBack: true, config: { displayMode } })
+      await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+      await widget.launcher.click()
+      await expect(widget.loadingWindow).toBeVisible()
+    })
+  }
+
+  test('a start that fails replaces the outline with the notice, and opening again recovers @widget', async ({ agent, widget, llm }) => {
+    await llm.script(agent, (s) => s.otherwise().reply('Back again.'))
+    const start = await widget.failNextStart()
+    await widget.embed()
+
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeVisible()
+    await start.fail()
+    await expect(widget.unavailableNotice).toBeVisible()
+    await expect(widget.loadingWindow).toBeHidden()
+
+    // Opening again retries
+    await widget.api('close')
+    await widget.open()
+    await widget.send('Hi')
+    await expect(widget.lastAgentMessage()).toHaveText('Back again.', AI_REPLY)
+  })
+})

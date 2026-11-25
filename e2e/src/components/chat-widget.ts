@@ -549,6 +549,11 @@ export class ChatWidget {
     return this.page.locator('#chattermate-container')
   }
 
+  /** The chat window's outline the loader draws while the widget inside is still starting. */
+  get loadingWindow(): Locator {
+    return this.panel.getByRole('status').filter({ hasText: 'Loading chat…' })
+  }
+
   /**
    * Which design the site was served: the loader frames the redesigned widget's
    * panel differently. CSS: the loader marks that container with .cm-v2, nothing
