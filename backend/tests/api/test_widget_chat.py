@@ -306,6 +306,7 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
     mock_session.status = SessionStatus.OPEN
     mock_session.user_id = None
     mock_session.workflow_id = None  # Explicitly set to None to avoid workflow path
+    mock_session.agent_id = test_widget.agent_id
     monkeypatch.setattr(
         widget_chat,
         "_own_session",
@@ -378,10 +379,12 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
     assert held == [False]
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("switched_off", ["ai_replies_enabled", "is_active"])
 async def test_human_only_agent_waits_instead_of_answering(
-    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch
+    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch, switched_off
 ):
-    """AI switched off: no model, and no transfer flow either.
+    """AI replies off, or the agent set Offline: no model, and no transfer
+    flow either.
 
     The chat was never with the AI, so there is nothing to hand over. It just
     waits in the inbox — no "I'm transferring you" line and no handoff contact
@@ -390,6 +393,11 @@ async def test_human_only_agent_waits_instead_of_answering(
     from app.api import widget_chat
     from app.services import message_delivery
     from app.services.human_routing import HUMAN_ONLY_ACK
+    from app.models.agent import Agent
+
+    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
+    setattr(agent, switched_off, False)
+    db.commit()
 
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
 
@@ -424,8 +432,6 @@ async def test_human_only_agent_waits_instead_of_answering(
         "session_id": str(session_id),
         "ai_config": test_ai_config,
         "conversation_token": conversation_token,
-        # What widget_connect caches for a human-only agent
-        "ai_replies_enabled": False,
     }
     mock_sio.get_environ.return_value = {}
 

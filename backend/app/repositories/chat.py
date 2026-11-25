@@ -46,14 +46,15 @@ def _utc_midnight() -> datetime:
     return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-DELETED_AGENT_NAME = "Deleted agent"
+NO_AGENT_NAME = "No agent"
 
 
 def _agent_info(row: Any) -> Dict[str, Any]:
-    """The chat's agent as the inbox shows it. A deleted agent's chats keep
-    their place in the inbox under a placeholder; no AI answers them."""
+    """The chat's agent as the inbox shows it. A chat with no agent (its agent
+    was deleted, or its channel has none assigned) keeps its place in the
+    inbox under a placeholder; no AI answers it."""
     if row.agent_id is None:
-        return {'id': None, 'name': DELETED_AGENT_NAME, 'display_name': None,
+        return {'id': None, 'name': NO_AGENT_NAME, 'display_name': None,
                 'ai_replies_enabled': False}
     return {
         'id': row.agent_id,
@@ -615,7 +616,7 @@ class ChatRepository:
             Agent.id.label('agent_id'),
             Agent.name.label('agent_name'),
             Agent.display_name.label('agent_display_name'),
-            Agent.ai_replies_enabled.label('agent_ai_replies_enabled'),
+            Agent.answers_with_ai.label('agent_ai_replies_enabled'),
             SessionToAgent.status.label('status'),
             SessionToAgent.channel.label('channel'),
             SessionToAgent.group_id.label('group_id'),
@@ -701,6 +702,7 @@ class ChatRepository:
             Agent.id,
             Agent.name,
             Agent.display_name,
+            Agent.is_active,
             Agent.ai_replies_enabled,
             SessionToAgent.status,
             SessionToAgent.channel,
@@ -802,7 +804,7 @@ class ChatRepository:
                 Agent.id.label('agent_id'),
                 Agent.name.label('agent_name'),
                 Agent.display_name.label('agent_display_name'),
-                Agent.ai_replies_enabled.label('agent_ai_replies_enabled'),
+                Agent.answers_with_ai.label('agent_ai_replies_enabled'),
                 SessionToAgent.status.label('status'),
                 SessionToAgent.channel.label('channel'),
                 SessionToAgent.group_id.label('group_id'),
@@ -841,6 +843,7 @@ class ChatRepository:
                 Agent.id,
                 Agent.name,
                 Agent.display_name,
+                Agent.is_active,
                 Agent.ai_replies_enabled,
                 SessionToAgent.status,
                 SessionToAgent.channel,

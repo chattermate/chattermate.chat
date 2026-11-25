@@ -35,8 +35,8 @@ export const accountWarning = (accounts: ChannelAccount[]): string | undefined =
   return warnings.length ? warnings.join(' ') : undefined
 }
 
-/** Copy shown wherever an account has no agent: inbound messages are dropped. */
-export const NO_AGENT_TEXT = "No agent: messages aren't answered."
+/** Copy shown wherever an account has no agent: inbound messages wait for the team, unanswered by the AI. */
+export const NO_AGENT_TEXT = "No agent: messages wait in your inbox."
 
 /** Connected accounts no AI agent answers. */
 export const accountsWithoutAgent = (accounts: ChannelAccount[]): ChannelAccount[] =>
@@ -48,7 +48,7 @@ export const noAgentWarning = (accounts: ChannelAccount[]): string | undefined =
   const missing = accountsWithoutAgent(accounts)
   if (!missing.length) return undefined
   if (accounts.length === 1) return NO_AGENT_TEXT
-  return `No agent on ${missing.map(accountName).join(', ')}: messages aren't answered.`
+  return `No agent on ${missing.map(accountName).join(', ')}: messages wait in your inbox.`
 }
 
 /** The account a card's Manage opens: one that needs fixing first, so the

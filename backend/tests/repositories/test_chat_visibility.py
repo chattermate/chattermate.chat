@@ -246,7 +246,7 @@ def test_a_deleted_agents_chat_stays_listed_and_counted(
 
     assert str(orphan.session_id) in _ids(listed)
     shown = next(c for c in listed if str(c["session_id"]) == str(orphan.session_id))
-    assert shown["agent"] == {"id": None, "name": "Deleted agent", "display_name": None,
+    assert shown["agent"] == {"id": None, "name": "No agent", "display_name": None,
                               "ai_replies_enabled": False}
     assert counts["open"] == len(_open_ids(listed)) == 5
     # Not in a group: the admin view counts it alongside my_group

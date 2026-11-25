@@ -432,9 +432,6 @@ async def widget_connect(sid, environ, auth):
             'requests_per_sec': requests_per_sec,
             'messages_per_customer_per_minute': agent.messages_per_customer_per_minute if agent else None,
             'replies_per_customer_per_day': agent.replies_per_customer_per_day if agent else None,
-            # Cached like use_workflow: read once per connection so the
-            # human-only check costs no query per message.
-            'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
             'use_workflow': agent.use_workflow if agent else False,
             # The agent may offer its choices as buttons (the same switch as on
             # the messaging channels)
@@ -669,8 +666,9 @@ async def handle_widget_chat(sid, data):
         # the message to fall through to the plain store-and-relay at the end,
         # exactly like a chat a human already holds. notify_new_chat above has
         # already told the team it is waiting.
-        # Older sessions predate the cached flag, so default to answering.
-        agent_uses_ai = session.get('ai_replies_enabled', True)
+        # Read per message, not at connect: setting the agent Offline (or AI
+        # replies off) must stop the AI in chats that are already open.
+        agent_uses_ai = AgentRepository(db).answers_with_ai(active_session.agent_id)
         # The plan can switch the AI off too, for this message only. Read per
         # message, not at connect: a socket can stay open past the limit.
         # Asked for human-only agents as well: a queued chat's availability

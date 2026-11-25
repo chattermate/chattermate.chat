@@ -61,7 +61,7 @@ describe('WhatsAppNumbersModal', () => {
 
     expect(wrapper.find('[data-testid="whatsapp-number-PN-1"]').text()).toContain('Answered by Support Bot')
     expect(wrapper.find('[data-testid="whatsapp-number-PN-2"]').text()).toContain('Answered by sales')
-    expect(wrapper.find('[data-testid="whatsapp-number-PN-3"]').text()).toContain("No agent: messages aren't answered.")
+    expect(wrapper.find('[data-testid="whatsapp-number-PN-3"]').text()).toContain("No agent: messages wait in your inbox.")
   })
 
   it('leads a number without an agent to its agent picker', async () => {
