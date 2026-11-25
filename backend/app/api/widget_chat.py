@@ -753,7 +753,9 @@ async def handle_widget_chat(sid, data):
                 # The page runs the action; the reply follows its answer.
                 await start_paused_turn(sid, session, response, host_actions, db)
                 return
-        elif plan_allows and active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
+        # An Offline agent's queued chat gets the offline message below instead
+        elif (plan_allows and active_session.status == SessionStatus.TRANSFERRED
+              and active_session.user_id is None and not should_tell_offline(agent, active_session)):
             await emit_bot_typing(session_id)
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent

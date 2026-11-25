@@ -61,8 +61,10 @@ class AgentRepository:
             Agent.organization_id == organization_id
         ).first()
 
-    def get_agent(self, agent_id: UUID) -> Optional[Agent]:
+    def get_agent(self, agent_id: UUID | str) -> Optional[Agent]:
         """Get template by ID"""
+        if isinstance(agent_id, str):
+            agent_id = UUID(agent_id)
         return self.db.query(Agent).filter(
             Agent.id == agent_id
         ).first()

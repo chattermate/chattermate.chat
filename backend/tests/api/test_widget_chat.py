@@ -386,7 +386,8 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
     # A few concurrent chats would otherwise use up the connection pool
     assert held == [False]
 
-def _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch):
+def _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch,
+                      status=SessionStatus.OPEN):
     """A widget socket in an open conversation nobody holds. Returns its session id."""
     from app.api import widget_chat
     from app.services import message_delivery
@@ -429,7 +430,7 @@ def _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, 
 
     mock_session = MagicMock()
     mock_session.session_id = session_id
-    mock_session.status = SessionStatus.OPEN
+    mock_session.status = status
     mock_session.user_id = None
     mock_session.group_id = None
     mock_session.workflow_id = None
@@ -517,6 +518,30 @@ async def test_switching_offline_mid_chat_tells_the_visitor_once(
 
     await widget_chat.handle_widget_chat("test_sid", {"message": "anyone there?"})
     await widget_chat.handle_widget_chat("test_sid", {"message": "hello?"})
+
+    bot = [m.message for m in await ChatRepository(db).get_session_history(str(session_id))
+           if m.message_type == 'bot']
+    assert bot == [DEFAULT_OFFLINE_MESSAGE]
+
+
+@pytest.mark.asyncio
+async def test_an_offline_agents_queued_chat_gets_the_offline_message_not_the_ai(
+    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch
+):
+    """A chat already queued for the team when the agent goes Offline: the
+    visitor is told it is offline, and no model writes an availability line."""
+    from app.api import widget_chat
+    from app.models.agent import Agent
+
+    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
+    agent.is_active = False
+    db.commit()
+    session_id = _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch,
+                                   status=SessionStatus.TRANSFERRED)
+
+    with patch("app.api.widget_chat.get_agent_availability_response", AsyncMock()) as availability:
+        await widget_chat.handle_widget_chat("test_sid", {"message": "hello"})
+        availability.assert_not_awaited()
 
     bot = [m.message for m in await ChatRepository(db).get_session_history(str(session_id))
            if m.message_type == 'bot']
