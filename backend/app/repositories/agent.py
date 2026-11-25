@@ -67,15 +67,6 @@ class AgentRepository:
             Agent.id == agent_id
         ).first()
 
-    def answers_with_ai(self, agent_id) -> bool:
-        """Whether the AI replies to this agent's chats right now (see
-        Agent.answers_with_ai). A chat with no agent never gets an AI reply."""
-        if agent_id is None:
-            return False
-        if isinstance(agent_id, str):
-            agent_id = UUID(agent_id)
-        return bool(self.db.query(Agent.answers_with_ai).filter(Agent.id == agent_id).scalar())
-
     def get_agent_in_org(self, agent_id, org_id) -> Optional[Agent]:
         """Get an agent only if it belongs to org_id.
 

@@ -20,6 +20,7 @@ import { agentService } from '@/services/agent'
 import { useAgentEdit } from '@/composables/useAgentEdit'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useFeatureLock } from '@/composables/useFeatureLock'
 import UpgradeModal from '@/components/common/UpgradeModal.vue'
 import LockedNote from '@/components/common/LockedNote.vue'
 
@@ -48,6 +49,10 @@ const props = defineProps({
   aiRepliesEnabled: {
     type: Boolean,
     default: true
+  },
+  offlineMessage: {
+    type: String as () => string | null,
+    default: null
   },
   channelQuickReplies: {
     type: Boolean,
@@ -113,6 +118,10 @@ const isRatingLocked = computed(() => {
   return !hasRatingFeature.value || !isSubscriptionActive.value
 })
 
+// Your own offline text is a paid feature; Free sends the default
+const { isLocked } = useFeatureLock()
+const isOfflineMessageLocked = computed(() => isLocked('offline-message'))
+
 // Upgrade modal state
 const showUpgradeModal = ref(false)
 
@@ -142,6 +151,10 @@ const isGuardrailDefault = computed(() => {
 })
 const localTransferToHuman = ref(props.transferToHuman)
 const localAiRepliesEnabled = ref(props.aiRepliesEnabled)
+// Empty means the default text, which the box shows as its placeholder.
+// Fetched rather than copied here, so it can't drift from what is sent.
+const localOfflineMessage = ref(props.offlineMessage ?? '')
+const defaultOfflineMessage = ref('')
 const localChannelQuickReplies = ref(props.channelQuickReplies)
 const localAskForRating = ref(props.askForRating)
 const localHandoffCollectEmail = ref(props.handoffCollectEmail)
@@ -163,6 +176,16 @@ onMounted(async () => {
     console.error('Could not load the default guardrail rule:', e)
   }
 })
+
+onMounted(async () => {
+  try {
+    defaultOfflineMessage.value = await agentService.getOfflineMessageDefault()
+  } catch (e) {
+    console.error('Could not load the default offline message:', e)
+  }
+})
+
+watch(() => props.offlineMessage, (v) => { localOfflineMessage.value = v ?? '' })
 
 watch(() => props.guardrailPrompt, (v) => {
   localGuardrailPrompt.value = v ?? defaultGuardrailPrompt.value
@@ -261,6 +284,8 @@ const handleSave = () => {
     guardrailEnabled: localGuardrailEnabled.value,
     transferToHuman: localTransferToHuman.value,
     aiRepliesEnabled: localAiRepliesEnabled.value,
+    // null goes back to the default, which follows any improvement to it
+    offlineMessage: localOfflineMessage.value.trim() || null,
     channelQuickReplies: localChannelQuickReplies.value,
     askForRating: localAskForRating.value,
     handoffCollectEmail: localHandoffCollectEmail.value,
@@ -361,6 +386,28 @@ const handleSave = () => {
           Use <code>{org}</code> to refer to your business name.
         </p>
       </template>
+    </section>
+
+    <!-- What customers get while the agent is Offline -->
+    <section class="detail-section offline-message-section">
+      <h4 class="section-title">
+        Offline Message
+        <font-awesome-icon v-if="isOfflineMessageLocked" icon="fa-solid fa-lock" class="lock-icon" />
+      </h4>
+      <p class="helper-text">
+        Sent once per conversation while this agent is Offline, on your website and every channel.
+      </p>
+      <textarea
+        class="instructions-textarea"
+        v-model="localOfflineMessage"
+        rows="2"
+        maxlength="500"
+        aria-label="Offline message"
+        :placeholder="defaultOfflineMessage"
+        :readonly="!isEditing || isOfflineMessageLocked"
+      ></textarea>
+      <LockedNote v-if="isOfflineMessageLocked" feature="offline_message" action="to write your own offline message." />
+      <p v-else class="helper-text">Leave empty to send the default shown.</p>
     </section>
 
     <!-- Transfer and Rating Section -->

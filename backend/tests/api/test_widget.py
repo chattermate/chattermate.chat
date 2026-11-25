@@ -242,15 +242,28 @@ def test_widget_ui_presence_follows_business_hours_for_a_human_only_agent(
     test_agent.ai_replies_enabled = False
     db.commit()
 
-    with patch('app.services.widget_bootstrap.is_within_business_hours', return_value=True):
+    with patch('app.services.widget_presence.is_within_business_hours', return_value=True):
         response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
         assert '"mode": "human"' in response.text
         assert '"available": true' in response.text
 
-    with patch('app.services.widget_bootstrap.is_within_business_hours', return_value=False):
+    with patch('app.services.widget_presence.is_within_business_hours', return_value=False):
         response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
         assert '"mode": "human"' in response.text
         assert '"available": false' in response.text
+
+
+def test_widget_ui_presence_says_offline_for_an_offline_agent(
+    client: TestClient, db, test_widget: Widget, test_agent: Agent
+):
+    """Offline is said as such, inside business hours or not."""
+    test_agent.is_active = False
+    db.commit()
+
+    with patch('app.services.widget_presence.is_within_business_hours', return_value=True):
+        response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
+    assert '"mode": "offline"' in response.text
+    assert '"available": false' in response.text
 
 
 def test_get_widget_data(client: TestClient, test_widget: Widget):

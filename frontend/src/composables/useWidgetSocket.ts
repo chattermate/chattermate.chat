@@ -20,6 +20,7 @@ import { io, Socket } from 'socket.io-client'
 import type { HumanAgent, SocketError } from '../types/widget'
 import { getErrorMessage, isReauthorizingRefusal, REAUTHORIZING_REFUSALS } from '../types/widget'
 import { widgetEnv } from '../webclient/widget-env'
+import { livePresence, type WidgetPresence } from '../utils/widgetPresence'
 import { localTokenStore, readTokenClaims } from './useConversationToken'
 import { currentHostPage, isFramed } from '../webclient/frame-session'
 import type { Message } from '@/types/chat'
@@ -406,6 +407,11 @@ export function useWidgetSocket({ panel = false, sendsPage = true }: { panel?: b
             if (!edited) return
             edited.message = data.message
             edited.attributes = { ...(edited.attributes || {}), edited_at: data.edited_at }
+        })
+
+        // Who replies now: sent on connect, and when the agent goes Online or Offline
+        socket.on('presence', (data: WidgetPresence) => {
+            livePresence.value = data
         })
 
         socket.on('session_initialized', (data) => {

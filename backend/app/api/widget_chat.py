@@ -57,7 +57,9 @@ from app.repositories.agent import AgentRepository
 from app.services.agent_rooms import (
     USER_MESSAGE, emit_to_org_inbox, is_org_inbox_room, may_join_org_inbox, relay_stored_message,
 )
+from app.services.agent_offline import should_tell_offline, tell_customer_agent_offline
 from app.services.chat_notifications import notify_new_chat, notify_team_chat_waits
+from app.services.widget_presence import PRESENCE_EVENT, presence_room, widget_presence
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
     HUMAN_ONLY_ACK,
@@ -394,6 +396,8 @@ async def widget_connect(sid, environ, auth):
 
         # Join the room using session_id
         await sio.enter_room(sid, session_id, namespace='/widget')
+        # And the agent's, which hears when it is switched Online or Offline
+        await sio.enter_room(sid, presence_room(agent.id), namespace='/widget')
         
         # Store session data including rate limiting settings
         enable_rate_limiting = agent.enable_rate_limiting
@@ -468,6 +472,9 @@ async def widget_connect(sid, environ, auth):
             logger.error(f"Store sign-in not accepted for {sid}: {e}")
         
         await _announce_conversation(sid, session_data, session_created)
+        # The page was rendered with the presence of its time: a socket that
+        # (re)connects later brings the header up to date
+        await sio.emit(PRESENCE_EVENT, widget_presence(agent), to=sid, namespace='/widget')
 
         # A reply paused on a host action survives a reconnect: send its call again.
         await replay_open_call(sid, session_data, db)
@@ -668,7 +675,8 @@ async def handle_widget_chat(sid, data):
         # already told the team it is waiting.
         # Read per message, not at connect: setting the agent Offline (or AI
         # replies off) must stop the AI in chats that are already open.
-        agent_uses_ai = AgentRepository(db).answers_with_ai(active_session.agent_id)
+        agent = AgentRepository(db).get_agent(active_session.agent_id)
+        agent_uses_ai = agent is not None and agent.answers_with_ai
         if not agent_uses_ai:
             await notify_team_chat_waits(db, active_session, announced=is_first_customer_message)
         # The plan can switch the AI off too, for this message only. Read per
@@ -954,9 +962,12 @@ async def handle_widget_chat(sid, data):
 
             # Nothing is going to answer this on its own, so acknowledge once —
             # otherwise the visitor sends into what looks like a dead widget.
-            # Only on the opening message: after that the thread is visibly a
-            # conversation with people in it.
-            if is_first_customer_message and not agent_uses_ai:
+            # An Offline agent says so once per conversation, even one already
+            # under way; otherwise only on the opening message: after that the
+            # thread is visibly a conversation with people in it.
+            if should_tell_offline(agent, active_session):
+                await tell_customer_agent_offline(db, active_session, agent)
+            elif is_first_customer_message and not agent_uses_ai:
                 await notify_customer(db, active_session, HUMAN_ONLY_ACK,
                                       channels_only=False)
             elif agent_uses_ai and not plan_allows and await tell_customer_ai_is_off(db, active_session):

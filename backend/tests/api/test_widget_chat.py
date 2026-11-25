@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from app.api import widget_chat
 from app.services import host_action_runtime, widget_reply
 from app.models.widget import Widget
@@ -32,6 +32,9 @@ from uuid import UUID, uuid4
 from tests.conftest import engine, TestingSessionLocal, create_tables, Base
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.chat import ChatRepository
+from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services.agent_offline import DEFAULT_OFFLINE_MESSAGE
+from app.services.human_routing import HUMAN_ONLY_ACK
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode, NodeType
 from app.models.workflow_connection import WorkflowConnection
@@ -233,8 +236,13 @@ async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mo
     result = await widget_chat.widget_connect(sid, environ, auth)
     
     assert result is True
-    mock_sio.enter_room.assert_called_once()
+    # The conversation's room, and the agent's for Online/Offline changes
+    rooms = [call.args[1] for call in mock_sio.enter_room.call_args_list]
+    assert rooms[1:] == [f"agent_presence_{test_widget.agent_id}"]
     mock_sio.save_session.assert_called_once()
+    # The header's presence as of now, not as of the page load
+    assert call('presence', {'mode': 'ai', 'available': True}, to=sid, namespace='/widget') \
+        in mock_sio.emit.call_args_list
     
     # Verify session data was saved
     session_data = mock_sio.save_session.call_args[0][1]
@@ -378,26 +386,10 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
     # A few concurrent chats would otherwise use up the connection pool
     assert held == [False]
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("switched_off", ["ai_replies_enabled", "is_active"])
-async def test_human_only_agent_waits_instead_of_answering(
-    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch, switched_off
-):
-    """AI replies off, or the agent set Offline: no model, and no transfer
-    flow either.
-
-    The chat was never with the AI, so there is nothing to hand over. It just
-    waits in the inbox — no "I'm transferring you" line and no handoff contact
-    form. notify_new_chat has already told the team it is there.
-    """
+def _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch):
+    """A widget socket in an open conversation nobody holds. Returns its session id."""
     from app.api import widget_chat
     from app.services import message_delivery
-    from app.services.human_routing import HUMAN_ONLY_ACK
-    from app.models.agent import Agent
-
-    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
-    setattr(agent, switched_off, False)
-    db.commit()
 
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
 
@@ -451,6 +443,32 @@ async def test_human_only_agent_waits_instead_of_answering(
         lambda session_repo, session, active_only=True: mock_session
     )
 
+    return session_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("switched_off, reply", [
+    ("ai_replies_enabled", HUMAN_ONLY_ACK),
+    ("is_active", DEFAULT_OFFLINE_MESSAGE),
+])
+async def test_human_only_agent_waits_instead_of_answering(
+    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch, switched_off, reply
+):
+    """AI replies off, or the agent set Offline: no model, and no transfer
+    flow either.
+
+    The chat was never with the AI, so there is nothing to hand over. It just
+    waits in the inbox — no "I'm transferring you" line and no handoff contact
+    form. notify_new_chat has already told the team it is there.
+    """
+    from app.api import widget_chat
+    from app.models.agent import Agent
+
+    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
+    setattr(agent, switched_off, False)
+    db.commit()
+    session_id = _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch)
+
     with patch("app.services.widget_reply.ChatAgent.create_async", AsyncMock()) as create_async, \
          patch("app.api.widget_chat.get_agent_availability_response", AsyncMock()) as availability:
         await widget_chat.handle_widget_chat("test_sid", {"message": "hello"})
@@ -476,7 +494,33 @@ async def test_human_only_agent_waits_instead_of_answering(
     # indicator over an empty thread.
     messages = await ChatRepository(db).get_session_history(str(session_id))
     assert [m.message_type for m in messages] == ['user', 'bot']
-    assert messages[1].message == HUMAN_ONLY_ACK
+    assert messages[1].message == reply
+
+
+@pytest.mark.asyncio
+async def test_switching_offline_mid_chat_tells_the_visitor_once(
+    db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch
+):
+    """An open chat already under way gets the offline message on the visitor's
+    next message after the switch — before, it got nothing — and only once."""
+    from app.api import widget_chat
+    from app.models.agent import Agent
+
+    session_id = _open_widget_chat(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch)
+    ChatRepository(db).create_message({
+        "message": "earlier", "message_type": "user", "session_id": str(session_id),
+        "organization_id": str(test_widget.organization_id), "customer_id": str(test_customer.id),
+    })
+    agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).one()
+    agent.is_active = False
+    db.commit()
+
+    await widget_chat.handle_widget_chat("test_sid", {"message": "anyone there?"})
+    await widget_chat.handle_widget_chat("test_sid", {"message": "hello?"})
+
+    bot = [m.message for m in await ChatRepository(db).get_session_history(str(session_id))
+           if m.message_type == 'bot']
+    assert bot == [DEFAULT_OFFLINE_MESSAGE]
 
 
 @pytest.mark.asyncio

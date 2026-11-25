@@ -699,6 +699,12 @@ export class ChatWidget {
     return this.messageLog.locator('.message.user-message .message-bubble')
   }
 
+  /** The line under the agent's name: who replies and how soon ("Replies instantly", "Offline · ..."). */
+  get headerStatus(): Locator {
+    // A status line, not a control: it has no role or name of its own
+    return this.frame.locator('.cm-status__text')
+  }
+
   /** The agent's name in the chat header. */
   get agentName(): Locator {
     return this.frame.locator('.header-info h3')

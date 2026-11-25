@@ -104,6 +104,19 @@ describe('the panel', () => {
         expect(wrapper.find('[role="status"][aria-label="Agent is replying"]').exists()).toBe(true)
     })
 
+    it('says Offline as soon as the agent is switched Offline, and back when it returns', async () => {
+        await mountPanel()
+        // The module instance the mounted widget loaded (mountWidget resets modules)
+        const { livePresence } = await import('@/utils/widgetPresence')
+        livePresence.value = { mode: 'offline', available: false }
+        await settle(wrapper)
+        expect(status()).toBe("Offline · we'll reply when we're back")
+        expect(wrapper.find('.cm-status').classes()).toContain('is-away')
+        livePresence.value = { mode: 'ai', available: true }
+        await settle(wrapper)
+        expect(status()).toBe('Replies instantly')
+    })
+
     it('sends on Enter through the controller', async () => {
         await mountPanel()
         await composer().setValue('Where is my order?')

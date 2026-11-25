@@ -68,6 +68,24 @@ export class AgentsPage {
     })
   }
 
+  /** What the open agent sends while Offline; empty shows the default as its placeholder. */
+  get offlineMessage(): Locator {
+    return this.page.getByRole('textbox', { name: 'Offline message' })
+  }
+
+  /** The upgrade line under the offline message on a plan without it. */
+  get offlineMessageUpgrade(): Locator {
+    return this.page.getByText('to write your own offline message.')
+  }
+
+  async setOfflineMessage(text: string): Promise<void> {
+    await step("Write the agent's own offline message", async () => {
+      await this.offlineMessage.fill(text)
+      await this.page.getByRole('button', { name: 'Save Changes' }).click()
+      await expect(this.page.getByText('Agent updated successfully')).toBeVisible()
+    })
+  }
+
   async setInstructions(instructions: string): Promise<void> {
     await step('Edit the agent instructions', async () => {
       await this.page.getByPlaceholder('Enter instructions for the agent...').fill(instructions)

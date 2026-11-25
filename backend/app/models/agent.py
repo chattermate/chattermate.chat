@@ -102,6 +102,14 @@ agent_usergroup = Table(
 )
 
 
+# What an Offline agent sends when offline_message is NULL (services/agent_offline.py).
+# The e2e suite checks this exact text (e2e/src/api/agents.ts OFFLINE_REPLY):
+# change both together.
+DEFAULT_OFFLINE_MESSAGE = (
+    "We're offline right now. Leave a message and our team will reply as soon as we're back."
+)
+
+
 class Agent(Base):
     __tablename__ = "agents"
 
@@ -122,6 +130,9 @@ class Agent(Base):
     # team from the customer's first message. Distinct from transfer_to_human,
     # which only lets the AI hand over when it decides to.
     ai_replies_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    # The one reply a customer gets while the agent is Offline. NULL sends
+    # DEFAULT_OFFLINE_MESSAGE; custom text needs a plan with it.
+    offline_message = Column(Text, nullable=True)
     # Offer the AI's choices as tappable buttons on messaging channels that
     # can show them (WhatsApp, Messenger, Instagram, Telegram); not the widget
     channel_quick_replies = Column(Boolean, default=False, nullable=False, server_default="false")
@@ -203,6 +214,11 @@ class Agent(Base):
     @answers_with_ai.expression
     def answers_with_ai(cls):
         return and_(cls.is_active.isnot(False), cls.ai_replies_enabled.isnot(False))
+
+    @property
+    def is_offline(self) -> bool:
+        """Switched Offline: customers get the offline message, the team the chat."""
+        return self.is_active is False
 
     @property
     def instructions(self):
