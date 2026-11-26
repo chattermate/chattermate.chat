@@ -454,8 +454,13 @@ const handleTextAdded = () => {
     <p v-if="removalError" class="step-error" role="alert">{{ removalError }}</p>
 
     <!-- A way to give the agent something, when a site failed or nothing is added -->
-    <div v-if="crawlFailure || showTextFallback || nothingToLearnFrom" class="crawl-failure">
-      <p v-if="crawlFailure" class="step-error" role="alert">We couldn't read {{ queueItemName(crawlFailure) }}. {{ crawlFailure.reason }}</p>
+    <div v-if="crawlFailure || showTextFallback || nothingToLearnFrom" class="crawl-failure" :class="{ failed: crawlFailure }">
+      <div v-if="crawlFailure" class="failure-note" role="alert">
+        <font-awesome-icon icon="fa-solid fa-triangle-exclamation" class="failure-icon" aria-hidden="true" />
+        <p>
+          <strong>We couldn't read {{ queueItemName(crawlFailure) }}.</strong> <span>{{ crawlFailure.reason }}</span>
+        </p>
+      </div>
       <p v-else-if="nothingToLearnFrom" class="empty-note" role="status">Your agent has nothing to answer from yet. Add a website or PDF, or paste some text.</p>
       <TeachTextFallback
         v-if="showTextFallback"
@@ -621,6 +626,42 @@ const handleTextAdded = () => {
   padding: 14px 16px;
   border: 1px solid var(--o12);
   border-radius: var(--radius-input);
+}
+
+.crawl-failure.failed {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.failure-note {
+  display: flex;
+  gap: 12px;
+}
+
+.failure-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--warning-color);
+}
+
+.failure-note p {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.failure-note strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.failure-note span {
+  font-size: 13.5px;
+  color: var(--muted);
 }
 
 .empty-note {
