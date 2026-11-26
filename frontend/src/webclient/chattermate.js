@@ -1522,6 +1522,8 @@ import {
     let widgetStarting = false
     const openShell = createOpenShell(document, container, {
       onClose: function () { if (isOpen) toggleChat({ returnFocus: true }) },
+      // The chat when it has just become ready, otherwise the launcher
+      refocus: function () { (iframe && widgetMounted ? iframe : button).focus() },
     })
     function setWidgetStarting(starting) {
       widgetStarting = starting
