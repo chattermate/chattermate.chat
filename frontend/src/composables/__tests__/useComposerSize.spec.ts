@@ -160,6 +160,31 @@ describe('useComposerSize', () => {
     expect(el.style.overflowY).toBe('hidden')
   })
 
+  it('refits when the pane gets narrower and the text wraps onto more lines', async () => {
+    let onResize: () => void = () => {}
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(cb: () => void) { onResize = cb }
+      observe() {}
+      disconnect() {}
+    })
+    const { text, el, wrapper } = mountBox()
+    let width = 600
+    Object.defineProperty(wrapper.element, 'clientWidth', { configurable: true, get: () => width })
+    onResize() // the observer takes in the pane's stubbed size
+    contentHeight = 100
+    text.value = 'a four line draft'
+    await nextTick()
+    expect(el.style.height).toBe('100px')
+
+    // Same height, narrower pane: the draft now wraps to more lines
+    contentHeight = 180
+    onResize()
+    expect(el.style.height).toBe('100px')
+    width = 400
+    onResize()
+    expect(el.style.height).toBe('180px')
+  })
+
   it('drags taller from the top edge and remembers the height', () => {
     const { el, api } = mountBox()
     api.startDrag(pointer('pointerdown', 500))

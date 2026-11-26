@@ -216,12 +216,12 @@ export function useComposerSize({ text, box, pane, resizable, storageKey }: Comp
     fit()
     const el = pane()
     if (el && typeof ResizeObserver !== 'undefined') {
-      // Only a change in the pane's height moves the caps; this also keeps the
-      // box's own refits from feeding back here
-      let lastPaneHeight = el.clientHeight
+      // The pane's height moves the caps and its width rewraps the text. Refit only
+      // when either changes, so the box's own refits don't feed back here
+      let last = { width: el.clientWidth, height: el.clientHeight }
       observer = new ResizeObserver(() => {
-        if (el.clientHeight === lastPaneHeight) return
-        lastPaneHeight = el.clientHeight
+        if (el.clientWidth === last.width && el.clientHeight === last.height) return
+        last = { width: el.clientWidth, height: el.clientHeight }
         fit()
       })
       observer.observe(el)
