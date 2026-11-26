@@ -34,13 +34,22 @@ class ChannelConversationRepository:
     def get_active(self, channel_account_id: UUID, external_conversation_id: str) -> Optional[ChannelConversation]:
         """Latest conversation row for a platform conversation whose session
         is still open/transferred. Returns None when a new session is needed."""
+        return self.get_active_any(channel_account_id, (external_conversation_id,))
+
+    def get_active_any(self, channel_account_id: UUID,
+                       external_conversation_ids: Iterable[str]) -> Optional[ChannelConversation]:
+        """get_active for a platform conversation known under several ids
+        (a WhatsApp number's written and wa_id forms)."""
+        wanted = [i for i in dict.fromkeys(external_conversation_ids) if i]
+        if not wanted:
+            return None
         try:
             return (
                 self.db.query(ChannelConversation)
                 .join(SessionToAgent, ChannelConversation.session_id == SessionToAgent.session_id)
                 .filter(
                     ChannelConversation.channel_account_id == channel_account_id,
-                    ChannelConversation.external_conversation_id == external_conversation_id,
+                    ChannelConversation.external_conversation_id.in_(wanted),
                     SessionToAgent.status != SessionStatus.CLOSED,
                 )
                 .order_by(ChannelConversation.created_at.desc())

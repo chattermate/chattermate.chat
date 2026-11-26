@@ -42,7 +42,7 @@ from app.repositories.channels import (
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
-from app.utils.phone import normalize_phone, to_wa_id
+from app.utils.phone import normalize_phone, to_wa_id, whatsapp_equivalents
 
 logger = get_logger(__name__)
 
@@ -278,7 +278,7 @@ async def start_outbound_conversation(
     # Resolved BEFORE the template is validated: whether this opens a thread or
     # rejoins one decides which rules the template must satisfy.
     conv_repo = ChannelConversationRepository(db)
-    existing = conv_repo.get_active(account.id, wa_id)
+    existing = conv_repo.get_active_any(account.id, [to_wa_id(p) for p in whatsapp_equivalents(phone)])
 
     template = await _approved_outbound_template(
         db, account, template_name, language, starts_conversation=existing is None,

@@ -30,13 +30,13 @@ from app.channels.interactive_limits import InteractiveLimits
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
 from app.database import SessionLocal, release_connection
-from app.models.channels import ChannelAccount
+from app.models.channels import ChannelAccount, ChannelType
 from app.models.session_to_agent import SessionStatus
 from app.repositories.agent import AgentRepository
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
-from app.utils.phone import normalize_msisdn
+from app.utils.phone import normalize_msisdn, to_wa_id, whatsapp_equivalents
 from app.repositories.channels import (
     ChannelAccountRepository,
     ChannelConversationRepository,
@@ -401,6 +401,16 @@ def _id_or_none(value) -> Optional[str]:
     return str(value) if value is not None else None
 
 
+def _conversation_ids(account: ChannelAccount, inbound: InboundMessage) -> list:
+    """The ids this platform conversation may be stored under. A WhatsApp
+    thread we started from an order's number (+52...) gets its reply from
+    the wa_id (521...), so each form is tried."""
+    own = inbound.external_conversation_id
+    if account.channel_type != ChannelType.WHATSAPP.value:
+        return [own]
+    return [to_wa_id(p) for p in whatsapp_equivalents(own)] or [own]
+
+
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,
                            agent_id, customer_id: str, org_id: str):
     """Find the open session for this platform conversation or start a new one.
@@ -411,7 +421,7 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
     conv_repo = ChannelConversationRepository(db)
     session_repo = SessionToAgentRepository(db)
 
-    conversation = conv_repo.get_active(account.id, inbound.external_conversation_id)
+    conversation = conv_repo.get_active_any(account.id, _conversation_ids(account, inbound))
     if conversation is not None:
         session_record = session_repo.get_session(conversation.session_id)
         if not _agent_changed(session_record, agent_id):
