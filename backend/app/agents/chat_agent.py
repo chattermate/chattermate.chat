@@ -72,6 +72,13 @@ import json
 
 logger = get_logger(__name__)
 
+# Appended to the knowledge tool's "share URLs" rule, so an agent whose
+# instructions forbid links follows them (AGENT_LINKS_DEFER_TO_INSTRUCTIONS)
+LINKS_DEFER_TO_INSTRUCTIONS = (
+    " If your instructions above say not to share links, URLs or web addresses, they win over this: "
+    "share none, not even pages from this business's own website, and describe the page in words instead."
+)
+
 # ---------------------------------------------------------------------------
 # Groq structured-output tool
 #
@@ -405,6 +412,10 @@ class ChatAgent(ChatAgentMCPMixin):
 
             **IMPORTANT - Include URLs in Responses:**
             When tools return information that includes URLs, product links, documentation links, or reference URLs, you MUST include these URLs in your response to the customer. URLs provide valuable references and allow customers to access more detailed information. Always preserve and share URLs that are relevant to the customer's query."""
+            # Said as an absolute, the rule above beat an operator's "never
+            # share links" (it sits after the fenced operator block, unfenced)
+            if settings.AGENT_LINKS_DEFER_TO_INSTRUCTIONS:
+                knowledge_tool_prompt += LINKS_DEFER_TO_INSTRUCTIONS
 
             # For non-Groq models, add the search limit instruction
             # For Groq, skip this to avoid discouraging tool usage

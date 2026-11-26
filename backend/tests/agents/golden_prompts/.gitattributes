@@ -1,0 +1,2 @@
+# Recorded prompts are compared byte for byte; never normalise them
+*.txt -text
