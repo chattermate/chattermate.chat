@@ -31,6 +31,7 @@ import {
 import { useOnboardingState } from '@/composables/useOnboardingState'
 import { SLOW_FIRST_PAGE_MS, useSlowWait } from '@/composables/useSlowWait'
 import { useSourceRemoval, type RemovableSource } from '@/composables/useSourceRemoval'
+import { notifySetupChanged } from '@/utils/setupEvents'
 import { signupSiteUrl } from '@/utils/website'
 import TeachReading from './TeachReading.vue'
 import TeachSourceRemove from './TeachSourceRemove.vue'
@@ -150,6 +151,16 @@ const waitingForFirstPage = computed(
 )
 const { slow } = useSlowWait(waitingForFirstPage, SLOW_FIRST_PAGE_MS)
 const readingDocuments = computed(() => crawling.value.every(isPdfSource))
+// What the agent has to learn from, as others showing setup need to know it
+const sourcesNow = computed(() =>
+  [
+    crawling.value.map((q) => q.id).join(),
+    indexedItems.value.map((k) => k.id).join(),
+    pagesSoFar.value > 0,
+    crawlFailure.value?.id,
+  ].join('|'),
+)
+watch(sourcesNow, () => loaded.value && notifySetupChanged())
 const continueLabel = computed(() => {
   if (reading.value) return 'Reading your site…'
   if (advancing.value) return 'Adding…'

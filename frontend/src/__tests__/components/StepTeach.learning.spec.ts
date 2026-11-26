@@ -34,6 +34,7 @@ vi.mock('@/utils/storage', () => ({
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
 import { SLOW_FIRST_PAGE_MS } from '@/composables/useSlowWait'
+import { SETUP_CHANGED_EVENT } from '@/utils/setupEvents'
 import { LEARNING_POLL_MS, READY_PAGES, queueItemName } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 
@@ -637,6 +638,20 @@ describe('StepTeach waiting for the first page', () => {
     expect(reading()).toContain('longer than usual')
     await skipButton()!.trigger('click')
     expect(wrapper.emitted('next')).toBeTruthy()
+  })
+
+  it('says when what it learns from changes, so the guide can follow', async () => {
+    const changed = vi.fn()
+    window.addEventListener(SETUP_CHANGED_EVENT, changed)
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(1, 'processing')))
+      .mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1 })))
+    await mountStep()
+    changed.mockClear()
+    await nextPoll()
+    expect(changed).toHaveBeenCalledTimes(1)
+    await nextPoll()
+    expect(changed).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SETUP_CHANGED_EVENT, changed)
   })
 
   it('speaks of a document when that is all it reads', async () => {
