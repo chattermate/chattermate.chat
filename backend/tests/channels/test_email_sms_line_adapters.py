@@ -201,12 +201,16 @@ class TestLineAdapter:
         assert await LineAdapter().fetch_profile(MagicMock(), "Ucust9") == {}
 
     @pytest.mark.asyncio
-    async def test_fetch_profile_survives_a_network_error(self, monkeypatch):
+    async def test_fetch_profile_survives_a_network_error(self, monkeypatch, caplog):
+        """A timeout (whose message is empty) keeps the placeholder and is logged by its type."""
+        import httpx
         from unittest.mock import AsyncMock
         monkeypatch.setattr("app.channels.line.credentials", lambda a: {"channel_access_token": "tok"})
         monkeypatch.setattr("app.channels.line._get_http_client",
-                            lambda: MagicMock(get=AsyncMock(side_effect=RuntimeError("boom"))))
-        assert await LineAdapter().fetch_profile(MagicMock(), "Ucust9") == {}
+                            lambda: MagicMock(get=AsyncMock(side_effect=httpx.ConnectTimeout(""))))
+        with caplog.at_level("INFO", logger="app.channels.line"):
+            assert await LineAdapter().fetch_profile(MagicMock(id="acct"), "Ucust9") == {}
+        assert "ConnectTimeout" in caplog.text
 
     @pytest.mark.asyncio
     async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, monkeypatch):

@@ -52,6 +52,46 @@ test('a teammate names a customer from the inbox, and People shows it @channels 
   await expect(peoplePage.person(name)).toBeVisible()
 })
 
+test('a LINE contact first known only by id is named on a later message @channels', async ({ agent, llm, adminApi, request, adminInbox }) => {
+  await llm.script(agent, (s) => s.otherwise().reply('Happy to help!'))
+  const channel = await channels.LINE({ api: adminApi, request, agentId: agent.id })
+  // Not a friend yet: LINE shares no name, so the first message leaves a placeholder
+  const chat = channel.chatWith('Mali')
+  await chat.send('Hello')
+  await expect.poll(() => chat.replies(), AI_REPLY).toHaveLength(1)
+
+  const name = unique('Mali Srisuk')
+  await chat.sharesProfileAs(name)
+  await chat.send('Are you there?')
+  await expect.poll(() => chat.replies(), AI_REPLY).toHaveLength(2)
+
+  // One conversation, now under the real name
+  await adminInbox.goto()
+  await adminInbox.openConversationWith(name)
+  await expect(adminInbox.lastCustomerMessage()).toContainText('Are you there?')
+})
+
+test('a name a teammate gave is kept when the customer writes again, in the same chat @channels @inbox', async ({ agent, llm, adminApi, request, adminInbox }) => {
+  await llm.script(agent, (s) => s.otherwise().reply('Happy to help!'))
+  const channel = await channels.LINE({ api: adminApi, request, agentId: agent.id })
+  const profileName = unique('Tong')
+  const chat = channel.chatWith('Tong', { profileName })
+  await chat.send('Hello')
+  await expect.poll(() => chat.replies(), AI_REPLY).toHaveLength(1)
+
+  await adminInbox.goto()
+  await adminInbox.openConversationWith(profileName)
+  const name = unique('Tong Wattana')
+  await adminInbox.renameCustomer(name)
+
+  await chat.send('One more question')
+  await expect.poll(() => chat.replies(), AI_REPLY).toHaveLength(2)
+
+  // The platform's name doesn't replace the teammate's, and the message joins the same chat
+  await adminInbox.openConversationWith(name)
+  await expect(adminInbox.lastCustomerMessage()).toContainText('One more question')
+})
+
 test.describe('with lead capture', () => {
   test.use({ agentSettings: { leadCapture: true } })
 

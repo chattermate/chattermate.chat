@@ -169,7 +169,7 @@ class LineAdapter(ChannelAdapter):
                 },
             )
         except Exception as e:
-            logger.debug(f"LINE loading animation failed (non-critical): {e}")
+            logger.debug(f"LINE loading animation failed (non-critical): {type(e).__name__}: {e}")
 
     def format_outbound(self, markdown: str) -> str:
         return markdown[:MAX_MESSAGE_LENGTH]
@@ -189,7 +189,8 @@ class LineAdapter(ChannelAdapter):
                 headers={"Authorization": f"Bearer {token}"},
             )
         except Exception as e:
-            logger.info(f"LINE profile lookup failed for account {account.id}: {e}")
+            # httpx timeouts carry no message, so name the error type too
+            logger.info(f"LINE profile lookup failed for account {account.id}: {type(e).__name__}: {e}")
             return {}
         if response.status_code >= 300:
             logger.info(f"LINE profile lookup refused for account {account.id}: "
