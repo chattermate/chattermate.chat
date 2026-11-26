@@ -2509,7 +2509,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Queue Item
-         * @description Delete a queue item (only if failed or pending)
+         * @description Delete a queue item: a failed or waiting one, or a website being read
          */
         delete: operations["delete_queue_item_api_v1_knowledge_queue__queue_id__delete"];
         options?: never;
