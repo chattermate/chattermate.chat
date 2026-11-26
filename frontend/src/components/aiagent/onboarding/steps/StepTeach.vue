@@ -149,7 +149,14 @@ const waitingForFirstPage = computed(
     nothingStaged.value &&
     !crawlFailure.value,
 )
-const { slow } = useSlowWait(waitingForFirstPage, SLOW_FIRST_PAGE_MS)
+// When the oldest of them was sent; now, if the server didn't say.
+const mounted = Date.now()
+const waitingSince = computed(() => {
+  if (!waitingForFirstPage.value) return null
+  const sent = crawling.value.map((q) => Date.parse(q.created_at) || mounted)
+  return Math.min(...sent)
+})
+const { slow } = useSlowWait(waitingSince, SLOW_FIRST_PAGE_MS)
 const readingDocuments = computed(() => crawling.value.every(isPdfSource))
 // What the agent has to learn from, as others showing setup need to know it
 const sourcesNow = computed(() =>
@@ -326,6 +333,8 @@ const handleContinue = async () => {
   if (!failed) {
     // Else the PDF error is on screen, or the step stays to show the reading
     if (filesAccepted && !waitingForFirstPage.value) emit('next')
+    // The button that had focus is gone while the reading is waited for
+    else if (waitingForFirstPage.value) await nextTick(() => urlInput.value?.focus())
     return
   }
   setFailure(failed)
@@ -405,7 +414,13 @@ const handleTextAdded = () => {
     </ul>
 
     <!-- Sent, and being read now -->
-    <TeachReading v-if="crawling.length" :pages="pagesSoFar" :documents="readingDocuments" :slow="slow" />
+    <TeachReading
+      v-if="crawling.length"
+      :pages="pagesSoFar"
+      :can-try="indexedItems.length > 0"
+      :documents="readingDocuments"
+      :slow="slow"
+    />
     <ul v-if="crawling.length" class="source-list learning" aria-label="Learning">
       <li v-for="item in crawling" :key="item.id" class="source-row">
         <font-awesome-icon

@@ -654,6 +654,22 @@ describe('StepTeach waiting for the first page', () => {
     window.removeEventListener(SETUP_CHANGED_EVENT, changed)
   })
 
+  it('counts the wait from when the source was sent, not from when the step opened', async () => {
+    const sent = new Date(Date.now() - SLOW_FIRST_PAGE_MS).toISOString()
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'pending', { created_at: sent })))
+    await mountStep()
+
+    expect(skipButton()).toBeDefined()
+  })
+
+  it('says the agent can be tried when something else is already learned', async () => {
+    getKnowledgeByAgent.mockResolvedValue(indexed)
+    getAgentQueueItems.mockResolvedValue(queue(row(2, 'processing', { source: 'https://more.example.com' })))
+    await mountStep()
+
+    expect(reading()).toContain('You can try your agent now')
+  })
+
   it('speaks of a document when that is all it reads', async () => {
     getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { source_type: 'pdf_file' })))
     await mountStep()

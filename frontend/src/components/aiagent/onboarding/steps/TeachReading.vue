@@ -22,6 +22,8 @@ const props = defineProps<{
   pages: number
   /** Only documents are being read, no website. */
   documents?: boolean
+  /** Something else is already learned, so the agent can be tried. */
+  canTry?: boolean
   /** The first page is taking longer than it usually does. */
   slow?: boolean
 }>()
@@ -32,7 +34,7 @@ const title = computed(() => {
 })
 
 const detail = computed(() => {
-  if (props.pages) return 'You can try your agent now. It keeps reading the rest.'
+  if (props.pages || props.canTry) return 'You can try your agent now. It keeps reading the rest.'
   if (props.slow) return 'This is taking longer than usual. You can carry on; it keeps reading.'
   return 'This usually takes a minute or two. You can try your agent once the first page is in.'
 })

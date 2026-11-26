@@ -19,17 +19,24 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
 /** How long a first page may take before the step offers a way on. */
 export const SLOW_FIRST_PAGE_MS = 120000
 
-/** True once `waiting` has held for `afterMs` without a break. */
-export function useSlowWait(waiting: Ref<boolean>, afterMs: number) {
+/**
+ * True once something has been waited on for `afterMs`. `since` is when the
+ * wait began (null when there is none), so leaving the step and coming back
+ * doesn't start it over.
+ */
+export function useSlowWait(since: Ref<number | null>, afterMs: number) {
   const slow = ref(false)
   let timer: ReturnType<typeof setTimeout> | undefined
 
   watch(
-    waiting,
-    (now) => {
+    since,
+    (began) => {
       clearTimeout(timer)
       slow.value = false
-      if (now) timer = setTimeout(() => (slow.value = true), afterMs)
+      if (began === null) return
+      const left = began + afterMs - Date.now()
+      if (left <= 0) slow.value = true
+      else timer = setTimeout(() => (slow.value = true), left)
     },
     { immediate: true },
   )
