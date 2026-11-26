@@ -290,8 +290,17 @@ import {
 
   // The frame's handshake: a look it sent from this same origin was ours, so a visitor
   // who leaves before the widget's own update still finds it next time.
+  // The panel's framing is the widget's to send: keep any it left in the cache, and
+  // don't store the default the early look stood in with.
   function keepEarlyLook(origin) {
-    if (earlyLook && earlyLook.origin === origin) lookCache().save(earlyLook.look)
+    if (earlyLook && earlyLook.origin === origin) {
+      const cache = lookCache()
+      const cached = cache.read()
+      const look = { ...earlyLook.look }
+      delete look.panel
+      if (cached && cached.panel) look.panel = cached.panel
+      cache.save(look)
+    }
     earlyLook = null
   }
 

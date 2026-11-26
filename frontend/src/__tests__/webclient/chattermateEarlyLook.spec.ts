@@ -86,6 +86,22 @@ describe('launcher look from the frame page', () => {
     expect(cached()).toBeNull()
   })
 
+  it('keeps no panel framing of its own: the remembered one, or none', async () => {
+    await loadLoader()
+    earlyLook({ chat_bubble_color: BRAND }, { origin: FRAME_ORIGIN })
+    handshake()
+    expect(cached()).not.toHaveProperty('panel')
+  })
+
+  it('keeps the panel framing a returning visitor already had', async () => {
+    const panel = { radius: 12, elevation: 'dark', glow: null, glass: false }
+    remember({ chat_bubble_color: '#10B981', panel })
+    await loadLoader()
+    earlyLook({ chat_bubble_color: BRAND }, { origin: FRAME_ORIGIN })
+    handshake()
+    expect(cached()).toMatchObject({ chat_bubble_color: BRAND, panel })
+  })
+
   it('is not kept when the handshake comes from another origin', async () => {
     await loadLoader()
     // The frame was navigated elsewhere before our page's look arrived
