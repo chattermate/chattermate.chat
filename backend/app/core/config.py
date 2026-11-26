@@ -310,6 +310,15 @@ class Settings(BaseSettings):
     #                                      rule gives way when the agent's own
     #                                      instructions say not to share links.
     AGENT_LINKS_DEFER_TO_INSTRUCTIONS: bool = os.getenv("AGENT_LINKS_DEFER_TO_INSTRUCTIONS", "true").lower() == "true"
+    # AGENT_HANDOVER_BUSY_LINE          -> the handover line says the team is busy,
+    #                                      has been notified and will be there as
+    #                                      soon as possible (transfer_agent.py).
+    # AGENT_HANDOVER_BUSY_LINE_ORGS     -> comma-separated org ids to roll it out to
+    #                                      first; empty = every org once it's on.
+    AGENT_HANDOVER_BUSY_LINE: bool = os.getenv("AGENT_HANDOVER_BUSY_LINE", "false").lower() == "true"
+    # Kept as the raw string (split by busy_team_line_on): a set-typed field is
+    # JSON-decoded from the environment, so "org-a,org-b" would fail at startup.
+    AGENT_HANDOVER_BUSY_LINE_ORGS: str = os.getenv("AGENT_HANDOVER_BUSY_LINE_ORGS", "")
 
     # Help center (public FAQ site)
     # How the public help center URL is advertised (live_url):
