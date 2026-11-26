@@ -180,6 +180,34 @@ class TestLineAdapter:
         assert post.await_args.args[0].endswith("/chat/loading/start")
         assert post.await_args.kwargs["json"]["chatId"] == "Ucust9"
 
+    def _profile_client(self, monkeypatch, status, body):
+        from unittest.mock import AsyncMock
+        monkeypatch.setattr("app.channels.line.credentials", lambda a: {"channel_access_token": "tok"})
+        get = AsyncMock(return_value=MagicMock(status_code=status, json=lambda: body))
+        monkeypatch.setattr("app.channels.line._get_http_client", lambda: MagicMock(get=get))
+        return get
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_reads_the_display_name(self, monkeypatch):
+        get = self._profile_client(monkeypatch, 200, {"userId": "Ucust9", "displayName": "Somchai"})
+        assert await LineAdapter().fetch_profile(MagicMock(), "Ucust9") == {"name": "Somchai"}
+        assert get.await_args.args[0].endswith("/profile/Ucust9")
+        assert get.await_args.kwargs["headers"] == {"Authorization": "Bearer tok"}
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_of_a_non_friend_keeps_the_placeholder(self, monkeypatch):
+        """LINE answers 404 for someone who hasn't added the account as a friend."""
+        self._profile_client(monkeypatch, 404, {"message": "Not found"})
+        assert await LineAdapter().fetch_profile(MagicMock(), "Ucust9") == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_survives_a_network_error(self, monkeypatch):
+        from unittest.mock import AsyncMock
+        monkeypatch.setattr("app.channels.line.credentials", lambda a: {"channel_access_token": "tok"})
+        monkeypatch.setattr("app.channels.line._get_http_client",
+                            lambda: MagicMock(get=AsyncMock(side_effect=RuntimeError("boom"))))
+        assert await LineAdapter().fetch_profile(MagicMock(), "Ucust9") == {}
+
     @pytest.mark.asyncio
     async def test_send_with_a_saved_non_ascii_token_asks_for_reconnect(self, monkeypatch):
         from unittest.mock import AsyncMock

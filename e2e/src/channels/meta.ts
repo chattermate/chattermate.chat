@@ -5,7 +5,7 @@ import { env } from '../env'
 import { FakeExternals, type RecordedCall } from '../fakes/externals'
 import { unique } from '../support/ids'
 import { step } from '../support/step'
-import { ChatWithButtons, digits, hmac, phoneNumber, postWebhook, samePhone, sentWith, type Button, type ButtonChat, type ChannelConnector } from './chat'
+import { ChatWithButtons, digits, hmac, once, phoneNumber, postWebhook, samePhone, sentWith, type Button, type ButtonChat, type ChannelConnector, type ChatOptions } from './chat'
 
 // WhatsApp, Messenger and Instagram share one webhook (/webhooks/meta), signed
 // with the Meta app secret; `object` in the body says which product sent it.
@@ -250,9 +250,11 @@ export function pageChat(
   // Where replies go: a Page token only works on the Facebook graph, so that is
   // every account except one connected with Instagram Login
   provider: 'graph' | 'graph-instagram' = 'graph',
+  { profileName }: ChatOptions = {},
 ): ChatWithButtons {
   const senderId = digits(16)
-  const inbound = (message: Record<string, unknown>) => deliverMeta(request, {
+  const profile = once(() => (profileName ? pageConversationNames(externals, pageId, senderId, profileName) : Promise.resolve()))
+  const inbound = async (message: Record<string, unknown>) => { await profile(); await deliverMeta(request, {
     object,
     entry: [{ id: pageId, time: Date.now(), messaging: [{
       sender: { id: senderId },
@@ -260,7 +262,7 @@ export function pageChat(
       timestamp: Date.now(),
       message: { mid: `m_${unique('in')}`, ...message },
     }] }],
-  }, to)
+  }, to) }
   // `/me/messages` names no page: the token is the only proof of which page sent it.
   const sends = async () => (await externals.calls(provider, 'messages', { contains: senderId }))
     .filter((c: RecordedCall) => c.status === 200 && sentWith(c, token))
@@ -275,7 +277,21 @@ export function pageChat(
       .map((q) => ({ id: q.payload, title: q.title })),
     // A quick-reply tap is a message whose text is the title, with the payload attached.
     deliverTap: (button) => inbound({ text: button.title, quick_reply: { payload: button.id } }),
+    unnamedLabel: `${label} user ${senderId.slice(0, 8)}`,
   })
+}
+
+/**
+ * Meta as most apps see it: the sender's profile is withheld without Business
+ * Asset User Profile Access, but the Page's conversation with them names them.
+ */
+async function pageConversationNames(externals: FakeExternals, pageId: string, senderId: string, name: string): Promise<void> {
+  await externals.fail({ provider: 'graph', action: senderId, status: 400,
+    body: { error: { message: '(#100) No profile available for this user.', type: 'OAuthException', code: 100 } } })
+  await externals.respond({ provider: 'graph', action: 'conversations', contains: senderId, status: 200,
+    body: { data: [{ id: `t_${senderId}`, participants: { data: [
+      { id: pageId, name: 'E2E Page' }, { id: senderId, name },
+    ] } }] } })
 }
 
 /** A Facebook Page connected by hand (page id + page access token). */
@@ -286,7 +302,7 @@ export const messenger: ChannelConnector<ButtonChat> = ({ api, request, agentId 
     const account = await connectMessenger(api, pageId, token)
     await routeToAgent(api, account.id, agentId)
     const externals = new FakeExternals(request)
-    return { chatWith: (customerName) => pageChat('Messenger', request, externals, 'page', pageId, token, customerName) }
+    return { chatWith: (customerName, options) => pageChat('Messenger', request, externals, 'page', pageId, token, customerName, undefined, 'graph', options) }
   })
 
 /** An Instagram professional account connected by hand: its IG user id and the

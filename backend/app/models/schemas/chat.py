@@ -23,6 +23,19 @@ from app.models.session_to_agent import SessionStatus
 from app.channels.constants import MAX_CHOICE_LENGTH, MAX_CHOICE_OPTIONS
 
 
+class CustomerNameUpdate(BaseModel):
+    """A teammate naming the customer from the inbox."""
+    full_name: str = Field(..., max_length=255)
+
+    @field_validator('full_name')
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('Name cannot be empty')
+        return value
+
+
 class CustomerInfo(BaseModel):
     id: UUID
     email: Optional[str]

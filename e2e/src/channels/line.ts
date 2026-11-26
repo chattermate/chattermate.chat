@@ -2,7 +2,7 @@ import { connectLine, routeToAgent } from '../api/channels'
 import { FakeExternals } from '../fakes/externals'
 import { unique } from '../support/ids'
 import { step } from '../support/step'
-import { Chat, digits, hmac, postWebhook, sentWith, type ChannelConnector } from './chat'
+import { Chat, digits, hmac, once, postWebhook, sentWith, type ChannelConnector } from './chat'
 
 interface LinePush { to: string; messages: Array<{ type: string; text?: string }> }
 
@@ -16,9 +16,14 @@ export const line: ChannelConnector = ({ api, request, agentId }) =>
     const externals = new FakeExternals(request)
 
     return {
-      chatWith(customerName) {
+      chatWith(customerName, { profileName } = {}) {
         const userId = `U${digits(32)}`
+        // LINE shares a display name only with an account the person added as a friend (404 otherwise).
+        const profile = once(() => externals.respond(profileName
+          ? { provider: 'line', action: userId, status: 200, body: { userId, displayName: profileName } }
+          : { provider: 'line', action: userId, status: 404, body: { message: 'Not found' } }))
         return new Chat('LINE', customerName, async (text) => {
+          await profile()
           const json = JSON.stringify({
             destination: account.external_account_id,
             events: [{
@@ -37,7 +42,8 @@ export const line: ChannelConnector = ({ api, request, agentId }) =>
           .filter((c) => c.status === 200 && sentWith(c, accessToken))
           .map((c) => c.body as LinePush)
           .filter((b) => b.to === userId)
-          .flatMap((b) => b.messages.map((m) => m.text ?? '')))
+          .flatMap((b) => b.messages.map((m) => m.text ?? '')),
+        `Line user ${userId.slice(0, 8)}`)
       },
     }
   })

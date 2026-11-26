@@ -19,12 +19,16 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from app.models.schemas.chat import ChatOverviewResponse, ChatDetailResponse, InboxCountsResponse
+from app.models.schemas.chat import (
+    ChatOverviewResponse, ChatDetailResponse, CustomerInfo, CustomerNameUpdate, InboxCountsResponse,
+)
 from app.core.auth import get_current_user, require_permissions, get_unified_chat_auth
 from app.services.shopify_session import require_shopify_or_jwt_auth
 from app.models.user import User
 from app.database import get_db
 from app.repositories.chat import ChatRepository
+from app.repositories.customer import CustomerRepository
+from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.inbox_views import InboxSort, InboxView
 from app.models.session_to_agent import SessionStatus
 from app.core.params import MAX_DB_INT
@@ -164,6 +168,30 @@ async def get_recent_chats(
             detail="Failed to fetch recent chats"
         )
 
+async def _require_chat_access(chat_repo: ChatRepository, auth_info: dict, session_id: UUID) -> None:
+    """404 unless this caller may see the conversation.
+
+    Shopify session auth carries no user permissions and sees all of the
+    org's chats. Scoped readers must own the session, share its group, or —
+    with view_unassigned_chats — find it unclaimed.
+    """
+    if auth_info['auth_type'] in ('shopify_session', 'shopify'):
+        return
+    if auth_info.get('can_view_all', False):
+        return
+    current_user = auth_info['current_user']
+    can_view_assigned = auth_info.get('can_view_assigned', False)
+    user_group_ids = [str(group.id) for group in current_user.groups]
+    has_access = await chat_repo.check_session_access(
+        session_id=session_id,
+        user_id=current_user.id if can_view_assigned else None,
+        user_groups=user_group_ids if can_view_assigned else [],
+        include_unassigned=auth_info.get('can_view_unassigned', False)
+    )
+    if not has_access:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+
 @router.get("/{session_id}/shopify", response_model=ChatDetailResponse)
 @router.get("/{session_id}", response_model=ChatDetailResponse)
 async def get_chat_detail(
@@ -180,45 +208,12 @@ async def get_chat_detail(
         chat_repo = ChatRepository(db)
         organization_id = auth_info['organization_id']
         
-        # For Shopify session token auth, we don't have user permissions, so allow access to all org chats
-        if auth_info['auth_type'] == 'shopify_session' or auth_info['auth_type'] == 'shopify':
-            # Get chat detail
-            chat_detail = await chat_repo.get_chat_detail(
-                session_id=session_id_uuid,
-                org_id=organization_id
-            )
-        else:
-            # For JWT auth, use permissions from auth_info
-            current_user = auth_info['current_user']
-            can_view_all = auth_info.get('can_view_all', False)
-            can_view_assigned = auth_info.get('can_view_assigned', False)
-            can_view_unassigned = auth_info.get('can_view_unassigned', False)
+        await _require_chat_access(chat_repo, auth_info, session_id_uuid)
+        chat_detail = await chat_repo.get_chat_detail(
+            session_id=session_id_uuid,
+            org_id=organization_id
+        )
 
-            # Get user's group IDs
-            user_group_ids = [str(group.id) for group in current_user.groups]
-
-            # Scoped readers must own the session, share its group, or — with
-            # view_unassigned_chats — find it unclaimed
-            if not can_view_all:
-                has_access = await chat_repo.check_session_access(
-                    session_id=session_id_uuid,
-                    user_id=current_user.id if can_view_assigned else None,
-                    user_groups=user_group_ids if can_view_assigned else [],
-                    include_unassigned=can_view_unassigned
-                )
-                if not has_access:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Chat session not found"
-                    )
-            
-            # Get chat detail
-            chat_detail = await chat_repo.get_chat_detail(
-                session_id=session_id_uuid,
-                org_id=organization_id
-            )
-        
-        
         if not chat_detail:
             raise HTTPException(
                 status_code=404,
@@ -324,6 +319,38 @@ async def get_chat_detail(
         )
 
 
+@router.patch("/{session_id}/customer", response_model=CustomerInfo)
+async def rename_chat_customer(
+    session_id: UUID,
+    request: CustomerNameUpdate,
+    auth_info: dict = Depends(get_unified_chat_auth),
+    db: Session = Depends(get_db)
+):
+    """Name the customer of a conversation from the inbox.
+
+    Channels like Messenger and LINE often give us only an id ("Line user
+    U56c…"); whoever can see the chat can say who it is. Same customer record
+    as People, so the name shows everywhere.
+    """
+    await _require_chat_access(ChatRepository(db), auth_info, session_id)
+    customer = await run_in_threadpool(_rename_session_customer, db, session_id,
+                                       auth_info['organization_id'], request.full_name)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return customer
 
 
-
+def _rename_session_customer(db: Session, session_id: UUID, organization_id,
+                             full_name: str) -> Optional[CustomerInfo]:
+    """The session's customer renamed, or None when the session is not this org's."""
+    session_record = SessionToAgentRepository(db).get_session(session_id)
+    if session_record is None or session_record.customer_id is None \
+            or str(session_record.organization_id) != str(organization_id):
+        return None
+    customer = CustomerRepository(db).get_by_id(session_record.customer_id)
+    if customer is None:
+        return None
+    customer.full_name = full_name
+    db.commit()
+    db.refresh(customer)
+    return CustomerInfo.model_validate(customer, from_attributes=True)

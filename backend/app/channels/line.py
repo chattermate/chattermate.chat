@@ -174,5 +174,32 @@ class LineAdapter(ChannelAdapter):
     def format_outbound(self, markdown: str) -> str:
         return markdown[:MAX_MESSAGE_LENGTH]
 
+    async def fetch_profile(self, account: ChannelAccount, external_user_id: str) -> dict:
+        """The customer's LINE display name. Webhooks carry only a userId, so
+        without this every customer shows as "Line user U56cf…".
+
+        https://developers.line.biz/en/reference/messaging-api/#get-profile
+        LINE answers only for users who have added the official account as a
+        friend (404 otherwise). Best-effort: a failure keeps the placeholder.
+        """
+        try:
+            token = credentials(account)["channel_access_token"]
+            response = await _get_http_client().get(
+                f"{LINE_API_BASE}/profile/{external_user_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except Exception as e:
+            logger.info(f"LINE profile lookup failed for account {account.id}: {e}")
+            return {}
+        if response.status_code >= 300:
+            logger.info(f"LINE profile lookup refused for account {account.id}: "
+                        f"HTTP {response.status_code}")
+            return {}
+        try:
+            name = (response.json().get("displayName") or "").strip()
+        except Exception:
+            return {}
+        return {"name": name} if name else {}
+
 
 register_adapter(LineAdapter())

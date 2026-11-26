@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from app.channels import get_adapter
 from app.channels.app_hooks import OutboundRecord, emit_channel_event, outbound_event
 from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE, MessageSource
-from app.services.channel_chat import placeholder_name
+from app.utils.customer_names import placeholder_name
 from app.services.channel_opt_outs import is_opted_out
 from app.services.business_message import remember_business_message
 from app.services.channel_status import record_sent

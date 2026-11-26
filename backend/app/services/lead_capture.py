@@ -166,9 +166,11 @@ def record_lead_capture(
         # national number we cannot resolve to one person worldwide, so it is
         # dropped (logged) rather than guessed at — a wrong-country identity key
         # is worse than an unset one.
+        # The name only fills a placeholder: an AI-extracted name must not
+        # rename someone the platform or a teammate already named.
         CustomerRepository(db).update_contact(
             target_customer_id, email=email or None, full_name=name,
-            phone=(field_values or {}).get('phone'))
+            phone=(field_values or {}).get('phone'), replace_real_name=False)
 
         # Promote Visitor -> Lead; never downgrade an existing Customer.
         _promote_to_lead(db, target_customer_id, session_id, page_url=page_url, channel=channel)
@@ -247,6 +249,34 @@ def _merge_customer(db: Session, source_id, target) -> None:
     source.is_active = False
 
 
+def name_customer_from_lead(db: Session, config: LeadCaptureConfig, customer_id, name,
+                            *, consent: bool, scope: Optional[str]) -> bool:
+    """Put a name the customer gave the AI on their record while it is still a
+    placeholder, when no lead could be recorded (most often: no email yet).
+
+    The same guards as recording a lead: never without consent where the agent
+    requires it, never on an integration-authenticated customer, and only on a
+    customer this visitor may act as. Returns whether the name was set.
+    """
+    from app.models.customer import Customer
+
+    name = str(name or "").strip()
+    if not name or (config.require_consent and not consent):
+        return False
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if customer is None or customer.is_authenticated or not can_act_as(db, customer, scope):
+        return False
+    try:
+        updated = CustomerRepository(db).update_contact(
+            customer.id, full_name=name, replace_real_name=False)['name_updated']
+        db.commit()
+        return updated
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Lead capture: could not name customer {customer_id}: {e}")
+        return False
+
+
 def _promote_to_lead(db: Session, customer_id, session_id, page_url: Optional[str] = None,
                      channel: str = "widget") -> None:
     from app.models.customer import Customer, LeadStage
@@ -307,7 +337,7 @@ def record_lead_from_response(
             if val and not lead_data.get(key):
                 lead_data[key] = val
 
-        return record_lead_capture(
+        recorded = record_lead_capture(
             db, config,
             organization_id=organization_id,
             agent_id=agent_id,
@@ -320,6 +350,12 @@ def record_lead_from_response(
             channel=channel,
             scope=scope,
         )
+        if recorded is None:
+            # No lead (no valid email yet), but a name the customer gave still
+            # beats "Line user U56c…" on the conversation and in People.
+            name_customer_from_lead(db, config, customer_id, lead_data.get('name'),
+                                    consent=getattr(response, 'lead_consent', False), scope=scope)
+        return recorded
     except Exception as e:
         # Lead capture must never break the conversation flow.
         logger.error(f"Lead-capture record error: {e}")
