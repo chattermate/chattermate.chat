@@ -250,36 +250,40 @@ class ChatRepository:
             .first()
         )
 
-    def in_channel_chat_by_external_message_id(self, channel_account_id: UUID, external_conversation_id: str,
+    def in_channel_chat_by_external_message_id(self, channel_account_id: UUID, external_conversation_ids: Iterable[str],
                                                external_message_id: str) -> Optional[ChatHistory]:
         """The message a platform id belongs to, within one customer's chat on
         one channel account — across its sessions (a chat that closed and
         reopened is a new session), and never another chat's: some platforms
         number messages per chat, not globally."""
         return (
-            self._in_channel_chat(channel_account_id, external_conversation_id)
+            self._in_channel_chat(channel_account_id, external_conversation_ids)
             .filter(ChatHistory.external_message_id == external_message_id)
             .first()
         )
 
-    def latest_replies_in_channel_chat(self, channel_account_id: UUID, external_conversation_id: str,
+    def latest_replies_in_channel_chat(self, channel_account_id: UUID, external_conversation_ids: Iterable[str],
                                        limit: int) -> List[ChatHistory]:
         """That chat's most recent replies to the customer, the AI's or a
         person's, newest first."""
         return (
-            self._in_channel_chat(channel_account_id, external_conversation_id)
+            self._in_channel_chat(channel_account_id, external_conversation_ids)
             .filter(ChatHistory.message_type.in_(('bot', 'agent')))
             .order_by(ChatHistory.created_at.desc(), ChatHistory.id.desc())
             .limit(limit)
             .all()
         )
 
-    def _in_channel_chat(self, channel_account_id: UUID, external_conversation_id: str):
+    def _in_channel_chat(self, channel_account_id: UUID, external_conversation_ids: Iterable[str]):
+        """One customer's chat on one account, under any of its ids (a
+        WhatsApp number's forms: repositories.channels.conversations.external_ids)."""
+        if isinstance(external_conversation_ids, str):
+            external_conversation_ids = [external_conversation_ids]
         return (
             self.db.query(ChatHistory)
             .join(ChannelConversation, ChannelConversation.session_id == ChatHistory.session_id)
             .filter(ChannelConversation.channel_account_id == channel_account_id,
-                    ChannelConversation.external_conversation_id == external_conversation_id)
+                    ChannelConversation.external_conversation_id.in_(list(external_conversation_ids)))
         )
 
     def advance_channel_status(self, message_id: int, status: str, at: datetime,

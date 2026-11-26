@@ -118,3 +118,10 @@ class TestWhatsAppEquivalents:
     @pytest.mark.parametrize("phone", [None, "", "garbage"])
     def test_no_number_no_forms(self, phone):
         assert whatsapp_equivalents(phone) == ()
+
+
+def test_external_ids_only_widen_whatsapp():
+    from app.repositories.channels.conversations import external_ids
+    assert external_ids("whatsapp", "525512345678") == ["525512345678", "5215512345678"]
+    assert external_ids("telegram", "525512345678") == ["525512345678"]
+    assert external_ids("whatsapp", "not-a-number") == ["not-a-number"]

@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.utils.uuids import as_uuid
 from app.models.customer import Customer
-from app.utils.phone import normalize_phone
+from app.utils.phone import normalize_phone, whatsapp_equivalents
 from uuid import UUID, uuid4
 from app.core.logger import get_logger
 
@@ -75,12 +76,16 @@ class CustomerRepository:
         still holding a number would capture that conversation onto a row
         People hides and no drawer can edit.
         """
+        # A WhatsApp id can differ from the number as written (Mexico's +521,
+        # Argentina's +549, Brazil's dropped 9): one person either way, the
+        # exact form preferred
+        forms = whatsapp_equivalents(phone) or (phone,)
         try:
             return self.db.query(Customer).filter(
-                Customer.phone == phone,
+                Customer.phone.in_(forms),
                 Customer.organization_id == organization_id,
                 Customer.merged_into_customer_id.is_(None)
-            ).first()
+            ).order_by(case((Customer.phone == phone, 0), else_=1)).first()
         except Exception as e:
             logger.error(f"Error getting customer by phone: {str(e)}")
             return None

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from datetime import datetime, timezone
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -23,8 +23,21 @@ from sqlalchemy.orm import Session
 from app.models.channels import ChannelConversation
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.core.logger import get_logger
+from app.utils.phone import to_wa_id, whatsapp_equivalents
+
+WHATSAPP = "whatsapp"
 
 logger = get_logger(__name__)
+
+
+def external_ids(channel_type: str, external_conversation_id: str) -> List[str]:
+    """The ids one platform conversation may be stored under. A WhatsApp
+    thread started from an order's number (+52...) gets its reply from the
+    wa_id (521...), so each form of the number counts; elsewhere the id is
+    the id."""
+    if channel_type != WHATSAPP:
+        return [external_conversation_id]
+    return [to_wa_id(p) for p in whatsapp_equivalents(external_conversation_id)] or [external_conversation_id]
 
 
 class ChannelConversationRepository:
@@ -74,15 +87,20 @@ class ChannelConversationRepository:
             logger.error(f"Error getting channel conversation by session: {str(e)}")
             return None
 
-    def get_latest(self, channel_account_id: UUID, external_conversation_id: str) -> Optional[ChannelConversation]:
+    def get_latest(self, channel_account_id: UUID, external_conversation_id) -> Optional[ChannelConversation]:
         """Most recent conversation row regardless of session status — used for
-        interactions (rating taps, feedback) that arrive after the chat closed."""
+        interactions (rating taps, feedback) that arrive after the chat closed.
+        Takes one id or several (external_ids: a WhatsApp number's forms)."""
+        wanted = [external_conversation_id] if isinstance(external_conversation_id, str) \
+            else [i for i in dict.fromkeys(external_conversation_id) if i]
+        if not wanted:
+            return None
         try:
             return (
                 self.db.query(ChannelConversation)
                 .filter(
                     ChannelConversation.channel_account_id == channel_account_id,
-                    ChannelConversation.external_conversation_id == external_conversation_id,
+                    ChannelConversation.external_conversation_id.in_(wanted),
                 )
                 .order_by(ChannelConversation.created_at.desc())
                 .first()

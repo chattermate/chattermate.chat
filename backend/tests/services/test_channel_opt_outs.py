@@ -383,7 +383,12 @@ async def test_the_reply_from_the_wa_id_joins_the_thread_we_started(
         external_account_id="PN123", external_conversation_id=MX_WA_ID, external_user_id=MX_WA_ID,
         external_message_id="wamid.MX3", text="where is it?", profile={"phone": MX_WA_ID}))
     assert db.query(SessionToAgent).count() == 1
-    assert str(db.query(SessionToAgent).one().session_id) == str(sent.session_id)
+    session = db.query(SessionToAgent).one()
+    assert str(session.session_id) == str(sent.session_id)
+    # One person: the reply is the customer the order message started with
+    from app.models.customer import Customer
+    assert db.query(Customer).filter(Customer.organization_id == account.organization_id,
+                                     Customer.phone.in_([MX_WRITTEN, "+" + MX_WA_ID])).count() == 1
 
 
 @pytest.mark.asyncio

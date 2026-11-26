@@ -30,18 +30,19 @@ from app.channels.interactive_limits import InteractiveLimits
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
 from app.database import SessionLocal, release_connection
-from app.models.channels import ChannelAccount, ChannelType
+from app.models.channels import ChannelAccount
 from app.models.session_to_agent import SessionStatus
 from app.repositories.agent import AgentRepository
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
-from app.utils.phone import normalize_msisdn, to_wa_id, whatsapp_equivalents
+from app.utils.phone import normalize_msisdn
 from app.repositories.channels import (
     ChannelAccountRepository,
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
+from app.repositories.channels.conversations import external_ids
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
 from app.services.app_first_routing import announce_inbound, app_claims, button_reply, text_reply
@@ -249,7 +250,7 @@ async def process_channel_interaction(account_id, interaction: ChannelInteractio
         if account is None or not account.is_active:
             return
         conversation = ChannelConversationRepository(db).get_latest(
-            account.id, interaction.external_conversation_id)
+            account.id, external_ids(account.channel_type, interaction.external_conversation_id))
         if conversation is None:
             return
 
@@ -401,16 +402,6 @@ def _id_or_none(value) -> Optional[str]:
     return str(value) if value is not None else None
 
 
-def _conversation_ids(account: ChannelAccount, inbound: InboundMessage) -> list:
-    """The ids this platform conversation may be stored under. A WhatsApp
-    thread we started from an order's number (+52...) gets its reply from
-    the wa_id (521...), so each form is tried."""
-    own = inbound.external_conversation_id
-    if account.channel_type != ChannelType.WHATSAPP.value:
-        return [own]
-    return [to_wa_id(p) for p in whatsapp_equivalents(own)] or [own]
-
-
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,
                            agent_id, customer_id: str, org_id: str):
     """Find the open session for this platform conversation or start a new one.
@@ -421,7 +412,7 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
     conv_repo = ChannelConversationRepository(db)
     session_repo = SessionToAgentRepository(db)
 
-    conversation = conv_repo.get_active_any(account.id, _conversation_ids(account, inbound))
+    conversation = conv_repo.get_active_any(account.id, external_ids(account.channel_type, inbound.external_conversation_id))
     if conversation is not None:
         session_record = session_repo.get_session(conversation.session_id)
         if not _agent_changed(session_record, agent_id):
@@ -477,7 +468,7 @@ def _store_customer_message(db: Session, inbound: InboundMessage, session_record
     path persists inside ChatAgent.get_response). Returns the stored row for
     the relay."""
     message = {
-        "message": reply_text(db, account.id, inbound),
+        "message": reply_text(db, account.id, inbound, external_ids(account.channel_type, inbound.external_conversation_id)),
         "message_type": "user",
         "session_id": str(session_record.session_id),
         "organization_id": org_id,
@@ -502,7 +493,7 @@ async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
     # Everything the model call needs, read before the connection is let go:
     # it isn't held through the call, and these rows would reload on access
     channel = account.channel_type
-    message = reply_text(db, account.id, inbound)
+    message = reply_text(db, account.id, inbound, external_ids(account.channel_type, inbound.external_conversation_id))
     attributes = inbound_attributes(inbound, channel)
     memory = await customer_memory.channel_context(db, customer_memory.Conversation(
         organization_id=str(org_id), agent_id=str(agent_id), customer_id=str(customer_id),

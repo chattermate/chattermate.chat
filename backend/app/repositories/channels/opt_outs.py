@@ -62,6 +62,8 @@ class ChannelOptOutRepository:
 
     def opt_in(self, channel_account_id, contacts: Iterable[str]) -> bool:
         """Clear a STOP (START) under any of these forms of the number. True when there was one."""
+        if isinstance(contacts, str):
+            contacts = [contacts]
         wanted = [c for c in set(contacts) if c]
         if not wanted:
             return False
