@@ -4,6 +4,7 @@ import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 import createLoaderExtension from 'virtual:cm-loader-ext'
 import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
+import { createFrameOriginCache, removePreconnects, warmUpConnections } from './loader/preconnect.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
 import { createOpenShell, shellCss } from './loader/openShell.js'
@@ -309,6 +310,18 @@ import {
     let storage = null
     try { storage = window.localStorage } catch { /* blocked: no cache */ }
     return createLookCache(storage, window.chattermateId)
+  }
+
+  // The frame host the last frame came from, kept for the next visit's preconnect only.
+  function frameOriginCache() {
+    let storage = null
+    try { storage = window.localStorage } catch { /* blocked: no cache */ }
+    return createFrameOriginCache(storage, window.chattermateId)
+  }
+
+  // Start the connections the frame will need while the page is still loading.
+  function warmUp() {
+    warmUpConnections(document, config.baseUrl, frameOriginCache().read())
   }
 
   function currentLauncherLook() {
@@ -1410,6 +1423,7 @@ import {
   // Initialize function to create and append elements
   function initialize() {
     isDestroyed = false
+    warmUp()
     // A returning visitor's launcher can show now, in the look it had last time,
     // instead of waiting seconds for the frame. The frame's settings still follow.
     const cachedLook = lookCache().read()
@@ -1675,6 +1689,7 @@ import {
       if (pageExtension) pageExtension.destroy()
       ;[button, backdrop, container, mobileCloseButton, mobileTopbar].forEach(removeNode)
       removeNode(document.getElementById('chattermate-styles'))
+      removePreconnects(document)
       document.body.classList.remove('ask-anything-mobile')
       // A rebuilt launcher starts hidden again (.chattermate-pending) and needs its
       // own reveal, so drop the reveal state and the pending safety-net timer with it.
@@ -2004,6 +2019,7 @@ import {
         if (event.origin === 'null') return
         frameOrigin = event.origin
         keepEarlyLook(event.origin)
+        frameOriginCache().save(event.origin)
         stopWatchingForPolicyRefusal() // it started: nothing to fall back from
         // A frame that reloaded itself starts over: not listening until it mounts again
         widgetMounted = false
@@ -2280,6 +2296,8 @@ import {
   // Declarative options: the install snippet may set window.chattermateConfig with the
   // same shape as ChatterMate.init(options). Applied before the widget is built.
   applyOptions(window.chattermateConfig)
+  // Before waiting for the DOM: a script in <head> gets the connections going early.
+  warmUp()
 
   // Wait for DOM to be fully loaded
   if (document.readyState === 'loading') {
@@ -2471,6 +2489,8 @@ import {
     if (options.id) {
       window.chattermateId = options.id
     }
+    // A widget named or pointed elsewhere only now: warm up its connections too.
+    if (options.id || options.baseUrl) warmUp()
     if (typeof options.tokenProvider === 'function') {
       // Called when the widget needs a token the page alone can mint: on an expired
       // identity, or when there is none yet. Must resolve to a /generate-token token.
@@ -2670,6 +2690,7 @@ import {
     // destroy() before the DOM was ready — a site deciding this visitor gets no
     // chat at all. Cancel the pending build rather than let it run afterwards.
     isDestroyed = true
+    removePreconnects(document)
     pendingCalls.length = 0
     triggerClickQueued = false
   }
