@@ -261,6 +261,7 @@ defineExpose({ focus: () => input.value?.focus() })
           </template>
         </div>
         <div class="send-group">
+          <span class="newline-hint"><kbd>Shift ↵</kbd> new line</span>
           <kbd aria-hidden="true">↵</kbd>
           <div class="split">
             <button
@@ -538,6 +539,19 @@ kbd {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted2);
+}
+
+.newline-hint {
+  font-size: 11px;
+  color: var(--muted2);
+  white-space: nowrap;
+}
+
+/* Touch keyboards have no Shift+Enter to learn */
+@media (hover: none) {
+  .newline-hint {
+    display: none;
+  }
 }
 
 .split {

@@ -407,6 +407,12 @@ describe('ThreadComposer', () => {
     wrapper.unmount()
   })
 
+  it('tells the agent Shift+Enter breaks the line', () => {
+    const wrapper = mountComposer()
+    expect(wrapper.find('.newline-hint').text()).toBe('Shift ↵ new line')
+    wrapper.unmount()
+  })
+
   it('offers Send and close once there is something to send', async () => {
     expect(mountComposer().find('[aria-label="More send options"]').exists()).toBe(false)
     const wrapper = mountComposer({ modelValue: 'Done, refund sent.' })
