@@ -6,6 +6,7 @@ import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
+import { createOpenShell, shellCss } from './loader/openShell.js'
 import { DEFAULT_FRAME, pickPanelLook } from './panel-style'
 // TypeScript declarations for global variables
 /** @type {string} */
@@ -1204,6 +1205,7 @@ import {
       },
       config.panel,
     )
+    style.textContent += shellCss(config.containerId, { accent: config.chatBubbleColor, elevation: config.panel.elevation, palette: isAskAiModal() })
     syncPanelClasses()
     // Remove existing style if it exists
     const existingStyle = document.getElementById('chattermate-styles')
@@ -1504,16 +1506,23 @@ import {
       })
     }
 
-    // The widget is still starting. The launcher shows it (a spinner in place of its
-    // icon) only while the visitor has the chat open and is waiting for it: a closed
+    // The widget is still starting. The visitor only sees it while they have the chat
+    // open and are waiting for it: a spinner in the launcher, and the chat window's
+    // outline (loader/openShell.js) in place of the still-blank frame. A closed
     // launcher keeps its icon while the chat loads behind it.
     let widgetStarting = false
+    const openShell = createOpenShell(document, container, {
+      onClose: function () { if (isOpen) toggleChat({ returnFocus: true }) },
+    })
     function setWidgetStarting(starting) {
       widgetStarting = starting
       showStartingState()
     }
     function showStartingState() {
-      button.classList.toggle('loading', widgetStarting && isOpen)
+      const waiting = widgetStarting && isOpen
+      button.classList.toggle('loading', waiting)
+      if (waiting) openShell.show()
+      else openShell.hide()
     }
 
     // `options.returnFocus`: the close came from the keyboard, Escape or the panel's
