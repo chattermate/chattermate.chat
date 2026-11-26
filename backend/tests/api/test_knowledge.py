@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import pytest
+from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from app.database import Base, get_db
@@ -311,6 +312,28 @@ def test_add_urls_counts_queued_crawls_against_the_plan(
     assert db.query(KnowledgeQueue).filter(
         KnowledgeQueue.source == "https://second.example"
     ).count() == 0
+
+
+def test_adding_a_source_already_waiting_queues_nothing_more(client: TestClient, test_organization, db):
+    body = {"org_id": str(test_organization.id), "websites": ["https://twice.example.com"]}
+    with patch("app.api.knowledge.domain_resolves", new=AsyncMock(return_value=True)):
+        first = client.post("/api/v1/knowledge/add/urls", json=body)
+        again = client.post("/api/v1/knowledge/add/urls", json={**body, "websites": body["websites"] * 2})
+
+    assert first.status_code == again.status_code == 200
+    assert again.json()["queue_items"] == first.json()["queue_items"]
+    assert db.query(KnowledgeQueue).filter(KnowledgeQueue.source == "https://twice.example.com").count() == 1
+
+
+@pytest.mark.parametrize("source_type,expected", [("website", 200), ("sitemap", 200), ("pdf_url", 400)])
+def test_only_a_site_can_be_removed_while_it_is_read(
+    client: TestClient, db, test_knowledge_queue, source_type, expected
+):
+    test_knowledge_queue.status = QueueStatus.PROCESSING
+    test_knowledge_queue.source_type = source_type
+    db.commit()
+
+    assert client.delete(f"/api/v1/knowledge/queue/{test_knowledge_queue.id}").status_code == expected
 
 
 def test_add_sitemap(client: TestClient, test_organization, db):

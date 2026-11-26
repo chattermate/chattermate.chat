@@ -96,11 +96,15 @@ describe('StepTeach - only advances when the sources were accepted', () => {
     expect(wrapper.emitted('next')).toBeTruthy()
   })
 
-  it('advances with nothing staged', async () => {
+  it('with nothing added, says so and moves on only through "Skip for now"', async () => {
     getOrganization.mockResolvedValue({ id: 'org-1', domain: '' })
     const wrapper = await mountStep()
 
-    await clickContinue(wrapper)
+    expect(wrapper.find('.empty-note').text()).toContain('nothing to answer from')
+    expect(wrapper.find('.btn-accent').text()).toContain('Skip for now')
+    expect(wrapper.text()).toContain('Paste some text instead')
+    await wrapper.find('.btn-accent').trigger('click')
+    await flushPromises()
 
     expect(addUrls).not.toHaveBeenCalled()
     expect(wrapper.emitted('next')).toBeTruthy()

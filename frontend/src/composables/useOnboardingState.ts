@@ -28,6 +28,8 @@ export interface OnboardingRecord {
   agentId: string | null
   agentName: string | null
   widgetId: string | null
+  /** The signup website was sent or a source removed: don't suggest it again. */
+  signupSiteOffered?: boolean
   updatedAt: number
 }
 

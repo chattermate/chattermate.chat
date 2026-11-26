@@ -425,7 +425,7 @@ class TestEnhancedWebsiteKnowledgeBase:
     def test_a_source_removed_mid_crawl_stops_it(self, mock_vector_db, mock_reader):
         learning = MagicMock()
         learning.first_page.return_value = []
-        learning.removed.side_effect = [True]
+        learning.removed.side_effect = [False, True]
         kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS[:1], reader=mock_reader)
         kb.vector_db = mock_vector_db
         kb.learning = learning

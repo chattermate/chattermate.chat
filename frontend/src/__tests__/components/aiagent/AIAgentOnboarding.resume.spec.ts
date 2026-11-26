@@ -26,6 +26,11 @@ vi.mock('@/services/user', () => ({
 }))
 vi.mock('@/utils/permissions', () => ({ permissionChecks: { canManageAgents: () => true } }))
 
+const learnSignupSite = vi.fn()
+vi.mock('@/utils/learnSignupSite', () => ({
+  learnSignupSite: (...a: unknown[]) => learnSignupSite(...a)
+}))
+
 const STORAGE_KEY = 'chattermate:onboarding:v1'
 const stubs = {
   StepCreate: {
@@ -64,6 +69,7 @@ describe('AIAgentOnboarding - where it resumes', () => {
     enterprise = true
     getProgress.mockReset()
     createAgentWidget.mockReset().mockResolvedValue({ id: 'w-new' })
+    learnSignupSite.mockReset().mockResolvedValue(undefined)
     getAgentById.mockReset().mockResolvedValue({ id: 'agent-9', name: 'Tom', agent_type: 'CUSTOMER_SUPPORT' })
   })
 
@@ -182,6 +188,37 @@ describe('AIAgentOnboarding - where it resumes', () => {
     expect(createAgentWidget).toHaveBeenCalledWith('agent-1', 'Tom')
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)['org-1'].widgetId).toBe('w-new')
     expect(wrapper.find('.step-teach').exists()).toBe(true)
+  })
+
+  describe('the signup website', () => {
+    const create = async () => {
+      getProgress.mockResolvedValue({ step: 'create', agent_id: null, widget_id: null, hidden: false })
+      const wrapper = await mountWizard()
+      await wrapper.find('.step-create').trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    it('is sent to be read when the agent is created, before Teach opens', async () => {
+      let sent!: () => void
+      learnSignupSite.mockReturnValue(new Promise<void>((resolve) => { sent = resolve }))
+      const wrapper = await create()
+      expect(learnSignupSite).toHaveBeenCalledWith('org-1', 'agent-1')
+      expect(wrapper.find('.step-teach').exists()).toBe(false)
+      // A reload now must come back to Teach, not wherever the server guesses.
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)['org-1']).toMatchObject({ agentId: 'agent-1', currentStep: 1 })
+      sent()
+      await flushPromises()
+      expect(wrapper.find('.step-teach').exists()).toBe(true)
+    })
+
+    it('is not sent again when Create is saved for the same agent', async () => {
+      const wrapper = await create()
+      await wrapper.find('.step-teach').trigger('click') // Back
+      await wrapper.find('.step-create').trigger('click')
+      await flushPromises()
+      expect(learnSignupSite).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('still moves on to Teach if the widget could not be created', async () => {

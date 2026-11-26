@@ -77,6 +77,23 @@ export class SetupWizard {
     })
   }
 
+  /** Removes a source the agent already has, confirming it. */
+  async removeSource(name: string): Promise<void> {
+    await step(`Remove "${name}"`, async () => {
+      await this.page.getByRole('button', { name: `Remove ${name}` }).click()
+      await this.page.getByRole('group', { name: `Remove ${name}` }).getByRole('button', { name: 'Remove' }).click()
+    })
+  }
+
+  /** The Teach step saying the agent would have nothing to answer from. */
+  get nothingToLearnFrom(): Locator {
+    return this.page.getByRole('status').filter({ hasText: 'nothing to answer from' })
+  }
+
+  get skipTeachButton(): Locator {
+    return this.page.getByRole('button', { name: /^Skip for now/ })
+  }
+
   async finish(): Promise<void> {
     await step('Finish setup', async () => {
       await this.page.getByRole('button', { name: /^Finish & go to dashboard/ }).click()

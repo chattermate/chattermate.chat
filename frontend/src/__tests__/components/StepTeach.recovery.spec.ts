@@ -132,14 +132,14 @@ describe('StepTeach - after a website could not be read', () => {
     expect(wrapper.emitted('next')).toBeTruthy()
   })
 
-  it('removing the new source leaves nothing to send, so it moves on without the site', async () => {
+  it('removing the new source leaves nothing to learn from, and the button says so', async () => {
     await failFirst()
     await typeAndAdd('chattermate.chat')
     await wrapper.find('.source-remove').trigger('click')
 
     expect(staged()).toEqual([])
     expect(document.activeElement).toBe(wrapper.find('input[type="text"]').element)
-    expect(primary().text()).toMatch(/^Continue\s*→$/)
+    expect(primary().text()).toContain('Skip for now')
     await clickContinue()
     expect(addUrls).toHaveBeenCalledTimes(1)
     expect(wrapper.emitted('next')).toBeTruthy()
@@ -180,7 +180,7 @@ describe('StepTeach - after a website could not be read', () => {
     expect(primary().text()).toContain('Continue without it')
   })
 
-  it('the plan cap message keeps the failure on screen when nothing could be staged', async () => {
+  it('says the plan is full, and that the agent has nothing, when nothing could be staged', async () => {
     planLimits.mockReturnValue({ maxKnowledgeSources: 1 })
     getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1, name: 'https://elsewhere.com' }], pagination: { total_pages: 1, total: 1 } })
     getOrganization.mockResolvedValue({ id: 'org-1', domain: '' })
@@ -189,7 +189,7 @@ describe('StepTeach - after a website could not be read', () => {
     await typeAndAdd('erfanpv.com')
     // The cap is used up, so nothing was staged and nothing was sent.
     expect(wrapper.find('[role="alert"]').text()).toContain('already in use')
-    expect(panel().exists()).toBe(false)
+    expect(panel().text()).toContain('nothing to answer from')
   })
 
   it('picking a PDF from the panel clears it and Continue uploads it', async () => {
