@@ -35,8 +35,13 @@ const setup = () => {
 }
 
 describe('usePanelVisibility', () => {
-    beforeEach(() => vi.useFakeTimers())
+    beforeEach(() => {
+        vi.useFakeTimers()
+        // The loader handed the frame focus (it focuses the iframe on an open).
+        vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    })
     afterEach(() => {
+        vi.restoreAllMocks()
         scope?.stop()
         scope = null
         vi.useRealTimers()
@@ -86,6 +91,16 @@ describe('usePanelVisibility', () => {
         chip.focus()
         await vi.advanceTimersByTimeAsync(OPEN_FOCUS_DELAY_MS)
         expect(panel.hooks.focus).not.toHaveBeenCalled()
+    })
+
+    it('never takes focus while the site has it (the frame was not handed focus)', async () => {
+        vi.mocked(document.hasFocus).mockReturnValue(false)
+        const panel = setup()
+        panel.pageSays(true)
+        await vi.advanceTimersByTimeAsync(2000)
+        panel.focusIfShown()
+        expect(panel.hooks.focus).not.toHaveBeenCalled()
+        expect(panel.hooks.onShow).toHaveBeenCalledTimes(1)
     })
 
     it('does not focus when the panel is hidden again before the delay', async () => {

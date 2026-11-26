@@ -88,6 +88,36 @@ test.describe('opening the chat before it has loaded', () => {
     await expect(widget.lastAgentMessage()).toHaveText('Ready now.', AI_REPLY)
   })
 
+  test('the visitor\'s typing goes into the chat once it loads @widget', async ({ widget }) => {
+    await widget.embed({ chatHeldBack: true })
+    await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+    await widget.launcher.click()
+
+    await widget.letChatLoad()
+    await widget.expectReady()
+    await widget.waitForOpenMotion()
+    await widget.page.keyboard.type('Hi there')
+    await expect(widget.messageInput).toHaveValue('Hi there')
+  })
+
+  test('a visitor who moved on to the site\'s search box keeps typing there when the chat loads @widget', async ({ widget }) => {
+    await widget.embed({ chatHeldBack: true, withSearchBox: true })
+    await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)
+    await widget.launcher.click()
+    await expect(widget.loadingWindow).toBeVisible()
+
+    await widget.hostSearchBox.click()
+    await widget.page.keyboard.type('running')
+    await widget.letChatLoad()
+    await widget.expectReady()
+    await widget.waitForOpenMotion()
+    await widget.page.keyboard.type(' shoes')
+
+    await expect(widget.hostSearchBox).toBeFocused()
+    await expect(widget.hostSearchBox).toHaveValue('running shoes')
+    await expect(widget.messageInput).toHaveValue('')
+  })
+
   test('closing it early takes the outline away, and reopening brings it back @widget', async ({ widget }) => {
     await widget.embed({ chatHeldBack: true })
     await expect.poll(() => widget.launcherShown(), BEFORE_SAFETY_NET).toBe(true)

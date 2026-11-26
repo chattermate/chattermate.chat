@@ -6,6 +6,7 @@
 //     &config=<json>   → window.chattermateConfig (launcher, position, trigger, …)
 //     &token=<jwt>     → window.chattermateToken (token-authenticated widgets)
 //     &trigger=1       → adds a page button with data-chattermate-open
+//     &search=1        → adds the site's own search box
 //     &snippet=iframe  → the dashboard's iframe snippet instead of the script
 //     &csp=strict      → a strict Content-Security-Policy (default-src 'none') that allows
 //                        our script and API, like a hardened merchant site; frames only
@@ -52,6 +53,8 @@ interface Embed {
   config: string | null
   token: string | null
   trigger: boolean
+  /** The site's own search box. */
+  search: boolean
   iframe: boolean
   tokenProvider: boolean
   /** Where the loader comes from: the current build, or the frozen last release. */
@@ -204,6 +207,7 @@ function page(embed: Embed): string {
   <body>
     <h1>Acme Store</h1>
     ${embed.trigger ? '<button type="button" data-chattermate-open>Chat with us</button>' : ''}
+    ${embed.search ? '<input type="search" aria-label="Search the store">' : ''}
     <script${nonce}>
       ${globals}
     </script>
@@ -249,6 +253,7 @@ function serve(listenPort: number, loader: string, legacy: boolean): void {
         config: params.get('config'),
         token: params.get('token'),
         trigger: params.get('trigger') === '1',
+        search: params.get('search') === '1',
         iframe: params.get('snippet') === 'iframe',
         tokenProvider: params.get('tokenProvider') === '1',
         loader: legacy && params.get('loader') === 'current' ? loaderUrl : loader,

@@ -33,10 +33,19 @@ const nothingFocused = (): boolean =>
     typeof document === 'undefined' || !document.activeElement || document.activeElement === document.body
 
 /**
+ * The loader handed focus to the frame (it focuses the iframe on an open, a prefill,
+ * or a chat that was opened before it loaded). Without that, the visitor is busy on
+ * the site itself, e.g. typing in its search box: focusing a field in here would pull
+ * focus out of the site and their typing into the chat.
+ */
+const frameHasFocus = (): boolean => typeof document === 'undefined' || document.hasFocus()
+
+/**
  * What the redesigned panel does as the embedding page shows and hides it
  * (WIDGET_VISIBILITY, fed in through `report`): on open it restores the scroll
- * position and, once the open motion has played, focuses the panel's field unless
- * the visitor already focused something. It never takes focus while hidden (the
+ * position and, once the open motion has played, focuses the panel's field if the
+ * loader gave the frame focus and the visitor hasn't focused something in it already.
+ * It never takes focus while hidden (the
  * frame is created hidden on page load; focus would leave the host page), and
  * nothing happens on mount: only a reported open moves focus.
  *
@@ -56,7 +65,7 @@ export function usePanelVisibility(hostVisible: Readonly<Ref<boolean>>, hooks: P
     const focusAfterOpen = () => {
         timer = setTimeout(() => {
             timer = null
-            if (hostVisible.value && nothingFocused()) hooks.focus()
+            if (hostVisible.value && frameHasFocus() && nothingFocused()) hooks.focus()
         }, OPEN_FOCUS_DELAY_MS)
     }
 
@@ -75,7 +84,7 @@ export function usePanelVisibility(hostVisible: Readonly<Ref<boolean>>, hooks: P
 
     /** Focus now, if the panel is on screen (the page prefilled the message box). */
     const focusIfShown = () => {
-        if (hostVisible.value) hooks.focus()
+        if (hostVisible.value && frameHasFocus()) hooks.focus()
     }
 
     onScopeDispose(cancelFocus)

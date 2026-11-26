@@ -10,6 +10,8 @@ export interface EmbedOptions {
   token?: string
   /** Put a `[data-chattermate-open]` button on the page. */
   withTriggerButton?: boolean
+  /** Put the site's own search box on the page (hostSearchBox). */
+  withSearchBox?: boolean
   /** Open the site under its second origin (env.customerSiteOtherUrl). */
   onOtherOrigin?: boolean
   /** The dashboard's iframe snippet instead of the script: the chat is already open. */
@@ -217,6 +219,7 @@ export class ChatWidget {
       if (options.config) params.set('config', JSON.stringify(options.config))
       if (options.token) params.set('token', options.token)
       if (options.withTriggerButton) params.set('trigger', '1')
+      if (options.withSearchBox) params.set('search', '1')
       if (options.snippet) params.set('snippet', options.snippet)
       if (options.withActions) params.set('actions', '1')
       if (options.context) params.set('context', JSON.stringify(options.context))
@@ -252,6 +255,15 @@ export class ChatWidget {
   }
 
   /** The visitor comes back to the site with `token` kept from an earlier visit. */
+  /**
+   * The chat's open motion has played: the panel moves focus into its composer only
+   * after it (OPEN_FOCUS_DELAY_MS, 520 ms). Checking that focus stayed somewhere else
+   * has to wait that long; a timer in the page, as there is no event to wait for.
+   */
+  async waitForOpenMotion(): Promise<void> {
+    await this.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)))
+  }
+
   /** The slow network catches up: the bundle held back by embed({ chatHeldBack }) arrives. */
   async letChatLoad(): Promise<void> {
     await step('The chat finishes loading', async () => {
@@ -516,6 +528,11 @@ export class ChatWidget {
       ({ method, args }) => (window as unknown as { ChatterMate: Record<string, (...a: unknown[]) => unknown> }).ChatterMate[method](...args),
       { method, args },
     )
+  }
+
+  /** The site's own search box (embed with withSearchBox). */
+  get hostSearchBox(): Locator {
+    return this.page.getByRole('searchbox', { name: 'Search the store' })
   }
 
   /** The page's own "Chat with us" button (embed with withTriggerButton). */
