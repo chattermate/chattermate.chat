@@ -122,6 +122,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chats/{session_id}/customer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename Chat Customer
+         * @description Name the customer of a conversation from the inbox.
+         *
+         *     Channels like Messenger and LINE often give us only an id ("Line user
+         *     U56c…"); whoever can see the chat can say who it is. Same customer record
+         *     as People, so the name shows everywhere.
+         */
+        patch: operations["rename_chat_customer_api_v1_chats__session_id__customer_patch"];
+        trace?: never;
+    };
     "/api/v1/channels/limits": {
         parameters: {
             query?: never;
@@ -6847,6 +6871,14 @@ export interface components {
             /** Phone */
             phone?: string | null;
         };
+        /**
+         * CustomerNameUpdate
+         * @description A teammate naming the customer from the inbox.
+         */
+        CustomerNameUpdate: {
+            /** Full Name */
+            full_name: string;
+        };
         /** CustomizationCreate */
         CustomizationCreate: {
             /** Photo Url */
@@ -11083,6 +11115,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_chat_customer_api_v1_chats__session_id__customer_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerNameUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerInfo"];
                 };
             };
             /** @description Validation Error */
