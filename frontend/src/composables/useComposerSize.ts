@@ -142,13 +142,15 @@ export function useComposerSize({ text, box, pane, resizable, storageKey }: Comp
 
   function choose(next: number) {
     chosen.value = clampChosen(next, paneHeight())
-    pinned.value = true
+    // Only a draft is pinned; on an empty box the height is the floor to grow from
+    pinned.value = !!text.value
     fit()
   }
 
   // ---- Dragging the handle (it sits on the top edge: up makes it taller) ----
   let startY = 0
   let startHeight = 0
+  let handle: Element | null = null
 
   function onDragMove(event: PointerEvent) {
     choose(startHeight + startY - event.clientY)
@@ -160,6 +162,8 @@ export function useComposerSize({ text, box, pane, resizable, storageKey }: Comp
     window.removeEventListener('pointermove', onDragMove)
     window.removeEventListener('pointerup', stopDrag)
     window.removeEventListener('pointercancel', stopDrag)
+    handle?.removeEventListener('lostpointercapture', stopDrag)
+    handle = null
     storeChosenHeight(storageKey, chosen.value)
   }
 
@@ -173,6 +177,16 @@ export function useComposerSize({ text, box, pane, resizable, storageKey }: Comp
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', stopDrag)
     window.addEventListener('pointercancel', stopDrag)
+    // Captured, the drag still ends if the pointer is released off the page
+    handle = event.currentTarget instanceof Element ? event.currentTarget : null
+    if (handle && 'setPointerCapture' in handle && event.pointerId !== undefined) {
+      try {
+        handle.setPointerCapture(event.pointerId)
+        handle.addEventListener('lostpointercapture', stopDrag)
+      } catch {
+        // No such pointer (a synthetic event): the window listeners still end it
+      }
+    }
   }
 
   /** The handle's arrow keys: a step taller or shorter */
@@ -202,7 +216,14 @@ export function useComposerSize({ text, box, pane, resizable, storageKey }: Comp
     fit()
     const el = pane()
     if (el && typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(() => fit())
+      // Only a change in the pane's height moves the caps; this also keeps the
+      // box's own refits from feeding back here
+      let lastPaneHeight = el.clientHeight
+      observer = new ResizeObserver(() => {
+        if (el.clientHeight === lastPaneHeight) return
+        lastPaneHeight = el.clientHeight
+        fit()
+      })
       observer.observe(el)
     }
   })

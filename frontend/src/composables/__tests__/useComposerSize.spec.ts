@@ -179,6 +179,15 @@ describe('useComposerSize', () => {
     expect(el.style.height).toBe('600px')
   })
 
+  it('lets an empty box sized by hand still grow with a long paste', async () => {
+    const { text, el, api } = mountBox()
+    api.nudge(100)
+    contentHeight = 1200
+    text.value = 'pasted after resizing'
+    await nextTick()
+    expect(el.style.height).toBe('400px')
+  })
+
   it('opens at the remembered height', () => {
     storeChosenHeight(KEY, 220)
     const { el } = mountBox()
