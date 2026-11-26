@@ -131,7 +131,8 @@ async def graph_post(path: str, access_token: str, payload: dict,
             # 4xx are our fault (bad token, closed window) — don't retry
             if response.status_code < 500:
                 return SendResult(ok=False, error=_graph_error(response),
-                                  auth_failed=_is_auth_error(response))
+                                  auth_failed=_is_auth_error(response),
+                                  error_code=_graph_error_code(response))
             last_error = _graph_error(response)
         except Exception as e:
             last_error = str(e)
@@ -450,6 +451,14 @@ def _is_auth_error(response: httpx.Response) -> bool:
         return graph_auth_refused(response.json())
     except Exception:
         return False
+
+
+def _graph_error_code(response: httpx.Response) -> Optional[int]:
+    try:
+        code = response.json().get("error", {}).get("code")
+        return int(code) if code is not None else None
+    except Exception:
+        return None
 
 
 def _graph_error(response: httpx.Response) -> str:

@@ -400,3 +400,6 @@ def _reset_channel_hooks():
     """No test leaks an extension hook it registered into the next one."""
     yield
     app_hooks.reset()
+    from app.services import channel_opt_outs, whatsapp_outbound
+    channel_opt_outs.reset_opt_out_listeners()
+    whatsapp_outbound.forget_templates()

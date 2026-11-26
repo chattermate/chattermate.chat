@@ -860,3 +860,17 @@ class TestWhatsAppSendBlocker:
     async def test_an_unreadable_status_is_not_a_problem(self, monkeypatch):
         self._health(monkeypatch, (False, {"error": {"message": "Unsupported get request"}}))
         assert await whatsapp_send_blocker("PN1", "token") is None
+
+
+@pytest.mark.asyncio
+async def test_a_refused_send_keeps_metas_error_code(monkeypatch):
+    """A queue of business messages tells "add a payment method" from "try again" by the code."""
+    import httpx
+    from app.channels import meta_base
+
+    def refuse(request):
+        return httpx.Response(400, json={"error": {"message": "Payment issue", "code": 131042}})
+    client = httpx.AsyncClient(transport=httpx.MockTransport(refuse))
+    monkeypatch.setattr(meta_base, "_get_http_client", lambda: client)
+    result = await meta_base.graph_post("PN1/messages", "tok", {"to": "1"})
+    assert (result.ok, result.error, result.error_code) == (False, "Payment issue", 131042)

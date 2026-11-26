@@ -17,9 +17,11 @@ limitations under the License.
 from app.repositories.channels.accounts import ChannelAccountRepository
 from app.repositories.channels.conversations import ChannelConversationRepository
 from app.repositories.channels.agent_config import AgentChannelConfigRepository
+from app.repositories.channels.opt_outs import ChannelOptOutRepository
 
 __all__ = [
     "ChannelAccountRepository",
     "ChannelConversationRepository",
     "AgentChannelConfigRepository",
+    "ChannelOptOutRepository",
 ]

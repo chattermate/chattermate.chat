@@ -148,10 +148,25 @@ export function whatsappPayload(phoneNumberId: string, waId: string, name: strin
   }
 }
 
+/** A template message the business sent: its name, the body's values, and each quick reply's payload. */
+export interface WhatsAppTemplateSend {
+  name: string
+  values: string[]
+  payloads: string[]
+}
+
+interface TemplateComponent {
+  type: string
+  sub_type?: string
+  parameters?: Array<{ type: string; text?: string; payload?: string }>
+}
+
 /** One WhatsApp user's chat with a connected number. */
 export class WhatsAppChat extends ChatWithButtons<WhatsAppChoice> {
   readonly waId: string
   readonly number: WhatsAppNumber
+  private readonly externals: FakeExternals
+  private readonly inbound: (message: Record<string, unknown>) => Promise<void>
 
   /** `to` says where Meta sends this number's webhooks (the shared address by default). */
   constructor(request: APIRequestContext, externals: FakeExternals, number: WhatsAppNumber, customerName: string,
@@ -180,6 +195,31 @@ export class WhatsAppChat extends ChatWithButtons<WhatsAppChoice> {
     })
     this.waId = waId
     this.number = number
+    this.externals = externals
+    this.inbound = inbound
+  }
+
+  /** The template messages this number sent the customer (a business-initiated message), oldest first. */
+  async templates(): Promise<WhatsAppTemplateSend[]> {
+    const calls = await this.externals.calls('graph', 'messages', { contains: this.waId })
+    return calls
+      .filter((c) => c.status === 200 && c.path.includes(`/${this.number.phoneNumberId}/messages`) && sentWith(c, this.number.token))
+      .map((c) => c.body as { type?: string; to?: string; template?: { name: string; components?: TemplateComponent[] } })
+      .filter((b) => b.type === 'template' && samePhone(b.to, this.waId))
+      .map((b) => {
+        const components = b.template?.components ?? []
+        return {
+          name: b.template?.name ?? '',
+          values: components.filter((c) => c.type === 'body').flatMap((c) => (c.parameters ?? []).map((p) => p.text ?? '')),
+          payloads: components.filter((c) => c.sub_type === 'quick_reply').map((c) => c.parameters?.[0]?.payload ?? ''),
+        }
+      })
+  }
+
+  /** Taps a template's quick-reply button: WhatsApp sends its text with the payload the business set. */
+  tapTemplateButton(text: string, payload: string): Promise<void> {
+    return step(`${this.customerName} taps "${text}" on WhatsApp`, () =>
+      this.inbound({ type: 'button', button: { text, payload } }))
   }
 }
 

@@ -62,6 +62,8 @@
 //   PUT    /__faults/:id   { provider, action?, contains?, status, body?, times? }
 //   DELETE /__faults/:id
 //   PUT    /__shopify/back-on-sale/:shop                  every item is on sale again
+//   PUT    /__shopify/orders/:id                          a test places an order (phone, gateways, pending)
+//   GET    /__shopify/orders/:id                          the order as the store has it now (tags, cancelled)
 //                                                        at that shop (a restock)
 //
 // Run: node services/fake-externals/server.ts --port 14020
@@ -103,6 +105,8 @@ const calls: RecordedCall[] = []
 const faults = new Map<string, Fault>()
 /** Every node some `owns:` token has claimed — what other tokens are refused. */
 const claimed = new Set<string>()
+// WABA id -> the message templates created on it
+const messageTemplates = new Map<string, Array<Record<string, unknown>>>()
 let counter = 0
 
 class HttpError extends Error {
@@ -254,6 +258,18 @@ async function graph({ action, method, url, headers, body }: Call): Promise<Answ
   if (method === 'GET' && action === 'phone_numbers' && owned) {
     const numbers = owned.filter((id) => id !== node)
     return ok({ data: numbers.map((id) => ({ id, display_phone_number: `+${id}`, verified_name: `E2E ${id}` })) })
+  }
+  // A WhatsApp Business Account's message templates: the fake approves each at once
+  if (action === 'message_templates') {
+    const templates = messageTemplates.get(node) ?? []
+    if (method === 'GET') return ok({ data: templates })
+    const template = { id: `tmpl_${counter}`, name: body?.name, language: body?.language, category: body?.category,
+      components: body?.components, status: 'APPROVED' }
+    remember(messageTemplates, node, [...templates.filter((t) => t.name !== template.name), template])
+    return ok({ id: template.id, status: 'APPROVED', category: body?.category })
+  }
+  if (method === 'GET' && (url.searchParams.get('fields') ?? '').includes('messaging_limit_tier')) {
+    return ok({ id: node, messaging_limit_tier: 'TIER_1K' })
   }
   const webhookConfiguration = body?.webhook_configuration
   if (method === 'POST' && webhookConfiguration && typeof webhookConfiguration === 'object') {
@@ -418,6 +434,12 @@ interface ShopifyOrder {
   cancelledAt?: string | null
   refunded?: number
   address?: Record<string, unknown>
+  /** An order a test placed (PUT /__shopify/orders/<id>): the customer's number, how they pay */
+  phone?: string | null
+  gateways?: string[]
+  /** Unpaid until delivery (cash on delivery) */
+  pending?: boolean
+  tags?: string[]
 }
 const shopifyOrders = new Map<string, ShopifyOrder>()
 const ORDER_TOTAL = 45
@@ -442,24 +464,28 @@ function shopifyOrderNode(order: ShopifyOrder) {
     id: `gid://shopify/Order/${order.id}`,
     name: `#${order.number}`,
     email: order.email,
-    phone: null,
+    phone: order.phone ?? null,
+    tags: order.tags ?? [],
+    paymentGatewayNames: order.gateways ?? ['shopify_payments'],
+    statusPageUrl: `https://e2e.test/orders/${order.id}`,
     createdAt: '2026-10-01T10:00:00Z',
     processedAt: '2026-10-01T10:00:00Z',
     updatedAt: '2026-10-02T10:00:00Z',
     cancelledAt: order.cancelledAt ?? null,
     cancelReason: null,
-    displayFinancialStatus: refunded >= ORDER_TOTAL ? 'REFUNDED' : refunded > 0 ? 'PARTIALLY_REFUNDED' : 'PAID',
+    displayFinancialStatus: order.pending ? 'PENDING' : refunded >= ORDER_TOTAL ? 'REFUNDED' : refunded > 0 ? 'PARTIALLY_REFUNDED' : 'PAID',
     displayFulfillmentStatus: shipped ? 'FULFILLED' : 'UNFULFILLED',
     subtotalLineItemsQuantity: 1,
     currentSubtotalPriceSet: money('40.00'),
     currentTotalPriceSet: money('45.00'),
     originalTotalPriceSet: money('45.00'),
-    customer: { id: `gid://shopify/Customer/${order.id}`, firstName: 'E2E', lastName: 'Customer', email: order.email, phone: null },
+    customer: { id: `gid://shopify/Customer/${order.id}`, firstName: 'E2E', lastName: 'Customer', email: order.email, phone: order.phone ?? null },
+    billingAddress: { phone: order.phone ?? null, countryCodeV2: 'US' },
     shippingAddress: { firstName: 'E2E', lastName: 'Customer', address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', countryCodeV2: 'US', phone: null, name: 'E2E Customer', ...(order.address ?? {}) },
     currencyCode: 'USD',
     presentmentCurrencyCode: 'USD',
     totalRefundedSet: money(refunded.toFixed(2)),
-    transactions: refunded >= ORDER_TOTAL ? [] : [{
+    transactions: refunded >= ORDER_TOTAL || order.pending ? [] : [{
       id: `gid://shopify/OrderTransaction/${order.id}`, kind: 'SALE', status: 'SUCCESS', gateway: 'shopify_payments',
       maximumRefundableV2: { amount: (ORDER_TOTAL - refunded).toFixed(2), currencyCode: 'USD' },
     }],
@@ -543,7 +569,7 @@ function shopifyOrderActions(query: string, variables: Record<string, unknown>, 
     const scopes = shop.includes('-noscope-') ? ['read_orders'] : WRITE_SCOPES
     return ok({ data: { currentAppInstallation: { accessScopes: scopes.map((handle) => ({ handle })) } } })
   }
-  if (query.includes('query OrderForActions')) {
+  if (query.includes('query OrderForActions') || query.includes('query OrderForMessages')) {
     const order = byGid(variables.id)
     return ok({ data: { order: order ? shopifyOrderNode(order) : null } })
   }
@@ -586,6 +612,17 @@ function shopifyOrderActions(query: string, variables: Record<string, unknown>, 
     const { countryCode, ...rest } = input.shippingAddress ?? {}
     order.address = { ...rest, countryCodeV2: countryCode, country: countryCode }
     return ok({ data: { orderUpdate: { order: { id: input.id, shippingAddress: order.address }, userErrors: [] } } })
+  }
+  if (query.includes('mutation AddTags') || query.includes('mutation RemoveTags')) {
+    const order = byGid(variables.id)
+    const tags = Array.isArray(variables.tags) ? variables.tags.map(String) : []
+    if (!order) return ok({ data: { tagsAdd: { userErrors: userErrors('Order not found') }, tagsRemove: { userErrors: userErrors('Order not found') } } })
+    const adding = query.includes('mutation AddTags')
+    order.tags = adding ? [...new Set([...(order.tags ?? []), ...tags])] : (order.tags ?? []).filter((t) => !tags.includes(t))
+    return ok({ data: { [adding ? 'tagsAdd' : 'tagsRemove']: { userErrors: [] } } })
+  }
+  if (query.includes('query OrderUpdatesShop')) {
+    return ok({ data: { shop: { name: 'E2E Store', ianaTimezone: 'UTC' } } })
   }
   if (query.includes('mutation CreateDiscountCode')) {
     return ok({ data: { discountCodeBasicCreate: { codeDiscountNode: { id: `gid://shopify/DiscountCodeNode/${counter}` }, userErrors: [] } } })
@@ -709,6 +746,18 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (faultPath && req.method === 'DELETE') {
     faults.delete(faultPath[1])
     return send(res, 200, { ok: true })
+  }
+  // An order a test placed (cash on delivery, say): later reads and changes see it
+  const placed = /^\/__shopify\/orders\/(\d+)$/.exec(path)
+  if (placed && req.method === 'GET') {
+    const order = shopifyOrders.get(placed[1])
+    return order ? send(res, 200, order) : send(res, 404, { error: 'no such order' })
+  }
+  if (placed && req.method === 'PUT') {
+    const order = parseBody(await readRaw(req), 'application/json') as Partial<ShopifyOrder> | null
+    remember(shopifyOrders, placed[1], { email: '', number: placed[1], shipped: false, cancelledAt: null, refunded: 0,
+      tags: [], ...(order ?? {}), id: placed[1] })
+    return send(res, 200, shopifyOrders.get(placed[1]))
   }
   const restocked = /^\/__shopify\/back-on-sale\/([\w.-]+)$/.exec(path)
   if (restocked && req.method === 'PUT') {

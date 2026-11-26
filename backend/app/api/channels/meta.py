@@ -64,7 +64,7 @@ from app.core.auth import (
 from app.core.config import settings
 from app.core.error_handlers import ClientSafeHTTPException
 from app.database import get_db
-from app.models.channels import ChannelType
+from app.models.channels import ChannelAccount, ChannelType
 from app.models.organization import Organization
 from app.models.schemas.channel import (
     ChannelAccountOut,
@@ -524,20 +524,14 @@ async def connect_whatsapp(
     return to_account_out(db, account)
 
 
-@router.post("/whatsapp/embedded-signup", response_model=ChannelAccountOut)
-async def connect_whatsapp_embedded_signup(
-    request: EmbeddedSignupRequest,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Finish an Embedded Signup flow: trade the code for the customer's
-    business token and connect the number it created.
-
-    Only the way the credentials are obtained differs from connect_whatsapp —
-    everything after that is the same upsert and webhook subscribe.
+async def complete_whatsapp_signup(db: Session, organization: Organization,
+                                   request: EmbeddedSignupRequest) -> ChannelAccount:
+    """Finish an Embedded Signup for an organization: trade the code for the
+    customer's business token, register the number and connect it. Shared by
+    the dashboard's connect and other places a customer signs up from (the
+    Shopify app); who may do it is the caller's check. Raises HTTPException
+    with the customer's reason.
     """
-    check_signup_access(ChannelType.WHATSAPP.value, current_user)
     previous = _previous_account(db, organization, ChannelType.WHATSAPP.value, request.phone_number_id)
     # Before the number is registered with Meta below, which can't be undone
     if previous is None:
@@ -597,6 +591,24 @@ async def connect_whatsapp_embedded_signup(
     if not await subscribe_app(request.waba_id, access_token):
         logger.warning(f"WABA subscribe failed for {request.waba_id} after Embedded Signup")
     await sync_own_app(db, account, None, access_token, previous_token)
+    return account
+
+
+@router.post("/whatsapp/embedded-signup", response_model=ChannelAccountOut)
+async def connect_whatsapp_embedded_signup(
+    request: EmbeddedSignupRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Finish an Embedded Signup flow: trade the code for the customer's
+    business token and connect the number it created.
+
+    Only the way the credentials are obtained differs from connect_whatsapp —
+    everything after that is the same upsert and webhook subscribe.
+    """
+    check_signup_access(ChannelType.WHATSAPP.value, current_user)
+    account = await complete_whatsapp_signup(db, organization, request)
     return to_account_out(db, account)
 
 

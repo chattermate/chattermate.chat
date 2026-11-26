@@ -365,7 +365,7 @@ async def test_a_text_handler_answers_even_when_a_human_holds_the_chat(
 
     with patch.object(channel_chat, "notify_customer", AsyncMock()) as notify, \
          patch.object(channel_chat, "relay_stored_message", AsyncMock()):
-        await process_channel_message(account.id, _inbound("STOP", "wamid.IN2"))
+        await process_channel_message(account.id, _inbound("BIS-1-abc", "wamid.IN2"))
     notify.assert_not_awaited()  # "" is handled with nothing to say
 
 

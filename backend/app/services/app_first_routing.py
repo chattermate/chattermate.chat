@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.channels.app_hooks import (
     ChannelEvent, EventKind, HandledBy, InboundContext, emit_channel_event,
-    inbound_event_id, inbound_handler, text_handlers,
+    button_handler_for, inbound_event_id, inbound_handler, text_handlers,
 )
 from app.channels.base import InboundMessage
 from app.core.logger import get_logger
@@ -40,6 +40,8 @@ logger = get_logger(__name__)
 APP_HANDLER_TIMEOUT_SECONDS = 4.0
 # A text handler (a sign-up code) may read the store; past this it's skipped
 TEXT_HANDLER_TIMEOUT_SECONDS = 10.0
+# A button handler only records the tap and queues the work
+BUTTON_HANDLER_TIMEOUT_SECONDS = 4.0
 
 
 def _context(account: ChannelAccount, session_record, customer_id: str, inbound: InboundMessage,
@@ -78,6 +80,30 @@ async def text_reply(db: Session, account: ChannelAccount, session_record, custo
         if isinstance(reply, str):
             return reply
     return None
+
+
+async def button_reply(db: Session, account: ChannelAccount, session_record, customer_id: str,
+                       inbound: InboundMessage, received_at: datetime) -> Optional[str]:
+    """The business's answer to a tap on a button it owns (see
+    app_hooks.register_button_handler), whoever holds the chat; None when no
+    handler owns the button. A claimed tap stays claimed when its handler
+    fails or is slow: its payload means nothing to the AI or a person, so it
+    answers nothing rather than reach them."""
+    tap = inbound.interactive
+    handler = button_handler_for(tap.id if tap is not None else None)
+    if handler is None:
+        return None
+    db.commit()
+    context = _context(account, session_record, customer_id, inbound, received_at)
+    try:
+        reply = await asyncio.wait_for(handler(context), BUTTON_HANDLER_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.error(f"Button handler timed out on {inbound.external_message_id}")
+        return ""
+    except Exception as e:
+        logger.error(f"Button handler failed on {inbound.external_message_id}: {e}")
+        return ""
+    return reply if isinstance(reply, str) else ""
 
 
 async def app_claims(db: Session, account: ChannelAccount, session_record, customer_id: str,

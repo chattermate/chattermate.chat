@@ -44,7 +44,8 @@ from app.repositories.channels import (
 )
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import customer_memory
-from app.services.app_first_routing import announce_inbound, app_claims, text_reply
+from app.services.app_first_routing import announce_inbound, app_claims, button_reply, text_reply
+from app.services.channel_opt_outs import opt_out_reply
 from app.services.chat_notifications import (
     notify_new_channel_chat_once, notify_team_chat_waits, team_not_yet_notified,
 )
@@ -124,8 +125,13 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # can land while we wait, so the customer's message keeps the time it
         # arrived and still sorts before it.
         received_at = datetime.now(timezone.utc)
-        # A code or keyword the business answers itself (no AI reply spent)
-        reply = await text_reply(db, account, session_record, customer_id, inbound, received_at)
+        # Answered by the business itself, whoever holds the chat (no AI reply
+        # spent): STOP or START, a tap on a button it owns, a code or keyword
+        reply = opt_out_reply(db, account, inbound)
+        if reply is None:
+            reply = await button_reply(db, account, session_record, customer_id, inbound, received_at)
+        if reply is None:
+            reply = await text_reply(db, account, session_record, customer_id, inbound, received_at)
         handled_by_app = (reply is not None
                           or await app_claims(db, account, session_record, customer_id, inbound, received_at))
         if handled_by_app:

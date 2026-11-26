@@ -10,7 +10,11 @@ export { notificationsFor, type AppNotification } from './api/notifications'
 export { findPerson, type Person } from './api/people'
 export { customizeAgent, uploadLauncherLogo } from './api/customization'
 export { connectCrm, disconnectCrm, syncPersonToCrm, type CrmProvider } from './api/crm'
-export { connectJira, disconnectJira, fakeJira, installShopify, openShopifyApp, openStorefrontPage, putBackOnSale, routeTicketsToJira, storefrontAction, uninstallShopify, useShopForAgent } from './api/integrations'
+export {
+  connectJira, deliverShopifyWebhook, disconnectJira, fakeJira, installShopify, openShopifyApp, openStorefrontPage, placeShopifyOrder,
+  putBackOnSale, routeTicketsToJira, shopifyOrderNow, storefrontAction, uninstallShopify, useShopForAgent,
+} from './api/integrations'
+export type { FakeShopifyOrder } from './api/integrations'
 export { publishWorkflow, type WorkflowGraph } from './api/workflows'
 export {
   askHelpCenter, createArticle, enableHelpCenter, helpCenterChat, setArticleStatus, setHelpCenterChat, turnOnAskAi, type Article, type HelpCenterChat,
@@ -41,7 +45,7 @@ export { TelegramBot, TelegramChat } from './channels/telegram'
 export { hmac, phoneNumber, digits, sendWebhook, type WebhookPayload } from './channels/chat'
 export {
   connectWhatsAppNumber, deliverMeta, deliverWhatsAppReceipt, metaSignature, metaToken, metaVerifiesCallback, ownMetaApp, pageChat, pastedCallback,
-  signUpWhatsAppNumber, whatsappPayload, whereMetaSends, WhatsAppChat, type MetaWebhook, type OwnMetaApp, type WhatsAppNumber,
+  signUpWhatsAppNumber, whatsappPayload, whereMetaSends, WhatsAppChat, type MetaWebhook, type OwnMetaApp, type WhatsAppNumber, type WhatsAppTemplateSend,
 } from './channels/meta'
 export { installSlackWorkspace, slackSignature } from './channels/slack'
 export { login, signedInClient } from './api/auth'

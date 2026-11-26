@@ -139,3 +139,64 @@ export async function putBackOnSale(shopDomain: string): Promise<void> {
     await context.dispose()
   }
 }
+
+/** An order in the fake Shopify, as a test places it (a COD order, the customer's number). */
+export interface FakeShopifyOrder {
+  number?: string
+  email?: string
+  phone?: string | null
+  gateways?: string[]
+  /** Unpaid until delivery (cash on delivery) */
+  pending?: boolean
+  shipped?: boolean
+  tags?: string[]
+  cancelledAt?: string | null
+}
+
+async function fakeShopifyOrder(method: 'GET' | 'PUT', id: string, order?: FakeShopifyOrder): Promise<FakeShopifyOrder> {
+  const context = await request.newContext()
+  try {
+    const response = await context.fetch(`${env.fakeExternalsUrl}/__shopify/orders/${id}`, { method, data: order })
+    if (!response.ok()) throw new Error(`fake Shopify order ${id} → ${response.status()}`)
+    return await response.json()
+  } finally {
+    await context.dispose()
+  }
+}
+
+/** The customer places order `id` in the fake Shopify; the backend's later reads and changes see it. */
+export function placeShopifyOrder(id: string, order: FakeShopifyOrder): Promise<FakeShopifyOrder> {
+  return fakeShopifyOrder('PUT', id, order)
+}
+
+/** Order `id` as the fake Shopify has it now: its tags, whether it was cancelled. */
+export function shopifyOrderNow(id: string): Promise<FakeShopifyOrder> {
+  return fakeShopifyOrder('GET', id)
+}
+
+/**
+ * A webhook Shopify sends for `shopDomain` (`topic`, e.g. orders/create) to `path`
+ * under the API, signed with the app's secret as Shopify signs it. A redelivery
+ * reuses `eventId`. Returns the status and the JSON answer.
+ */
+export async function deliverShopifyWebhook(path: string, shopDomain: string, topic: string, payload: Record<string, unknown>,
+  eventId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const json = JSON.stringify(payload)
+  const context = await request.newContext(NO_COOKIES)
+  try {
+    const response = await context.post(`${env.apiUrl}${path}`, {
+      data: json,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Topic': topic,
+        'X-Shopify-Shop-Domain': shopDomain,
+        'X-Shopify-Event-Id': eventId,
+        'X-Shopify-Webhook-Id': `wh-${eventId}`,
+        'X-Shopify-Hmac-Sha256': createHmac('sha256', env.shopifyApp.secret).update(json).digest('base64'),
+      },
+    })
+    return { status: response.status(), body: await response.json() }
+  } finally {
+    await context.dispose()
+  }
+}
