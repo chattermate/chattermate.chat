@@ -33,6 +33,7 @@ vi.mock('@/utils/storage', () => ({
 }))
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
+import { SLOW_FIRST_PAGE_MS } from '@/composables/useSlowWait'
 import { LEARNING_POLL_MS, READY_PAGES, queueItemName } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 
@@ -584,5 +585,77 @@ describe('StepTeach - taking a source off', () => {
 
     expect(wrapper.text()).toContain("couldn't remove that source")
     expect(done()).toEqual([SITE])
+  })
+})
+
+describe('StepTeach waiting for the first page', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    getOrganization.mockResolvedValue({ domain: 'pedalco.example.com' })
+    getKnowledgeByAgent.mockResolvedValue(empty)
+    getKnowledgeByOrganization.mockResolvedValue(empty)
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    vi.useRealTimers()
+  })
+
+  const primary = () => wrapper.find('.btn-accent')
+  const skipButton = () => wrapper.findAll('button').find((b) => b.text() === 'Skip for now')
+  const reading = () => wrapper.find('.reading').text()
+
+  it('says what it is doing and offers no Continue', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+    await mountStep()
+
+    expect(reading()).toContain('Reading your website')
+    expect(reading()).toContain('a minute or two')
+    expect(primary().exists()).toBe(false)
+  })
+
+  it('brings Continue in with the first page', async () => {
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(1, 'processing')))
+      .mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1 })))
+    await mountStep()
+    await nextPoll()
+
+    expect(reading()).toContain('1 page learned')
+    await primary().trigger('click')
+    expect(wrapper.emitted('next')).toBeTruthy()
+  })
+
+  it('offers a way on when the first page takes too long', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'pending')))
+    await mountStep()
+    expect(skipButton()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(SLOW_FIRST_PAGE_MS)
+
+    expect(reading()).toContain('longer than usual')
+    await skipButton()!.trigger('click')
+    expect(wrapper.emitted('next')).toBeTruthy()
+  })
+
+  it('speaks of a document when that is all it reads', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { source_type: 'pdf_file' })))
+    await mountStep()
+
+    expect(reading()).toContain('Reading your document')
+  })
+
+  it('stays on the step after sending a site, until a page is in', async () => {
+    getOrganization.mockResolvedValue({ domain: 'pedalco.example.com' })
+    getAgentQueueItems.mockResolvedValueOnce(queue()).mockResolvedValue(queue(row(1, 'pending')))
+    addUrls.mockResolvedValue({ message: 'Queued' })
+    await mountStep()
+    await primary().trigger('click')
+    await flushPromises()
+
+    expect(addUrls).toHaveBeenCalled()
+    expect(wrapper.emitted('next')).toBeFalsy()
+    expect(reading()).toContain('Reading your website')
   })
 })

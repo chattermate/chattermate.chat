@@ -85,6 +85,11 @@ export class SetupWizard {
     })
   }
 
+  /** The Teach step's note on what it is reading, and how far it has got. */
+  get reading(): Locator {
+    return this.page.getByRole('status').filter({ hasText: /Reading your|pages? learned/ })
+  }
+
   /** The Teach step saying the agent would have nothing to answer from. */
   get nothingToLearnFrom(): Locator {
     return this.page.getByRole('status').filter({ hasText: 'nothing to answer from' })

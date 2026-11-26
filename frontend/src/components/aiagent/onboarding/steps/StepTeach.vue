@@ -29,8 +29,10 @@ import {
   withoutUploadPrefix,
 } from '@/composables/useLearningWatch'
 import { useOnboardingState } from '@/composables/useOnboardingState'
+import { SLOW_FIRST_PAGE_MS, useSlowWait } from '@/composables/useSlowWait'
 import { useSourceRemoval, type RemovableSource } from '@/composables/useSourceRemoval'
 import { signupSiteUrl } from '@/utils/website'
+import TeachReading from './TeachReading.vue'
 import TeachSourceRemove from './TeachSourceRemove.vue'
 import TeachTextFallback from './TeachTextFallback.vue'
 import type { KnowledgeItem, QueueItem } from '@/types/knowledge'
@@ -135,6 +137,19 @@ const pagesSoFar = computed(() => pagesLearnedSoFar(crawling.value))
 const nothingToLearnFrom = computed(
   () => loaded.value && !loadError.value && !indexedItems.value.length && !crawling.value.length && nothingStaged.value,
 )
+// Something is being read and nothing can be answered from yet: Continue
+// waits for the first page, unless that takes unusually long.
+const waitingForFirstPage = computed(
+  () =>
+    loaded.value &&
+    crawling.value.length > 0 &&
+    !pagesSoFar.value &&
+    !indexedItems.value.length &&
+    nothingStaged.value &&
+    !crawlFailure.value,
+)
+const { slow } = useSlowWait(waitingForFirstPage, SLOW_FIRST_PAGE_MS)
+const readingDocuments = computed(() => crawling.value.every(isPdfSource))
 const continueLabel = computed(() => {
   if (reading.value) return 'Reading your site…'
   if (advancing.value) return 'Adding…'
@@ -298,7 +313,8 @@ const handleContinue = async () => {
   }
 
   if (!failed) {
-    if (filesAccepted) emit('next') // else the PDF error is on screen
+    // Else the PDF error is on screen, or the step stays to show the reading
+    if (filesAccepted && !waitingForFirstPage.value) emit('next')
     return
   }
   setFailure(failed)
@@ -378,6 +394,7 @@ const handleTextAdded = () => {
     </ul>
 
     <!-- Sent, and being read now -->
+    <TeachReading v-if="crawling.length" :pages="pagesSoFar" :documents="readingDocuments" :slow="slow" />
     <ul v-if="crawling.length" class="source-list learning" aria-label="Learning">
       <li v-for="item in crawling" :key="item.id" class="source-row">
         <font-awesome-icon
@@ -447,7 +464,8 @@ const handleTextAdded = () => {
 
     <div class="step-actions">
       <button type="button" class="btn-ghost" :disabled="busy" @click="emit('back')">Back</button>
-      <button type="button" class="btn-accent" :disabled="busy || !loaded" @click="handleContinue">
+      <button v-if="slow" type="button" class="btn-text" :disabled="busy" @click="emit('next')">Skip for now</button>
+      <button v-if="!waitingForFirstPage" type="button" class="btn-accent" :disabled="busy || !loaded" @click="handleContinue">
         {{ continueLabel }}
         <span v-if="!advancing" class="arrow" aria-hidden="true">→</span>
       </button>

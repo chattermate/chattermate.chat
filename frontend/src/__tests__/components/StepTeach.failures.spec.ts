@@ -178,9 +178,9 @@ describe('StepTeach - plan source cap', () => {
     const wrapper = await mountStep()
 
     expect(staged(wrapper)).toEqual([])
-    await clickContinue(wrapper)
+    // Still being read with no page in: there is nothing to continue to yet
+    expect(wrapper.find('.btn-accent').exists()).toBe(false)
     expect(addUrls).not.toHaveBeenCalled()
-    expect(wrapper.emitted('next')).toBeTruthy()
   })
 })
 
@@ -261,13 +261,14 @@ describe('StepTeach - a website that fails fast', () => {
     expect(wrapper.emitted('next')).toBeTruthy()
   })
 
-  it('a crawl that is still running does not hold the step: Continue moves on at once', async () => {
+  it('a crawl that is still running holds the step until its first page', async () => {
     getAgentQueueItems.mockResolvedValueOnce({ queue_items: [] }).mockResolvedValue({
       queue_items: [{ id: 1, source: 'https://erfanpv.com', source_type: 'website', status: 'pending', created_at: '' }]
     })
     const wrapper = await mountStep()
     await clickContinue(wrapper)
-    expect(wrapper.emitted('next')).toBeTruthy()
+    expect(wrapper.emitted('next')).toBeFalsy()
+    expect(wrapper.find('.reading').exists()).toBe(true)
     expect(wrapper.find('.crawl-failure').exists()).toBe(false)
   })
 })
