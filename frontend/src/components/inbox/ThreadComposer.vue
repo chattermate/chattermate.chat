@@ -21,13 +21,20 @@ limitations under the License.
  * Note writes to the team: amber, never sent to the customer, and "@" picks a
  * teammate to mention. Enter sends, Shift+Enter breaks the line. The attach
  * control comes from the parent (#attach), which owns the upload state; more
- * reply tools (#tools) reach the draft through COMPOSER_HANDLE.
+ * reply tools (#tools) reach the draft through COMPOSER_HANDLE. The box grows
+ * with its text, and (not on phones) its top edge drags it taller or shorter.
  */
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import { navIconSvg } from '@/components/layout/navIcons'
 import { matchMentionables, mentionQuery, mentionedIds, type Mentionable } from './mentions'
 import { COMPOSER_HANDLE } from './composerHandle'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import { COMPOSER_KEY_STEP, COMPOSER_MIN_HEIGHT, useComposerSize } from '@/composables/useComposerSize'
+import { userService } from '@/services/user'
+
+/** Your dragged height, remembered per agent */
+const HEIGHT_KEY_PREFIX = 'cm-inbox-composer-height:'
 
 export type ComposerMode = 'reply' | 'note'
 
@@ -56,6 +63,7 @@ const emit = defineEmits<{
 }>()
 
 const input = ref<HTMLTextAreaElement | null>(null)
+const root = ref<HTMLElement | null>(null)
 const isNote = computed(() => mode.value === 'note')
 const hasText = computed(() => !!message.value.trim())
 const sendDisabled = computed(() =>
@@ -100,6 +108,28 @@ async function pick(person: Mentionable) {
 // An empty box in Reply mode is the other draft, not a sent note.
 watch(message, (text) => { if (!text && isNote.value) picked.value = [] })
 watch(mode, () => { mention.value = null })
+
+// ---- Size: grows with the text; the top edge drags it (not on phones) ----
+const { isMobile } = useBreakpoint()
+const resizable = computed(() => !isMobile.value)
+const userId = userService.getUserId()
+const size = useComposerSize({
+  text: message,
+  box: input,
+  pane: () => root.value?.parentElement ?? null,
+  resizable,
+  storageKey: userId ? `${HEIGHT_KEY_PREFIX}${userId}` : null,
+})
+
+function onHandleKeydown(event: KeyboardEvent) {
+  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    size.nudge(event.key === 'ArrowUp' ? COMPOSER_KEY_STEP : -COMPOSER_KEY_STEP)
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    size.reset()
+  }
+}
 
 // ---- Reply tools (#tools) ----
 const toolKeyHandlers = new Set<(event: KeyboardEvent) => boolean>()
@@ -151,12 +181,31 @@ defineExpose({ focus: () => input.value?.focus() })
 </script>
 
 <template>
-  <div class="composer-wrap">
+  <div ref="root" class="composer-wrap">
     <div v-if="showTemplateNotice && !isNote" class="window-closed">
       <span>This customer's 24-hour window has closed. Send an approved template to reopen it.</span>
       <button type="button" class="btn" @click="emit('send-template')">Send template</button>
     </div>
-    <div class="composer" :class="{ note: isNote, disabled: !isNote && !canSend }" @paste="emit('paste', $event)">
+    <div
+      class="composer"
+      :class="{ note: isNote, disabled: !isNote && !canSend, resizing: size.dragging.value }"
+      @paste="emit('paste', $event)"
+    >
+      <div
+        v-if="resizable"
+        class="resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-orientation="horizontal"
+        aria-label="Resize the message box"
+        :aria-valuemin="COMPOSER_MIN_HEIGHT"
+        :aria-valuemax="size.maxHeight.value"
+        :aria-valuenow="size.height.value"
+        title="Drag to resize · double-click to reset"
+        @pointerdown="size.startDrag"
+        @dblclick="size.reset"
+        @keydown="onHandleKeydown"
+      ><span class="grip" aria-hidden="true"></span></div>
       <div class="head">
         <div class="tabs" role="tablist" aria-label="Message type">
           <button
@@ -264,7 +313,8 @@ defineExpose({ focus: () => input.value?.focus() })
   flex: 1 1 240px;
 }
 
-/* Positioned: a tool's picker opens above the whole composer */
+/* Positioned: a tool's picker opens above the whole composer, and the
+   resize handle sits on its top edge */
 .composer {
   position: relative;
   display: flex;
@@ -285,6 +335,48 @@ defineExpose({ focus: () => input.value?.focus() })
 
 .composer.disabled {
   opacity: 0.6;
+}
+
+.composer.resizing {
+  user-select: none;
+}
+
+/* The whole top edge is the hit area; the grip shows where */
+.resize-handle {
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  right: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--o12);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.resize-handle:hover .grip,
+.resize-handle:focus-visible .grip,
+.composer.resizing .grip {
+  width: 48px;
+  background: var(--accent-border);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
+}
+
+.composer.resizing .input {
+  cursor: ns-resize;
 }
 
 .head {
@@ -354,6 +446,11 @@ defineExpose({ focus: () => input.value?.focus() })
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* The composer's border shows focus; the global ring would box the text in */
+.input:focus-visible {
+  box-shadow: none;
 }
 
 .input::placeholder {
