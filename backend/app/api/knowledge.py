@@ -24,6 +24,7 @@ import os
 import asyncio
 from pydantic import BaseModel, field_validator
 from sqlalchemy import text
+from datetime import datetime, timezone
 from uuid import UUID
 from app.database import get_db
 from app.models.knowledge_to_agent import KnowledgeToAgent
@@ -454,8 +455,21 @@ async def add_urls(
 
         # Bound for the non-enterprise path (resolve_plan_max_links below).
         subscription = None
+        # A source this agent is already waiting on is not added twice: the
+        # wizard, the setup assistant and a second click can all send it
+        queue_repo = KnowledgeQueueRepository(db)
+        in_flight = queue_repo.get_in_flight(
+            request.org_id, agent_uuid,
+            request.pdf_urls + request.websites + request.sitemaps,
+            datetime.now(timezone.utc) - KnowledgeRepository.STALE_PROCESSING_AFTER,
+        )
+        waiting = {item.source for item in in_flight}
+        for urls in (request.pdf_urls, request.websites, request.sitemaps):
+            urls[:] = [url for url in dict.fromkeys(urls) if url not in waiting]
+        all_urls = request.pdf_urls + request.websites + request.sitemaps
+
         # Check enterprise subscription limits if enterprise module is available
-        if HAS_ENTERPRISE:
+        if HAS_ENTERPRISE and all_urls:
             knowledge_repo = KnowledgeRepository(db)
 
             # Accessible = active/trial/past-due-in-period OR cancelled-but-
@@ -476,9 +490,8 @@ async def add_urls(
                     detail=f"Cannot add URLs: Maximum number of knowledge sources ({subscription.plan.max_knowledge_sources}) would be exceeded"
                 )
 
-        queue_repo = KnowledgeQueueRepository(db)
         knowledge_repo = KnowledgeRepository(db)
-        queued_items = []
+        queued_items = list(in_flight)
 
         # Per-source sub-page cap: the plan limit, optionally narrowed by the
         # request (e.g. "this page only" -> max_links=1), never allowed to
@@ -489,7 +502,6 @@ async def add_urls(
         )
 
         # Check for duplicate URLs
-        all_urls = request.pdf_urls + request.websites + request.sitemaps
         existing_sources = knowledge_repo.get_by_sources(request.org_id, all_urls)
 
         if existing_sources:
@@ -935,7 +947,7 @@ async def delete_queue_item(
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db)
 ):
-    """Delete a queue item (only if failed or pending)"""
+    """Delete a queue item: a failed or waiting one, or a website being read"""
     try:
         queue_repo = KnowledgeQueueRepository(db)
         item = queue_repo.get_by_id(queue_id)
@@ -946,12 +958,13 @@ async def delete_queue_item(
         if item.organization_id != current_user.organization_id:
             raise HTTPException(status_code=403, detail="Unauthorized")
             
-        # Only allow deleting failed or pending items
-        # We might want to allow deleting processing items if they are stuck, but let's be safe for now
-        if item.status not in [QueueStatus.FAILED, QueueStatus.PENDING]:
+        # A website being read stops once its row is gone (see SourceLearning).
+        # Other kinds don't look, and would learn the source anyway.
+        stoppable = item.status == QueueStatus.PROCESSING and item.source_type in ('website', 'sitemap')
+        if item.status not in [QueueStatus.FAILED, QueueStatus.PENDING] and not stoppable:
             raise HTTPException(
-                status_code=400, 
-                detail="Only failed or pending items can be removed from queue"
+                status_code=400,
+                detail="This source can't be removed while it is processing"
             )
             
         db.delete(item)

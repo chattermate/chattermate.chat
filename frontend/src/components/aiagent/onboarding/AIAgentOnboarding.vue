@@ -21,6 +21,7 @@ import { agentService } from '@/services/agent'
 import { widgetService } from '@/services/widget'
 import { useOnboardingState, type OnboardingStepIndex } from '@/composables/useOnboardingState'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { learnSignupSite } from '@/utils/learnSignupSite'
 import type { Agent } from '@/types/agent'
 import StepCreate from './steps/StepCreate.vue'
 import StepTeach from './steps/StepTeach.vue'
@@ -134,19 +135,29 @@ const ensureWidget = async (agent: Agent) => {
   }
 }
 
+// A new agent's widget and first source are on their way.
+const settingUp = ref(false)
 const handleCreated = async (agent: Agent) => {
+  // Saving Create again for the same agent must not re-add a removed website.
+  const isNew = agentId.value !== agent.id
+  settingUp.value = isNew
   createdAgent.value = agent
   agentId.value = agent.id
   agentName.value = agent.display_name || agent.name
   agentType.value = agent.agent_type
-  await ensureWidget(agent)
+  // Recorded before anything is awaited: a reload meanwhile resumes at Teach.
   onboarding.patch(orgId, {
     agentId: agent.id,
     agentName: agentName.value,
     currentStep: 1,
     completedSteps: [0],
   })
-  currentStep.value = 1
+  // Sent before Teach opens, so it opens on the site being read.
+  const [, sent] = await Promise.all([ensureWidget(agent), isNew ? learnSignupSite(orgId, agent.id) : false])
+  if (isNew) onboarding.patch(orgId, { signupSiteOffered: sent })
+  settingUp.value = false
+  // Saving Create moves on; nothing else that happened meanwhile is undone
+  if (currentStep.value === 0) currentStep.value = 1
 }
 
 const completeAndAdvance = (step: OnboardingStepIndex, next: OnboardingStepIndex) => {
@@ -183,7 +194,7 @@ const handleAssistantChange = async (area: string) => {
 
 const handleAssistantStep = (key: StepKey) => {
   const index = STEP_KEYS.indexOf(key) as OnboardingStepIndex
-  if (index > 0 && !agentId.value) return
+  if (index > 0 && (!agentId.value || settingUp.value)) return
   // Moving on counts the same as each passed step's own button; going back
   // finishes nothing.
   if (index > currentStep.value) {
@@ -246,6 +257,7 @@ const handleFinish = async () => {
         v-if="currentStep === 0"
         :key="(createdAgent ? createdAgent.id : 'new') + refreshKey"
         :existing-agent="createdAgent"
+        :setting-up="settingUp"
         @created="handleCreated"
         @skip="handleSkip"
       />
