@@ -102,8 +102,9 @@ test.describe('opening the chat before it has loaded', () => {
 
   test('the site\'s own trigger opens the outline at once with the launcher hidden @widget', async ({ widget }) => {
     await widget.embed({ chatHeldBack: true, withTriggerButton: true, config: { launcher: false } })
-    await widget.api('open')
+    await widget.hostChatButton.click()
     await expect(widget.loadingWindow).toBeVisible()
+    await expect(widget.launcher).toBeHidden()
   })
 
   test.describe('on a phone', () => {

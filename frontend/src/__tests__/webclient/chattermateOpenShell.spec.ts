@@ -75,6 +75,25 @@ describe('chat window while the widget starts', () => {
     expect(shell()).toBeNull()
   })
 
+  it('hands keyboard focus to the chat when it goes while its close button has it', async () => {
+    await loadLoader()
+    api().open()
+    const close = shell()!.querySelector('button') as HTMLButtonElement
+    close.focus()
+    const focus = vi.spyOn(frame(), 'focus')
+    bringUp()
+    expect(shell()).toBeNull()
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('leaves focus alone when it goes without having it', async () => {
+    await loadLoader()
+    api().open()
+    const focus = vi.spyOn(frame(), 'focus')
+    bringUp()
+    expect(focus).not.toHaveBeenCalled()
+  })
+
   it('goes when the chat is closed early, and comes back when it reopens', async () => {
     await loadLoader()
     api().open()
@@ -149,7 +168,7 @@ describe('chat window while the widget starts', () => {
 describe('createOpenShell', () => {
   it('draws once however often it is shown, and redraws into an emptied container', () => {
     const host = document.createElement('div')
-    const open = createOpenShell(document, host, { onClose: () => {} })
+    const open = createOpenShell(document, host, { onClose: () => {}, refocus: () => {} })
     open.show()
     open.show()
     expect(host.querySelectorAll(`.${SHELL_CLASS}`)).toHaveLength(1)

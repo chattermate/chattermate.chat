@@ -36,9 +36,11 @@ export const CLOSE_LABEL = 'Close chat'
 /**
  * Shows and hides the shell inside `container`, which the loader may empty at any
  * time. `onClose` closes the chat: on a phone the shell fills the screen, and the
- * widget's own header (with its close button) isn't there yet.
+ * widget's own header (with its close button) isn't there yet. `refocus` is where
+ * keyboard focus goes when the shell is taken away while it has it (its close
+ * button), so it never drops back to the top of the page.
  */
-export function createOpenShell(doc, container, { onClose }) {
+export function createOpenShell(doc, container, { onClose, refocus }) {
   let shell = null
 
   function show() {
@@ -49,8 +51,10 @@ export function createOpenShell(doc, container, { onClose }) {
   }
 
   function hide() {
+    const hadFocus = !!shell && shell.contains(doc.activeElement)
     if (shell && shell.parentNode) shell.parentNode.removeChild(shell)
     shell = null
+    if (hadFocus) refocus()
   }
 
   return { show, hide, isShown: function () { return !!shell && shell.parentNode === container } }
