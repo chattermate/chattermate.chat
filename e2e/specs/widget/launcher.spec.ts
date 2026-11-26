@@ -152,6 +152,8 @@ test.describe('widget launcher', () => {
     await widget.embed()
     await expect.poll(() => widget.launcherShown()).toBe(true)
     await expect.poll(() => width(widget.launcher)).toBe(48)
+    // A visit the chat finished loading in, so its look was kept
+    await widget.open()
 
     await widget.returnWithChatHeldBack()
     // Shown straight away, in the look it had last time, with the chat still loading

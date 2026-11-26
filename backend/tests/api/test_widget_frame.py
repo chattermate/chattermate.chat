@@ -17,6 +17,8 @@ The widget framed on our own origin: the frame page, its bootstrap call, and
 the allowed-domains settings behind its frame-ancestors.
 """
 
+import inspect
+import json
 import re
 import uuid
 
@@ -131,6 +133,52 @@ class TestFramePage:
         assert f'<script nonce="{nonce}">' in response.text
         assert "object-src 'none'" in csp
         assert "base-uri 'none'" in csp
+
+    def test_hands_the_loader_its_launcher_look_before_the_bundle(self, client, db, test_widget):
+        response = client.get(frame_url(test_widget) + "?host=1")
+        nonce = re.search(r"'nonce-([^']+)'", response.headers["content-security-policy"]).group(1)
+        inline = response.text.split(f'<script nonce="{nonce}">', 1)[1].split("</script>", 1)[0]
+
+        message = re.search(r"window\.parent\.postMessage\((\{.*\}), '\*'\)", inline).group(1)
+        assert json.loads(message) == {"type": "FRAME_LOOK", "data": widget_bootstrap.launcher_look(db, test_widget)}
+        # Runs before the bundle that would otherwise be first to send it
+        assert response.text.index("FRAME_LOOK") < response.text.index("assets/widget.js")
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_no_launcher_look_for_a_pasted_iframe(self, client, test_widget):
+        assert "FRAME_LOOK" not in client.get(frame_url(test_widget)).text
+
+    def test_the_launcher_look_carries_nothing_about_the_agent(self, client, db, test_widget):
+        agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).first()
+        agent.display_name = "Secret Agent Name"
+        agent.require_token_auth = True
+        db.commit()
+        message = client.get(frame_url(test_widget) + "?host=1").text.split("FRAME_LOOK", 1)[1].split("</script>")[0]
+        assert "Secret Agent Name" not in message
+        assert "photo_url" not in message
+        assert "welcome" not in message
+
+    def test_no_launcher_look_when_the_widget_serves_no_agent(self, client, db, test_widget):
+        test_widget.agent_id = None
+        db.commit()
+        response = client.get(frame_url(test_widget) + "?host=1")
+        assert response.status_code == 200
+        assert "FRAME_LOOK" not in response.text
+
+    def test_a_launcher_look_cannot_close_its_script(self, client, db, test_widget):
+        agent = db.query(Agent).filter(Agent.id == test_widget.agent_id).first()
+        customization = db.query(AgentCustomization).filter(AgentCustomization.agent_id == agent.id).first()
+        if customization is None:
+            customization = AgentCustomization(agent_id=agent.id)
+            db.add(customization)
+        customization.customization_metadata = {"widget_display": {"search_placeholder": "</script><script>alert(1)"}}
+        db.commit()
+        text = client.get(frame_url(test_widget) + "?host=1").text
+        assert "</script><script>alert(1)" not in text
+        assert "\\u003c/script>" in text
+
+    def test_frame_page_queries_run_off_the_event_loop(self):
+        assert not inspect.iscoroutinefunction(frame_router.get_widget_frame)
 
     def test_a_new_nonce_every_time(self, client, test_widget):
         first = client.get(frame_url(test_widget)).headers["content-security-policy"]
