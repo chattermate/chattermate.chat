@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.utils.uuids import as_uuid
 from app.models.customer import Customer
 from app.utils.phone import normalize_phone
+from app.utils.customer_names import is_placeholder_name
 from uuid import UUID, uuid4
 from app.core.logger import get_logger
 
@@ -419,7 +420,8 @@ class CustomerRepository:
         customer_id: UUID,
         email: str = None,
         full_name: str = None,
-        phone: str = None
+        phone: str = None,
+        replace_real_name: bool = True,
     ) -> dict:
         """Update an existing customer's contact details (used by human-handoff capture).
 
@@ -427,7 +429,10 @@ class CustomerRepository:
           respecting the ``(email, organization_id)`` unique constraint — if the email already
           belongs to a different customer, the email update is skipped (logged) but the name
           can still be updated. A real existing email is never overwritten.
-        - Sets ``full_name`` when a non-empty value is supplied.
+        - Sets ``full_name`` when a non-empty value is supplied. With
+          ``replace_real_name=False`` only a placeholder ('Line user U56c…' or
+          empty) is replaced: automatic capture must not rename someone the
+          platform or a teammate already named.
         - Sets ``phone`` (normalized E.164) only when the customer has none — automatic
           capture paths must not overwrite a channel-verified number — and skips it when the
           phone belongs to another customer in the org (same rule as email). Correcting an
@@ -462,7 +467,7 @@ class CustomerRepository:
 
             if full_name is not None:
                 full_name = full_name.strip()
-                if full_name:
+                if full_name and (replace_real_name or is_placeholder_name(customer.full_name)):
                     customer.full_name = full_name
                     result['name_updated'] = True
 

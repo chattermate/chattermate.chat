@@ -71,10 +71,10 @@ class RuleBuilder {
   }
 
   /** The agent records a lead from details the visitor gave (with their consent). */
-  captureLead(message: string, lead: { email: string; name?: string; company?: string }): Script {
+  captureLead(message: string, lead: { email?: string; name?: string; company?: string }): Script {
     return this.reply(message, {
       request_lead_capture: true,
-      lead_email: lead.email,
+      lead_email: lead.email ?? null,
       lead_name: lead.name ?? null,
       lead_company: lead.company ?? null,
       lead_consent: true,

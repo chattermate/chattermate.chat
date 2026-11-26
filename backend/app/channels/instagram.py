@@ -41,6 +41,8 @@ class InstagramAdapter(MessengerAdapter):
     graph_base: ClassVar[str] = GRAPH_INSTAGRAM_BASE
     # An IG user node exposes name/username, not the Messenger first/last name.
     profile_fields: ClassVar[str] = "name,username"
+    # The IG profile lookup works without extra access; no fallback needed.
+    conversation_name_fallback: ClassVar[bool] = False
     # Instagram's send body is just {recipient, message} — messaging_type is a
     # Messenger-only parameter and has no meaning here.
     send_extras: ClassVar[dict] = {}

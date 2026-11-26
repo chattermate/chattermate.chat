@@ -271,6 +271,17 @@ export class InboxPage {
     return this.page.getByRole('complementary', { name: 'Customer and conversation details' })
   }
 
+  /** Names the open chat's customer from the details panel, opening it first if it is closed. */
+  async renameCustomer(name: string): Promise<void> {
+    await step(`Agent names the customer "${name}"`, async () => {
+      if (!(await this.details.isVisible())) await this.detailsToggle.click()
+      await this.details.getByRole('button', { name: 'Edit customer name' }).click()
+      await this.details.getByLabel('Customer name', { exact: true }).fill(name)
+      await this.details.getByRole('button', { name: 'Save' }).click()
+      await expect(this.details.getByLabel('Customer name', { exact: true })).toBeHidden()
+    })
+  }
+
   async reply(text: string): Promise<void> {
     await step(`Agent replies "${text}"`, async () => {
       await this.messageInput.fill(text)

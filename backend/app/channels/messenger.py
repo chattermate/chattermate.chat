@@ -21,7 +21,7 @@ from app.channels.base import (
 )
 from app.channels.interactive import to_text_fallback
 from app.channels.interactive_limits import MESSENGER_LIMITS, InteractiveLimits
-from app.channels.meta_base import GRAPH_BASE, MetaBaseAdapter, graph_get, graph_post
+from app.channels.meta_base import GRAPH_BASE, MetaBaseAdapter, graph_detail, graph_get, graph_post
 from app.channels.registry import register_adapter
 from app.models.channels import ChannelAccount, ChannelConversation, ChannelType
 from app.core.logger import get_logger
@@ -44,6 +44,9 @@ class MessengerAdapter(MetaBaseAdapter):
     # Graph fields on the sender node that carry a display name. Instagram user
     # nodes expose different ones, so it overrides this and _display_name.
     profile_fields: ClassVar[str] = "first_name,last_name"
+    # Page conversations name their participants. Messenger falls back to that
+    # when the profile lookup is refused; Instagram's own lookup already works.
+    conversation_name_fallback: ClassVar[bool] = True
     # Extra keys on a send. messaging_type is a Messenger Platform parameter and
     # is not part of Instagram's documented send body, so Instagram sends none.
     send_extras: ClassVar[dict] = {"messaging_type": "RESPONSE"}
@@ -162,17 +165,43 @@ class MessengerAdapter(MetaBaseAdapter):
         sends only a PSID, so without this every customer shows as
         "Messenger user 2742…" in People.
 
+        Meta only answers the profile lookup for apps with Business Asset User
+        Profile Access, so when it refuses we read the name off the Page's
+        conversation with that person instead.
+
         Best-effort: a lookup failure must not cost us the message, so it
-        degrades to {} (the placeholder stays) rather than raising. Reading a
-        sender's name needs no permission beyond messaging them.
+        degrades to {} (the placeholder stays) rather than raising.
         """
-        ok, data = await graph_get(external_user_id, self.access_token(account),
-                                   params={"fields": self.profile_fields},
-                                   base=self.graph_base_for(account))
+        token = self.access_token(account)
+        base = self.graph_base_for(account)
+        ok, data = await graph_get(external_user_id, token,
+                                   params={"fields": self.profile_fields}, base=base)
+        name = self._display_name(data) if ok else ""
+        if name:
+            return {"name": name}
         if not ok:
-            return {}
-        name = self._display_name(data)
+            logger.info(f"{self.channel_type} profile lookup refused for account {account.id}: "
+                        f"{graph_detail(data, 'no detail')}")
+        if self.conversation_name_fallback:
+            name = await self._name_from_conversation(account, token, base, external_user_id)
         return {"name": name} if name else {}
+
+    async def _name_from_conversation(self, account: ChannelAccount, token: str, base: str,
+                                      external_user_id: str) -> str:
+        """The person's name as the Page's conversation with them lists it."""
+        ok, data = await graph_get("me/conversations", token,
+                                   params={"platform": self.channel_type, "user_id": external_user_id,
+                                           "fields": "participants"},
+                                   base=base)
+        if not ok:
+            logger.info(f"{self.channel_type} conversation lookup refused for account {account.id}: "
+                        f"{graph_detail(data, 'no detail')}")
+            return ""
+        for conversation in data.get("data") or []:
+            for person in (conversation.get("participants") or {}).get("data") or []:
+                if str(person.get("id")) == external_user_id:
+                    return (person.get("name") or "").strip()
+        return ""
 
     @staticmethod
     def _display_name(data: dict) -> str:
