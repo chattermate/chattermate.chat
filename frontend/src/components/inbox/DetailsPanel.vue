@@ -22,8 +22,10 @@ limitations under the License.
  * empty. Scrolls on its own; below 1440px it opens over the thread as a
  * drawer (InboxShell).
  */
-import { computed, ref } from 'vue'
-import type { ChatDetail } from '@/types/chat'
+import { computed, nextTick, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
+import type { ChatDetail, CustomerInfo } from '@/types/chat'
+import { chatService } from '@/services/chat'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { userService } from '@/services/user'
 import { permissionChecks } from '@/utils/permissions'
@@ -45,6 +47,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'open-conversation', sessionId: string): void
+  (e: 'customer-renamed', sessionId: string, customer: CustomerInfo): void
 }>()
 
 const currentUserId = userService.getUserId()
@@ -62,6 +65,44 @@ const contact = computed(() => {
 })
 
 /** Integrator-supplied fields (POST /generate-token custom_data), labelled */
+// Naming the customer: Messenger and LINE often give us only an id
+// ("Line user U56c…"), and whoever is reading the chat may know who it is.
+const editingName = ref(false)
+const savingName = ref(false)
+const nameDraft = ref('')
+const nameInput = ref<HTMLInputElement | null>(null)
+
+// The panel stays mounted when another chat opens: a draft belongs to its chat
+watch(() => props.chat.session_id, () => { editingName.value = false })
+
+async function startNameEdit() {
+  nameDraft.value = props.chat.customer.full_name || ''
+  editingName.value = true
+  await nextTick()
+  nameInput.value?.select()
+}
+
+async function saveName() {
+  const fullName = nameDraft.value.trim()
+  if (!fullName || savingName.value) return
+  if (fullName === props.chat.customer.full_name) {
+    editingName.value = false
+    return
+  }
+  const sessionId = props.chat.session_id
+  savingName.value = true
+  try {
+    emit('customer-renamed', sessionId, await chatService.renameCustomer(sessionId, fullName))
+    editingName.value = false
+  } catch (error: any) {
+    toast.error('Could not save the name', {
+      description: error?.response?.data?.detail?.[0]?.msg || error?.response?.data?.detail || 'Please try again',
+    })
+  } finally {
+    savingName.value = false
+  }
+}
+
 const customerFacts = computed(() => {
   const facts: DetailsFact[] = []
   if (props.chat.customer.phone) facts.push({ label: 'Phone', value: props.chat.customer.phone })
@@ -113,10 +154,34 @@ function jumpToHandover() {
     <div class="customer">
       <div class="identity">
         <span class="avatar" :style="{ background: avatarTone(chat.session_id) }" aria-hidden="true">{{ getInitials(name) }}</span>
-        <div class="identity-text">
+        <form v-if="editingName" class="name-edit" @submit.prevent="saveName" @keydown.esc.stop="editingName = false">
+          <label class="sr-only" for="details-customer-name">Customer name</label>
+          <input
+            id="details-customer-name"
+            ref="nameInput"
+            v-model="nameDraft"
+            class="name-input"
+            maxlength="255"
+            autocomplete="off"
+          />
+          <div class="name-actions">
+            <button type="button" class="name-btn" @click="editingName = false">Cancel</button>
+            <button type="submit" class="name-btn primary" :disabled="savingName || !nameDraft.trim()">
+              {{ savingName ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+        </form>
+        <div v-else class="identity-text">
           <span class="customer-name">{{ name }}</span>
           <span v-if="contact" class="customer-contact">{{ contact }}</span>
         </div>
+        <button
+          v-if="!editingName"
+          type="button"
+          class="name-edit-link"
+          aria-label="Edit customer name"
+          @click="startNameEdit"
+        >Edit</button>
         <button v-if="overlay" type="button" class="icon-btn" aria-label="Close details" @click="emit('close')">
           <span aria-hidden="true" v-html="navIconSvg('close', 16)"></span>
         </button>
@@ -210,6 +275,61 @@ function jumpToHandover() {
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.name-edit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.name-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.name-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.name-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.name-btn.primary {
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border-color: transparent;
+}
+
+.name-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.name-edit-link {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 4px;
+  color: var(--c-info);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .customer-contact {

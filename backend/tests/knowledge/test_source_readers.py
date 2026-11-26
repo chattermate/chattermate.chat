@@ -77,6 +77,9 @@ class FakeLearning:
         self.ensured = True
         return []
 
+    def finish(self):
+        self.ensure_source()
+
     def discard(self):
         self.discarded = True
 

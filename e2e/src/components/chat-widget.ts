@@ -39,6 +39,11 @@ export interface EmbedOptions {
   prompt?: { message: string; suggestions?: string[]; open?: boolean }
   /** The page is a Shopify storefront of this shop, with a cart. */
   shopifyStore?: string
+  /**
+   * A first visit on a slow network: the frame page loads, but the widget's bundle is
+   * held back (so the widget inside never starts) until letChatLoad().
+   */
+  chatHeldBack?: boolean
 }
 
 type JsApiMethod = 'open' | 'close' | 'toggle' | 'isOpen' | 'showLauncher' | 'hideLauncher' | 'identify' | 'logout'
@@ -87,6 +92,8 @@ export class ChatWidget {
   private starts = 0
   private authorizationCount = 0
   private framesServed = 0
+  // Lets a bundle held back by embed({ chatHeldBack }) through
+  private releaseHeldChat: () => void = () => {}
   private tokenAnswers = 0
   private tokenProviderExposed = false
 
@@ -230,11 +237,28 @@ export class ChatWidget {
       }
       const site = options.legacyLoader || inPageFallback ? env.customerSiteLegacyUrl
         : options.onOtherOrigin ? env.customerSiteOtherUrl : env.customerSiteUrl
+      if (options.chatHeldBack) {
+        const held = new Promise<void>((resolve) => { this.releaseHeldChat = resolve })
+        await this.page.route('**/assets/widget.js**', async (route) => {
+          await held
+          await route.continue()
+        })
+        // The held bundle keeps the page's load event from firing
+        await this.page.goto(`${site}/?${params}`, { waitUntil: 'domcontentloaded' })
+        return
+      }
       await this.page.goto(`${site}/?${params}`)
     })
   }
 
   /** The visitor comes back to the site with `token` kept from an earlier visit. */
+  /** The slow network catches up: the bundle held back by embed({ chatHeldBack }) arrives. */
+  async letChatLoad(): Promise<void> {
+    await step('The chat finishes loading', async () => {
+      this.releaseHeldChat()
+    })
+  }
+
   async returnWithStoredToken(token: string): Promise<void> {
     await step('Customer comes back to the site', async () => {
       // The loader's own storage key (chattermate.js tokenKey)
@@ -544,6 +568,16 @@ export class ChatWidget {
   /** The chat panel; it carries `.active` while open. */
   get panel(): Locator {
     return this.page.locator('#chattermate-container')
+  }
+
+  /** The chat window's outline the loader draws while the widget inside is still starting. */
+  get loadingWindow(): Locator {
+    return this.panel.getByRole('status').filter({ hasText: 'Loading chat…' })
+  }
+
+  /** The loading outline's close button (inside the panel: the open launcher has the same name). */
+  get loadingWindowClose(): Locator {
+    return this.panel.getByRole('button', { name: 'Close chat' })
   }
 
   /**

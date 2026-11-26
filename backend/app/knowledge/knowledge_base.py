@@ -367,7 +367,7 @@ class KnowledgeManager:
             learning.discard()
             raise
 
-        await asyncio.to_thread(learning.ensure_source)
+        await asyncio.to_thread(learning.finish)
         if knowledge_base.stopped_at_time_limit:
             queue_repo.note_stopped_at_time_limit(queue_item.id)
 
@@ -437,7 +437,7 @@ class KnowledgeManager:
                 raise SourceTimedOut(FAILURE_ADVICE[FailureCause.TOO_LONG].format(url=label))
             # The source had pages; storing them failed on our side
             raise RuntimeError(f"None of the {len(read_page_ids)} page(s) read from {label} could be stored")
-        await asyncio.to_thread(learning.ensure_source)
+        await asyncio.to_thread(learning.finish)
         if read_to_the_end:
             dropped = await asyncio.to_thread(
                 self.vector_db.delete_pages_except,

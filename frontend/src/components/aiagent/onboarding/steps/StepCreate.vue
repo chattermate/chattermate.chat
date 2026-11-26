@@ -44,6 +44,8 @@ const presetAvatars = Object.keys(avatarModules).sort().map((k) => avatarModules
 // creating a new one — avoids duplicate agents / plan-limit errors.
 const props = defineProps<{
   existingAgent?: Agent | null
+  /** The agent is made; the wizard is finishing its setup before moving on. */
+  settingUp?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -254,6 +256,7 @@ const createAgent = async () => {
 }
 
 const handleContinue = async () => {
+  if (props.settingUp) return // Enter in a field, while the buttons are disabled
   if (!agentName.value.trim()) {
     error.value = 'Please give your agent a name.'
     return
@@ -436,10 +439,10 @@ const onAiConfigured = async () => {
       <p v-if="error" class="step-error" role="alert">{{ error }}</p>
 
       <div class="step-actions">
-        <button type="button" class="btn-text" :disabled="isSubmitting" @click="emit('skip')">Skip for now</button>
-        <button type="button" class="btn-accent" :disabled="isSubmitting" @click="handleContinue">
-          {{ isSubmitting ? 'Creating…' : 'Continue' }}
-          <span v-if="!isSubmitting" class="arrow">→</span>
+        <button type="button" class="btn-text" :disabled="isSubmitting || settingUp" @click="emit('skip')">Skip for now</button>
+        <button type="button" class="btn-accent" :disabled="isSubmitting || settingUp" @click="handleContinue">
+          {{ isSubmitting || settingUp ? 'Creating…' : 'Continue' }}
+          <span v-if="!isSubmitting && !settingUp" class="arrow">→</span>
         </button>
       </div>
     </template>

@@ -62,3 +62,21 @@ limitations under the License.
   font-size: 13.5px;
   color: var(--error-color);
 }
+
+.source-remove {
+  background: none;
+  border: none;
+  color: var(--muted2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.source-remove:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.source-remove:disabled {
+  cursor: not-allowed;
+}

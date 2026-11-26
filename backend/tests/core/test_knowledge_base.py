@@ -367,7 +367,7 @@ async def test_a_site_is_read_with_its_pages_made_searchable_as_they_land(knowle
     assert kb.load.call_args.kwargs["skip_existing"] is True
     assert kb.load.call_args.kwargs["filters"]["agent_id"] == [str(knowledge_manager.agent_id)]
     # Also covers a site skipped as already learned: it is still linked
-    learning.ensure_source.assert_called_once()
+    learning.finish.assert_called_once()
     queue_repo.note_stopped_at_time_limit.assert_not_called()
 
 

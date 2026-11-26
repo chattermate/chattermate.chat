@@ -10,6 +10,9 @@ const getKnowledgeByAgent = vi.fn()
 const getKnowledgeByOrganization = vi.fn()
 const getAgentQueueItems = vi.fn()
 const addUrls = vi.fn()
+const deleteKnowledge = vi.fn()
+const deleteQueueItem = vi.fn()
+const unlinkFromAgent = vi.fn()
 
 vi.mock('@/services/organization', () => ({
   organizationService: { getOrganization: (id: string) => getOrganization(id) }
@@ -19,6 +22,9 @@ vi.mock('@/services/knowledge', () => ({
     getKnowledgeByAgent: (...a: unknown[]) => getKnowledgeByAgent(...a),
     getKnowledgeByOrganization: (...a: unknown[]) => getKnowledgeByOrganization(...a),
     addUrls: (...a: unknown[]) => addUrls(...a),
+    deleteKnowledge: (...a: unknown[]) => deleteKnowledge(...a),
+    deleteQueueItem: (...a: unknown[]) => deleteQueueItem(...a),
+    unlinkFromAgent: (...a: unknown[]) => unlinkFromAgent(...a),
     getAgentQueueItems: (...a: unknown[]) => getAgentQueueItems(...a)
   }
 }))
@@ -27,6 +33,8 @@ vi.mock('@/utils/storage', () => ({
 }))
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
+import { SLOW_FIRST_PAGE_MS } from '@/composables/useSlowWait'
+import { SETUP_CHANGED_EVENT } from '@/utils/setupEvents'
 import { LEARNING_POLL_MS, READY_PAGES, queueItemName } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 
@@ -450,5 +458,235 @@ describe('StepTeach while sources are read', () => {
     await mountStep()
 
     expect((wrapper.vm as any).$.setupState.inUseCount).toBe(1)
+  })
+})
+
+describe('StepTeach - taking a source off', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    getOrganization.mockResolvedValue({ domain: 'pedalco.example.com' })
+    getKnowledgeByAgent.mockResolvedValue(empty)
+    getKnowledgeByOrganization.mockResolvedValue(empty)
+    getAgentQueueItems.mockResolvedValue(queue())
+    deleteKnowledge.mockResolvedValue({})
+    deleteQueueItem.mockResolvedValue({})
+  })
+
+  afterEach(() => wrapper?.unmount())
+
+  const button = (label: string) => wrapper.findAll('button').find((b) => b.text() === label)!
+  const askToRemove = async () => {
+    await wrapper.find('.source-remove').trigger('click')
+    await flushPromises()
+  }
+
+  it('asks before removing, and Keep leaves the source', async () => {
+    getKnowledgeByAgent.mockResolvedValue(indexed)
+    await mountStep()
+    await askToRemove()
+    await button('Keep').trigger('click')
+
+    expect(deleteKnowledge).not.toHaveBeenCalled()
+    expect(done()).toEqual([SITE])
+  })
+
+  it('deletes an indexed source, leaving the step empty', async () => {
+    getKnowledgeByAgent.mockResolvedValueOnce(indexed).mockResolvedValue(empty)
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(deleteKnowledge).toHaveBeenCalledWith(1)
+    expect(wrapper.find('.btn-accent').text()).toContain('Skip for now')
+  })
+
+  it('takes a waiting site out of the queue', async () => {
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(4, 'pending'))).mockResolvedValue(queue())
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(deleteQueueItem).toHaveBeenCalledWith(4)
+    expect(learning()).toEqual([])
+  })
+
+  it('deletes a site mid-read', async () => {
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(4, 'processing', { knowledge_id: 9, pages_learned: 2 }))).mockResolvedValue(queue())
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(deleteKnowledge).toHaveBeenCalledWith(9)
+    expect(learning()).toEqual([])
+    expect(wrapper.find('.btn-accent').text()).toContain('Skip for now')
+  })
+
+  it('stops a site that has no page yet by taking its run out', async () => {
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(4, 'processing'))).mockResolvedValue(queue())
+    await mountStep({ followAssistant: true })
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(deleteQueueItem).toHaveBeenCalledWith(4)
+    expect(wrapper.emitted('next')).toBeFalsy()
+  })
+
+  it('offers no removal of a PDF being read', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(4, 'processing', { source_type: 'pdf_file' })))
+    await mountStep()
+
+    expect(wrapper.find('.source-remove').exists()).toBe(false)
+  })
+
+  it('only unlinks a source other agents use', async () => {
+    getKnowledgeByAgent.mockResolvedValue({ ...indexed, knowledge: [{ id: 1, name: SITE, agents: [{ id: 'agent-1' }, { id: 'agent-2' }] }] })
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(unlinkFromAgent).toHaveBeenCalledWith(1, 'agent-1')
+    expect(deleteKnowledge).not.toHaveBeenCalled()
+  })
+
+  it('does not suggest the signup site again once it was removed', async () => {
+    getKnowledgeByAgent.mockResolvedValueOnce(indexed).mockResolvedValue(empty)
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+    wrapper.unmount()
+    await mountStep()
+
+    expect(staged()).toEqual([])
+    expect(wrapper.find('.btn-accent').text()).toContain('Skip for now')
+  })
+
+  it('does not call the step empty when the sources could not be loaded', async () => {
+    getKnowledgeByAgent.mockRejectedValue(new Error('502'))
+    getOrganization.mockResolvedValue({ domain: '' })
+    await mountStep()
+
+    expect(wrapper.text()).not.toContain('nothing to answer from')
+  })
+
+  it('says when a source could not be removed, and keeps it', async () => {
+    getKnowledgeByAgent.mockResolvedValue(indexed)
+    deleteKnowledge.mockRejectedValue(new Error('500'))
+    await mountStep()
+    await askToRemove()
+    await button('Remove').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("couldn't remove that source")
+    expect(done()).toEqual([SITE])
+  })
+})
+
+describe('StepTeach waiting for the first page', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    getOrganization.mockResolvedValue({ domain: 'pedalco.example.com' })
+    getKnowledgeByAgent.mockResolvedValue(empty)
+    getKnowledgeByOrganization.mockResolvedValue(empty)
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    vi.useRealTimers()
+  })
+
+  const primary = () => wrapper.find('.btn-accent')
+  const skipButton = () => wrapper.findAll('button').find((b) => b.text() === 'Skip for now')
+  const reading = () => wrapper.find('.reading').text()
+
+  it('says what it is doing and offers no Continue', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+    await mountStep()
+
+    expect(reading()).toContain('Reading your website')
+    expect(reading()).toContain('a minute or two')
+    expect(primary().exists()).toBe(false)
+  })
+
+  it('brings Continue in with the first page', async () => {
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(1, 'processing')))
+      .mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1 })))
+    await mountStep()
+    await nextPoll()
+
+    expect(reading()).toContain('1 page learned')
+    await primary().trigger('click')
+    expect(wrapper.emitted('next')).toBeTruthy()
+  })
+
+  it('offers a way on when the first page takes too long', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'pending')))
+    await mountStep()
+    expect(skipButton()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(SLOW_FIRST_PAGE_MS)
+
+    expect(reading()).toContain('longer than usual')
+    await skipButton()!.trigger('click')
+    expect(wrapper.emitted('next')).toBeTruthy()
+  })
+
+  it('says when what it learns from changes, so the guide can follow', async () => {
+    const changed = vi.fn()
+    window.addEventListener(SETUP_CHANGED_EVENT, changed)
+    getAgentQueueItems.mockResolvedValueOnce(queue(row(1, 'processing')))
+      .mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1 })))
+    await mountStep()
+    changed.mockClear()
+    await nextPoll()
+    expect(changed).toHaveBeenCalledTimes(1)
+    await nextPoll()
+    expect(changed).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SETUP_CHANGED_EVENT, changed)
+  })
+
+  it('counts the wait from when the source was sent, not from when the step opened', async () => {
+    const sent = new Date(Date.now() - SLOW_FIRST_PAGE_MS).toISOString()
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'pending', { created_at: sent })))
+    await mountStep()
+
+    expect(skipButton()).toBeDefined()
+  })
+
+  it('says the agent can be tried when something else is already learned', async () => {
+    getKnowledgeByAgent.mockResolvedValue(indexed)
+    getAgentQueueItems.mockResolvedValue(queue(row(2, 'processing', { source: 'https://more.example.com' })))
+    await mountStep()
+
+    expect(reading()).toContain('You can try your agent now')
+  })
+
+  it('speaks of a document when that is all it reads', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { source_type: 'pdf_file' })))
+    await mountStep()
+
+    expect(reading()).toContain('Reading your document')
+  })
+
+  it('stays on the step after sending a site, until a page is in', async () => {
+    getOrganization.mockResolvedValue({ domain: 'pedalco.example.com' })
+    getAgentQueueItems.mockResolvedValueOnce(queue()).mockResolvedValue(queue(row(1, 'pending')))
+    addUrls.mockResolvedValue({ message: 'Queued' })
+    await mountStep()
+    await primary().trigger('click')
+    await flushPromises()
+
+    expect(addUrls).toHaveBeenCalled()
+    expect(wrapper.emitted('next')).toBeFalsy()
+    expect(reading()).toContain('Reading your website')
   })
 })

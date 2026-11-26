@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 from app.models.knowledge_queue import KnowledgeQueue, QueueStatus, STOPPED_AT_TIME_LIMIT
 from typing import List, Optional
@@ -47,6 +47,24 @@ class KnowledgeQueueRepository:
             .filter(KnowledgeQueue.status == QueueStatus.PENDING)\
             .order_by(KnowledgeQueue.priority.desc(), KnowledgeQueue.created_at.asc())\
             .all()
+
+    def get_in_flight(
+        self, organization_id: UUID, agent_id: Optional[UUID], sources: List[str], since: datetime
+    ) -> List[KnowledgeQueue]:
+        """Runs of these sources still waiting, or read since `since`, for
+        the same agent: adding one again would only read it twice."""
+        return self.db.query(KnowledgeQueue).filter(
+            KnowledgeQueue.organization_id == organization_id,
+            KnowledgeQueue.agent_id == agent_id,
+            KnowledgeQueue.source.in_(sources),
+            or_(
+                KnowledgeQueue.status == QueueStatus.PENDING,
+                and_(
+                    KnowledgeQueue.status == QueueStatus.PROCESSING,
+                    func.coalesce(KnowledgeQueue.updated_at, KnowledgeQueue.created_at) >= since,
+                ),
+            ),
+        ).all()
 
     def get_abandoned(self, last_progress_before: datetime) -> List[KnowledgeQueue]:
         """Items still 'processing' with no progress since `last_progress_before`,

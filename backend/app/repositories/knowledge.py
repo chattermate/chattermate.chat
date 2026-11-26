@@ -253,6 +253,13 @@ class KnowledgeRepository:
                                  knowledge.table_name}: {str(e)}")
                     # Continue with knowledge deletion even if data deletion fails
 
+            # A run still filling it goes too: it would hold the plan slot
+            # until the worker noticed
+            self.db.query(KnowledgeQueue).filter(
+                KnowledgeQueue.knowledge_id == knowledge_id,
+                KnowledgeQueue.status.in_([QueueStatus.PENDING.value, QueueStatus.PROCESSING.value]),
+            ).delete(synchronize_session=False)
+
             # Delete the knowledge entry
             self.db.delete(knowledge)
             self.db.commit()

@@ -6,8 +6,25 @@ import { Chat, digits, hmac, postWebhook, sentWith, type ChannelConnector } from
 
 interface LinePush { to: string; messages: Array<{ type: string; text?: string }> }
 
+/** A LINE chat whose customer can start sharing their profile partway through. */
+export class LineChat extends Chat {
+  private readonly answerProfile: (name?: string) => Promise<void>
+
+  constructor(customerName: string, deliver: (text: string) => Promise<void>, read: () => Promise<string[]>,
+    unnamedLabel: string, answerProfile: (name?: string) => Promise<void>) {
+    super('LINE', customerName, deliver, read, unnamedLabel)
+    this.answerProfile = answerProfile
+  }
+
+  /** The customer adds the account as a friend: LINE's profile lookup now gives this name. */
+  sharesProfileAs(name: string): Promise<void> {
+    return step(`${this.customerName} adds the LINE account as a friend (profile name "${name}")`,
+      () => this.answerProfile(name))
+  }
+}
+
 /** A LINE Official Account; the webhook is per account and signed with its channel secret. */
-export const line: ChannelConnector = ({ api, request, agentId }) =>
+export const line: ChannelConnector<LineChat> = ({ api, request, agentId }) =>
   step('Connect a LINE Official Account', async () => {
     const channelSecret = unique('line-secret')
     const accessToken = unique('line-token')
@@ -16,9 +33,19 @@ export const line: ChannelConnector = ({ api, request, agentId }) =>
     const externals = new FakeExternals(request)
 
     return {
-      chatWith(customerName) {
+      chatWith(customerName, { profileName } = {}) {
         const userId = `U${digits(32)}`
-        return new Chat('LINE', customerName, async (text) => {
+        // LINE shares a display name only with an account the person added as a friend (404 otherwise).
+        let stopAnswering: (() => Promise<void>) | undefined
+        const answerProfile = async (name?: string) => {
+          await stopAnswering?.()
+          stopAnswering = await externals.respond(name
+            ? { provider: 'line', action: userId, status: 200, body: { userId, displayName: name } }
+            : { provider: 'line', action: userId, status: 404, body: { message: 'Not found' } })
+        }
+        let answering: Promise<void> | undefined
+        return new LineChat(customerName, async (text) => {
+          await (answering ??= answerProfile(profileName))
           const json = JSON.stringify({
             destination: account.external_account_id,
             events: [{
@@ -37,7 +64,9 @@ export const line: ChannelConnector = ({ api, request, agentId }) =>
           .filter((c) => c.status === 200 && sentWith(c, accessToken))
           .map((c) => c.body as LinePush)
           .filter((b) => b.to === userId)
-          .flatMap((b) => b.messages.map((m) => m.text ?? '')))
+          .flatMap((b) => b.messages.map((m) => m.text ?? '')),
+        `Line user ${userId.slice(0, 8)}`,
+        async (name) => { await (answering ??= answerProfile(profileName)); await answerProfile(name) })
       },
     }
   })

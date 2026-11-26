@@ -28,6 +28,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from app.database import SessionLocal
+from app.knowledge.page_sink import SourceRemoved
 from app.models.knowledge import Knowledge, SourceType
 from app.models.knowledge_queue import KnowledgeQueue
 from app.repositories.knowledge import KnowledgeRepository
@@ -88,10 +89,20 @@ class SourceLearning:
             KnowledgeQueueRepository(db).record_page_learned(self._queue_id)
 
     def removed(self) -> bool:
-        if self._knowledge_id is None:
-            return False
+        """Whether the user took this away: the run itself while it had no
+        source yet, or the source it was filling."""
         with SessionLocal() as db:
-            return db.get(Knowledge, self._knowledge_id) is None
+            if db.get(KnowledgeQueue, self._queue_id) is None:
+                return True
+            return self._knowledge_id is not None and db.get(Knowledge, self._knowledge_id) is None
+
+    def finish(self) -> None:
+        """End a run: set the source up, unless it was removed after the
+        last stored page, which must not bring it back."""
+        if self.removed():
+            self.discard()
+            raise SourceRemoved(f"{self._source} was removed while it was being read")
+        self.ensure_source()
 
     def discard(self) -> None:
         """The source was deleted mid-crawl: drop what the run wrote after

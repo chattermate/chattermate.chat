@@ -6,6 +6,7 @@ import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
+import { createOpenShell, shellCss } from './loader/openShell.js'
 import { DEFAULT_FRAME, pickPanelLook } from './panel-style'
 // TypeScript declarations for global variables
 /** @type {string} */
@@ -259,6 +260,48 @@ import {
     if (!isMobileDevice() && !devOverrides.containerBottom) {
       config.containerBottom = look.chat_style === 'ASK_ANYTHING' ? 90 : 100
     }
+  }
+
+  // The launcher's look from the frame page itself (FRAME_LOOK), sent as the page
+  // parses: on a slow network the widget's own CUSTOMIZATION_UPDATE comes seconds
+  // later, after its bundle, handshake and bootstrap. Taken only from our frame and
+  // only before its handshake, so the widget's update always follows and wins.
+  // Until FRAME_READY nothing says the frame is still on our origin (a frame elsewhere
+  // on the page can navigate it), so the look is only kept for the next visit once
+  // the frame's handshake comes from the same origin (keepEarlyLook).
+  let earlyLook = null
+  function applyEarlyLook(event) {
+    const target = frameWindow()
+    if (!target || event.source !== target || frameOrigin) return
+    const look = event.data.data
+    if (!look || typeof look !== 'object' || Array.isArray(look)) return
+    const applied = {
+      ...look,
+      // As the widget sends it for an agent with no colour of its own
+      chat_bubble_color: look.chat_bubble_color || DEFAULT_LAUNCHER_COLOR,
+      // The panel's framing only matters once it opens, and is the widget's to send
+      panel: config.panel,
+    }
+    applyLook(applied)
+    earlyLook = { origin: event.origin, look: applied }
+    updateStyles()
+    revealWhenLogoReady()
+  }
+
+  // The frame's handshake: a look it sent from this same origin was ours, so a visitor
+  // who leaves before the widget's own update still finds it next time.
+  // The panel's framing is the widget's to send: keep any it left in the cache, and
+  // don't store the default the early look stood in with.
+  function keepEarlyLook(origin) {
+    if (earlyLook && earlyLook.origin === origin) {
+      const cache = lookCache()
+      const cached = cache.read()
+      const look = { ...earlyLook.look }
+      delete look.panel
+      if (cached && cached.panel) look.panel = cached.panel
+      cache.save(look)
+    }
+    earlyLook = null
   }
 
   // Keyed by the widget ID at the time of use: init() may set it after load.
@@ -1171,6 +1214,7 @@ import {
       },
       config.panel,
     )
+    style.textContent += shellCss(config.containerId, { accent: config.chatBubbleColor, elevation: config.panel.elevation, palette: isAskAiModal() })
     syncPanelClasses()
     // Remove existing style if it exists
     const existingStyle = document.getElementById('chattermate-styles')
@@ -1471,6 +1515,27 @@ import {
       })
     }
 
+    // The widget is still starting. The visitor only sees it while they have the chat
+    // open and are waiting for it: a spinner in the launcher, and the chat window's
+    // outline (loader/openShell.js) in place of the still-blank frame. A closed
+    // launcher keeps its icon while the chat loads behind it.
+    let widgetStarting = false
+    const openShell = createOpenShell(document, container, {
+      onClose: function () { if (isOpen) toggleChat({ returnFocus: true }) },
+      // The chat when it has just become ready, otherwise the launcher
+      refocus: function () { (iframe && widgetMounted ? iframe : button).focus() },
+    })
+    function setWidgetStarting(starting) {
+      widgetStarting = starting
+      showStartingState()
+    }
+    function showStartingState() {
+      const waiting = widgetStarting && isOpen
+      button.classList.toggle('loading', waiting)
+      if (waiting) openShell.show()
+      else openShell.hide()
+    }
+
     // `options.returnFocus`: the close came from the keyboard, Escape or the panel's
     // own minimize, so focus goes back to the launcher.
     function toggleChat(options) {
@@ -1478,6 +1543,7 @@ import {
       container.classList.toggle('active')
       backdrop.classList.toggle('active', isOpen)
       button.classList.toggle('active')
+      showStartingState()
       button.setAttribute('aria-label', isOpen ? 'Close chat' : 'Open chat')
       button.setAttribute('aria-expanded', String(isOpen))
       mobileCloseButton.classList.toggle('active')
@@ -1561,6 +1627,8 @@ import {
       pendingIdentity = null
       widgetMounted = false
       frameOrigin = null
+      // A look the old frame sent belongs to it (and maybe to another widget ID)
+      earlyLook = null
       retryOnOpen = false
       frameRefusedByPolicy = false
       refusedOrigin = null
@@ -1568,7 +1636,7 @@ import {
       clearFrameTimer()
       // A rebuild already under way supersedes the one a pending END_CHAT would do
       cancelEndChat()
-      button.classList.remove('loading')
+      setWidgetStarting(false)
       paletteContentHeight = 0
       applyPaletteHeight()
       // The old frame's peek, working dot and expanded size go with it.
@@ -1812,7 +1880,7 @@ import {
         showLoadError(NOT_CONFIGURED)
         return
       }
-      button.classList.add('loading')
+      setWidgetStarting(true)
       const generation = loadGeneration
 
       iframe = document.createElement('iframe')
@@ -1846,7 +1914,7 @@ import {
         return
       }
       widgetMounted = true
-      button.classList.remove('loading')
+      setWidgetStarting(false)
       // Developer display overrides, known now. Dashboard defaults merge later; the
       // CUSTOMIZATION_UPDATE reply re-sends the final values.
       postToFrame(widgetDisplayPayload())
@@ -1935,10 +2003,11 @@ import {
         // origin, now known, addresses everything sent to it from here on.
         if (event.origin === 'null') return
         frameOrigin = event.origin
+        keepEarlyLook(event.origin)
         stopWatchingForPolicyRefusal() // it started: nothing to fall back from
         // A frame that reloaded itself starts over: not listening until it mounts again
         widgetMounted = false
-        button.classList.add('loading')
+        setWidgetStarting(true)
         clearFrameTimer()
         frameTimer = setTimeout(showUnavailable, FRAME_LOAD_MS)
         postToFrame({ type: 'HOST_INIT', token: getStoredToken(), pageUrl: window.location.href, pageTitle: String(document.title || '').slice(0, 200) })
@@ -2275,6 +2344,11 @@ import {
   // Add message listener for customization updates
   window.addEventListener('message', function (event) {
     if (!event.data || typeof event.data.type !== 'string') return
+    // Before the handshake, so checked against the frame's window alone (see applyEarlyLook)
+    if (event.data.type === 'FRAME_LOOK') {
+      applyEarlyLook(event)
+      return
+    }
     // Only the widget iframe may drive the loader (hide/restyle/close).
     if (!isFromWidgetFrame(event)) return
     // The Ask AI palette reports how tall its content is, so the box hugs a short

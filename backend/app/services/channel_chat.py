@@ -53,6 +53,7 @@ from app.services.chat_notifications import (
 from app.services.agent_offline import should_tell_offline, tell_customer_agent_offline
 from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
+from app.utils.customer_names import is_placeholder_name, placeholder_name
 from app.services.conversation_token import VERIFIED_SCOPE
 from app.services.agent_rooms import USER_MESSAGE, relay_stored_message
 from app.services.ai_access import plan_allows_ai, tell_customer_ai_is_off
@@ -316,7 +317,7 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
     )
     # Upgrade an existing placeholder name once we've resolved the real one
     # (get_or_create doesn't update an existing customer's name).
-    if real_name and _is_placeholder_name(customer.full_name, account.channel_type):
+    if real_name and is_placeholder_name(customer.full_name, account.channel_type):
         try:
             customer.full_name = real_name
             db.commit()
@@ -324,25 +325,6 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
             db.rollback()
             logger.error(f"Failed to update customer name: {e}")
     return str(customer.id)
-
-
-def placeholder_name(channel_type: str, external_user_id: str) -> str:
-    """The stand-in name for a channel person we don't know yet.
-
-    Paired with _is_placeholder_name deliberately: one builds the string, the
-    other recognises it, and the two only work if they agree exactly. Spelling
-    either out a second time somewhere else (an outbound send, say) makes them
-    agree by coincidence — and the day the format changes, the detector
-    silently stops matching and every real name upgrade stops happening.
-    """
-    return f"{channel_type.capitalize()} user {external_user_id[:8]}"
-
-
-def _is_placeholder_name(name: str, channel_type: str) -> bool:
-    """True when the stored name is the synthesized '<Channel> user xxxx' or empty."""
-    if not name:
-        return True
-    return name.startswith(f"{channel_type.capitalize()} user ")
 
 
 async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
@@ -355,7 +337,7 @@ async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
     call once — for a new/unresolved customer — not on every inbound message.
     """
     customer = CustomerRepository(db).get_by_id(uuid.UUID(customer_id))
-    if customer is None or not _is_placeholder_name(customer.full_name, account.channel_type):
+    if customer is None or not is_placeholder_name(customer.full_name, account.channel_type):
         return
     try:
         enrichment = await adapter.fetch_profile(account, inbound.external_user_id)

@@ -99,7 +99,7 @@ class PageSink:
         return True
 
     def _source_was_removed(self) -> bool:
-        if not (self._learning and self._source_ready):
+        if not self._learning:
             return False
         try:
             return self._learning.removed()

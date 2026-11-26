@@ -146,9 +146,27 @@ def _note_refused_embedder(db: Session, widget, ancestors: Optional[str], reques
         note_install(db, widget, embedder, request, background_tasks, REFUSED)
 
 
+def _launcher_look_script(db: Session, widget, request: Request) -> str:
+    """Hands the embed loader its launcher's look as soon as this page parses, instead
+    of seconds later once the widget has started (FRAME_READY → HOST_INIT → bootstrap →
+    mount). Only for the loader's frame (`host=1`): a pasted iframe has no launcher.
+
+    Sent to any parent ('*'): the frame doesn't know its embedder yet, and nothing in
+    it is more than the launcher shows on that page anyway (see launcher_look).
+    """
+    if request.query_params.get("host") != "1":
+        return ""
+    look = widget_bootstrap.launcher_look(db, widget)
+    if look is None:
+        return ""
+    message = script_json({"type": "FRAME_LOOK", "data": look})
+    return f"if (window.parent !== window) window.parent.postMessage({message}, '*');"
+
+
+# A plain def: its queries run in the threadpool rather than on the event loop.
 @router.get("/{widget_id}/frame", response_class=HTMLResponse)
-async def get_widget_frame(widget_id: str, request: Request, background_tasks: BackgroundTasks,
-                           db: Session = Depends(get_db)):
+def get_widget_frame(widget_id: str, request: Request, background_tasks: BackgroundTasks,
+                     db: Session = Depends(get_db)):
     redirect = _frame_host_redirect(request)
     if redirect:
         return redirect
@@ -159,6 +177,7 @@ async def get_widget_frame(widget_id: str, request: Request, background_tasks: B
     _note_refused_embedder(db, widget, ancestors, request, background_tasks)
 
     config = _frame_config(request)
+    launcher_look_script = _launcher_look_script(db, widget, request)
     # The bundle sits beside the API, under the same base (a path prefix included)
     base = config["API_URL"].rsplit(settings.API_V1_STR, 1)[0]
     assets_base = html.escape(base, quote=True)
@@ -183,6 +202,7 @@ async def get_widget_frame(widget_id: str, request: Request, background_tasks: B
     <script nonce="{nonce}">
         window.APP_CONFIG = {script_json(config)};
         window.__CM_FRAME__ = {script_json({"widgetId": widget.id})};
+        {launcher_look_script}
     </script>
     <script type="module" src="{assets_base}/assets/widget.js{asset_query}"></script>
     <link rel="stylesheet" href="{assets_base}/assets/widget.css{asset_query}">

@@ -380,3 +380,88 @@ def test_a_visitor_without_a_scope_changes_nothing(db, test_agent, test_organiza
     db.refresh(anon)
     assert anon.full_name is None
     assert anon.email.endswith("@noemail.com")
+
+
+def _channel_customer(db, org_id, name="Line user U56cf1f8"):
+    c = Customer(email=f"U{uuid4().hex}@line.channel", full_name=name, organization_id=org_id)
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+def test_a_lead_names_a_placeholder_channel_customer(db, test_agent, test_organization_id, config):
+    customer = _channel_customer(db, test_organization_id)
+    record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=customer.id, session_id=None,
+        lead_data={"email": "somchai@example.com", "name": "Somchai P"}, summary="s", consent=True,
+        scope=VERIFIED_SCOPE,
+    )
+    db.refresh(customer)
+    assert customer.full_name == "Somchai P"
+
+
+def test_a_lead_never_renames_a_customer_who_has_a_real_name(db, test_agent, test_organization_id, config):
+    customer = _channel_customer(db, test_organization_id, name="Somchai Prasert")
+    record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=customer.id, session_id=None,
+        lead_data={"email": "somchai@example.com", "name": "Som"}, summary="s", consent=True,
+        scope=VERIFIED_SCOPE,
+    )
+    db.refresh(customer)
+    assert customer.full_name == "Somchai Prasert"
+
+
+class TestNameWithoutALead:
+    """The customer gave a name but no email yet: no lead, but the contact
+    stops being 'Line user U56c…'."""
+
+    def name(self, db, config, customer, **kw):
+        from app.services.lead_capture import name_customer_from_lead
+        kw.setdefault("consent", True)
+        kw.setdefault("scope", VERIFIED_SCOPE)
+        result = name_customer_from_lead(db, config, customer.id, "Somchai P", **kw)
+        db.refresh(customer)
+        return result
+
+    def test_fills_a_placeholder(self, db, test_organization_id, config):
+        customer = _channel_customer(db, test_organization_id)
+        assert self.name(db, config, customer) is True
+        assert customer.full_name == "Somchai P"
+
+    def test_keeps_a_real_name(self, db, test_organization_id, config):
+        customer = _channel_customer(db, test_organization_id, name="Somchai Prasert")
+        assert self.name(db, config, customer) is False
+        assert customer.full_name == "Somchai Prasert"
+
+    def test_needs_consent_where_the_agent_requires_it(self, db, test_organization_id, config):
+        customer = _channel_customer(db, test_organization_id)
+        assert self.name(db, config, customer, consent=False) is False
+        assert customer.full_name == "Line user U56cf1f8"
+
+    def test_not_for_a_visitor_without_a_scope(self, db, test_organization_id, config):
+        customer = _channel_customer(db, test_organization_id)
+        assert self.name(db, config, customer, scope=None) is False
+        assert customer.full_name == "Line user U56cf1f8"
+
+    def test_not_for_an_authenticated_customer(self, db, test_organization_id, config):
+        customer = _channel_customer(db, test_organization_id)
+        customer.is_authenticated = True
+        db.commit()
+        assert self.name(db, config, customer) is False
+
+    def test_runs_when_the_response_records_no_lead(self, db, test_agent, test_organization_id, config,
+                                                   monkeypatch):
+        """The wiring: request_lead_capture with a name and no email names the customer."""
+        from types import SimpleNamespace
+        from app.services import lead_capture
+        monkeypatch.setattr(lead_capture, "plan_feature_on", lambda *a: True)
+        customer = _channel_customer(db, test_organization_id)
+        response = SimpleNamespace(request_lead_capture=True, lead_name="Somchai P", lead_consent=True)
+        assert lead_capture.record_lead_from_response(
+            db, response, test_organization_id, test_agent.id, customer.id, None,
+            channel="line", scope=VERIFIED_SCOPE) is None
+        db.refresh(customer)
+        assert customer.full_name == "Somchai P"

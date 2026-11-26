@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import type { Conversation, ChatDetail, ConversationNote, InboxCounts, InboxSort, InboxViewKey, Message } from '@/types/chat'
+import type { Conversation, ChatDetail, ConversationNote, CustomerInfo, InboxCounts, InboxSort, InboxViewKey, Message } from '@/types/chat'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 import emitter from '@/utils/emitter'
 
@@ -89,6 +89,12 @@ export const chatService = {
     
     const endpoint = embedded ? `/chats/${sessionId}/shopify` : `/chats/${sessionId}`
     const response = await api.get<ChatDetail>(endpoint)
+    return response.data
+  },
+
+  /** Name the conversation's customer (channels often give only an id). */
+  async renameCustomer(sessionId: string, fullName: string): Promise<CustomerInfo> {
+    const response = await api.patch<CustomerInfo>(`/chats/${sessionId}/customer`, { full_name: fullName })
     return response.data
   },
 

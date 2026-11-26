@@ -250,6 +250,56 @@ class TestBothVisitorRoutesAreGated:
         assert bool(served["launcher_logo_url"]) is allowed
         assert "icon_url" not in served
 
+    @pytest.mark.parametrize("allowed,icon,animation", [(True, "logo", "glow"), (False, "dots", "classic")])
+    def test_frame_page_look(self, allowed, icon, animation):
+        with patch("app.services.launcher.plan_feature_on", return_value=allowed), \
+                patch("app.services.launcher.settings.S3_FILE_STORAGE", False):
+            look = self._frame_look(self._agent())
+        assert look["launcher"]["icon"] == icon
+        assert look["launcher"]["animation"] == animation
+        assert bool(look["launcher_logo_url"]) is allowed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("allowed", [True, False])
+    async def test_frame_page_look_matches_the_widgets_own(self, allowed):
+        """The loader applies both as the whole launcher, so they must say the same."""
+        agent = self._agent()
+        agent.customization.chat_bubble_color = "#123456"
+        agent.customization.customization_metadata = {
+            **agent.customization.customization_metadata, "widget_display": {"side": "left"}}
+        with patch("app.services.launcher.plan_feature_on", return_value=allowed), \
+                patch("app.services.launcher.settings.S3_FILE_STORAGE", False):
+            look = self._frame_look(agent)
+            served = await widget_bootstrap._customization(MagicMock(), agent)
+        # What useWidgetCustomization posts as CUSTOMIZATION_UPDATE, launcher part
+        assert look == {
+            "chat_bubble_color": served["chat_bubble_color"],
+            "chat_style": served["chat_style"],
+            "widget_display": served["customization_metadata"].get("widget_display"),
+            "launcher": served["customization_metadata"].get("launcher"),
+            "launcher_logo_url": served["launcher_logo_url"],
+        }
+
+    def test_frame_page_look_for_an_agent_with_no_customization(self):
+        look = self._frame_look(SimpleNamespace(customization=None))
+        assert look == {
+            "chat_bubble_color": None,
+            "chat_style": None,
+            "widget_display": None,
+            "launcher": launcher.uncustomized_defaults()["customization_metadata"]["launcher"],
+            "launcher_logo_url": None,
+        }
+
+    def test_no_frame_page_look_without_an_agent(self):
+        assert self._frame_look(None) is None
+
+    @staticmethod
+    def _frame_look(agent):
+        repo = MagicMock()
+        repo.get_widget_agent.return_value = agent
+        with patch("app.services.widget_bootstrap.WidgetRepository", return_value=repo):
+            return widget_bootstrap.launcher_look(MagicMock(), SimpleNamespace(id="w"))
+
     @pytest.mark.asyncio
     async def test_an_agent_with_no_customization(self):
         agent = SimpleNamespace(customization=None)

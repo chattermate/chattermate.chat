@@ -96,11 +96,15 @@ describe('StepTeach - only advances when the sources were accepted', () => {
     expect(wrapper.emitted('next')).toBeTruthy()
   })
 
-  it('advances with nothing staged', async () => {
+  it('with nothing added, says so and moves on only through "Skip for now"', async () => {
     getOrganization.mockResolvedValue({ id: 'org-1', domain: '' })
     const wrapper = await mountStep()
 
-    await clickContinue(wrapper)
+    expect(wrapper.find('.empty-note').text()).toContain('nothing to answer from')
+    expect(wrapper.find('.btn-accent').text()).toContain('Skip for now')
+    expect(wrapper.text()).toContain('Paste some text instead')
+    await wrapper.find('.btn-accent').trigger('click')
+    await flushPromises()
 
     expect(addUrls).not.toHaveBeenCalled()
     expect(wrapper.emitted('next')).toBeTruthy()
@@ -174,9 +178,9 @@ describe('StepTeach - plan source cap', () => {
     const wrapper = await mountStep()
 
     expect(staged(wrapper)).toEqual([])
-    await clickContinue(wrapper)
+    // Still being read with no page in: there is nothing to continue to yet
+    expect(wrapper.find('.btn-accent').exists()).toBe(false)
     expect(addUrls).not.toHaveBeenCalled()
-    expect(wrapper.emitted('next')).toBeTruthy()
   })
 })
 
@@ -257,13 +261,14 @@ describe('StepTeach - a website that fails fast', () => {
     expect(wrapper.emitted('next')).toBeTruthy()
   })
 
-  it('a crawl that is still running does not hold the step: Continue moves on at once', async () => {
+  it('a crawl that is still running holds the step until its first page', async () => {
     getAgentQueueItems.mockResolvedValueOnce({ queue_items: [] }).mockResolvedValue({
       queue_items: [{ id: 1, source: 'https://erfanpv.com', source_type: 'website', status: 'pending', created_at: '' }]
     })
     const wrapper = await mountStep()
     await clickContinue(wrapper)
-    expect(wrapper.emitted('next')).toBeTruthy()
+    expect(wrapper.emitted('next')).toBeFalsy()
+    expect(wrapper.find('.reading').exists()).toBe(true)
     expect(wrapper.find('.crawl-failure').exists()).toBe(false)
   })
 })
