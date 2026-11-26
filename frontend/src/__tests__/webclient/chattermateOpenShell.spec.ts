@@ -86,9 +86,29 @@ describe('chat window while the widget starts', () => {
     expect(focus).toHaveBeenCalled()
   })
 
-  it('leaves focus alone when it goes without having it', async () => {
+  it('hands focus to the chat when it becomes ready, as opening a ready chat does', async () => {
     await loadLoader()
     api().open()
+    const focus = vi.spyOn(frame(), 'focus')
+    bringUp()
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('leaves focus alone when the visitor has moved on to the page meanwhile', async () => {
+    await loadLoader()
+    api().open()
+    const field = document.body.appendChild(document.createElement('input'))
+    field.focus()
+    const focus = vi.spyOn(frame(), 'focus')
+    bringUp()
+    expect(focus).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(field)
+  })
+
+  it('leaves focus alone when the chat is closed by the time it is ready', async () => {
+    await loadLoader()
+    api().open()
+    api().close()
     const focus = vi.spyOn(frame(), 'focus')
     bringUp()
     expect(focus).not.toHaveBeenCalled()
