@@ -29,12 +29,14 @@ export type LoaderBuild = {
   outfile: string
   /** The baked DEFAULT base URL; getBaseUrl() still resolves the runtime config. */
   apiUrl: string
+  /** The backend's WIDGET_FRAME_URL: frames for the baked API go there directly. */
+  frameUrl?: string
   nodeEnv: 'production' | 'development'
   minify: boolean
   sourcemap?: boolean
 }
 
-export function loaderBuildOptions({ outfile, apiUrl, nodeEnv, minify, sourcemap = false }: LoaderBuild): BuildOptions {
+export function loaderBuildOptions({ outfile, apiUrl, frameUrl = '', nodeEnv, minify, sourcemap = false }: LoaderBuild): BuildOptions {
   return {
     entryPoints: [resolve(frontendDir, 'src/webclient/chattermate.js')],
     bundle: true,
@@ -47,6 +49,7 @@ export function loaderBuildOptions({ outfile, apiUrl, nodeEnv, minify, sourcemap
     define: {
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
       '__CHATTERMATE_API_URL__': JSON.stringify(apiUrl),
+      '__CHATTERMATE_FRAME_URL__': JSON.stringify(frameUrl),
     },
     plugins: [compactLoaderCssPlugin, loaderExtensionPlugin],
     logLevel: 'warning',
@@ -57,13 +60,13 @@ export function buildLoader(options: LoaderBuild) {
   return build(loaderBuildOptions(options))
 }
 
-// `tsx scripts/loader-build.ts <outfile> <apiUrl>`: a minified production bundle
+// `tsx scripts/loader-build.ts <outfile> <apiUrl> [frameUrl]`: a minified production bundle
 // (the e2e stack builds its loader this way).
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [outfile, apiUrl] = process.argv.slice(2)
+  const [outfile, apiUrl, frameUrl] = process.argv.slice(2)
   if (!outfile || !apiUrl) {
-    console.error('usage: tsx scripts/loader-build.ts <outfile> <apiUrl>')
+    console.error('usage: tsx scripts/loader-build.ts <outfile> <apiUrl> [frameUrl]')
     process.exit(2)
   }
-  buildLoader({ outfile: resolve(outfile), apiUrl, nodeEnv: 'production', minify: true }).catch(() => process.exit(1))
+  buildLoader({ outfile: resolve(outfile), apiUrl, frameUrl, nodeEnv: 'production', minify: true }).catch(() => process.exit(1))
 }

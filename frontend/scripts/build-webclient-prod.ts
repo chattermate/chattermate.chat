@@ -27,6 +27,10 @@ async function buildWebClientProd() {
     // env change on a deployment needs no rebuild of this artifact.
     const apiUrl = process.env.VITE_API_URL || 'https://api.chattermate.chat/api/v1'
     console.log('Using API URL:', apiUrl)
+    // The backend's WIDGET_FRAME_URL, if it has one: frames go there without the
+    // API's redirect. Empty keeps the redirect (a self-host on one origin).
+    const frameUrl = process.env.VITE_WIDGET_FRAME_URL || ''
+    if (frameUrl) console.log('Using widget frame URL:', frameUrl)
 
     // Shared by the prod and dev builds and the e2e stack (loader-build.ts): esbuild, plus
     // the step that compacts the loader's template-literal CSS.
@@ -34,6 +38,7 @@ async function buildWebClientProd() {
     await buildLoader({
       outfile: resolve(dirname(__dirname), 'public/webclient/chattermate.min.js'),
       apiUrl,
+      frameUrl,
       nodeEnv: 'production',
       minify: true,
     })
