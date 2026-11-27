@@ -1,4 +1,4 @@
-import { test, expect, channels, expectUnchanged, saveHandoverMessage, unique, AI_REPLY, HANDOVER_NOTICE } from '@e2e'
+import { test, expect, channels, expectUnchanged, unique, AgentsPage, AI_REPLY, HANDOVER_NOTICE } from '@e2e'
 
 // The inbox side is the same for every channel, and a human's reply leaves through
 // the same adapter call as the AI's (covered per channel in replies.spec), so one
@@ -35,13 +35,19 @@ test.describe('human handover on a channel', () => {
     expect((await llm.requests(agent))).toHaveLength(modelCalls)
   })
 
-  // Teams who introduce themselves can word the message themselves or switch it off
-  for (const { name, settings, notice } of [
-    { name: 'in the agent\'s own words', settings: { text: 'Hi, this is the Thailiving team.' }, notice: ['Hi, this is the Thailiving team.'] },
-    { name: 'not at all when switched off', settings: { enabled: false }, notice: [] },
+  // Teams who introduce themselves word the message themselves on the Agent tab, or switch it off
+  for (const { name, write, notice } of [
+    { name: 'in the agent\'s own words', write: (agents: AgentsPage) => agents.setHandoverMessage('Hi, this is the Thailiving team.'), notice: ['Hi, this is the Thailiving team.'] },
+    { name: 'not at all when switched off', write: (agents: AgentsPage) => agents.setHandoverMessageOn(false), notice: [] },
   ]) {
-    test(`a takeover tells the channel customer a teammate joined ${name} @channels @handover`, async ({ agent, llm, adminApi, request, inbox }) => {
-      await saveHandoverMessage(adminApi, agent.id, settings)
+    test(`a takeover tells the channel customer a teammate joined ${name} @channels @handover`, async ({ agent, llm, adminApi, request, inbox, page }) => {
+      const agents = new AgentsPage(page)
+      await agents.openAgent(agent.id)
+      // On, with the default as the hint until written
+      await expect(agents.handoverMessageSwitch).toBeChecked()
+      await expect(agents.handoverMessage).toHaveAttribute('placeholder', HANDOVER_NOTICE)
+      await write(agents)
+
       await llm.script(agent, (s) => s
         .when(/human|person/i).handOver('Let me connect you with a teammate.')
         .otherwise().reply('Happy to help!'))

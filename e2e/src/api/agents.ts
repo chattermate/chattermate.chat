@@ -72,16 +72,6 @@ export async function saveOfflineMessage(api: ApiClient, agentId: string, text: 
   await api.put(`/agent/${agentId}`, { data: { offline_message: text } })
 }
 
-/** The agent's "a teammate joined" message: on/off and its own text (null = the default). */
-export async function saveHandoverMessage(
-  api: ApiClient, agentId: string, settings: { enabled?: boolean, text?: string | null },
-): Promise<void> {
-  const data: Record<string, unknown> = {}
-  if (settings.enabled !== undefined) data.handover_notice_enabled = settings.enabled
-  if (settings.text !== undefined) data.handover_message = settings.text
-  await api.put(`/agent/${agentId}`, { data })
-}
-
 /** What a channel customer gets when a teammate takes over, by default (backend DEFAULT_HANDOVER_MESSAGE). */
 export const HANDOVER_NOTICE = "You're now connected with a member of our team."
 

@@ -108,6 +108,38 @@ export class AgentsPage {
     })
   }
 
+  /** What a channel customer gets when a teammate takes over; empty shows the default as its placeholder. */
+  get handoverMessage(): Locator {
+    return this.page.getByRole('textbox', { name: 'Teammate joined message text' })
+  }
+
+  /** Whether that message is sent at all (every plan). */
+  get handoverMessageSwitch(): Locator {
+    return this.page.getByRole('checkbox', { name: 'Teammate joined message', exact: true })
+  }
+
+  async setHandoverMessage(text: string): Promise<void> {
+    await step("Write the agent's own teammate joined message", async () => {
+      await this.handoverMessage.fill(text)
+      await this.saveChanges()
+    })
+  }
+
+  async setHandoverMessageOn(on: boolean): Promise<void> {
+    await step(`Turn the teammate joined message ${on ? 'on' : 'off'}`, async () => {
+      if ((await this.handoverMessageSwitch.isChecked()) !== on) {
+        // The input sits under its slider: the switch's label takes the click
+        await this.handoverMessageSwitch.locator('..').click()
+      }
+      await this.saveChanges()
+    })
+  }
+
+  private async saveChanges(): Promise<void> {
+    await this.page.getByRole('button', { name: 'Save Changes' }).click()
+    await expect(this.page.getByText('Agent updated successfully')).toBeVisible()
+  }
+
   async setInstructions(instructions: string): Promise<void> {
     await step('Edit the agent instructions', async () => {
       await this.page.getByPlaceholder('Enter instructions for the agent...').fill(instructions)
