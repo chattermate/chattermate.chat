@@ -26,11 +26,23 @@ function trimSlashes(value) {
   return String(value).replace(/\/+$/, '')
 }
 
+// The same API address, whatever the case or a default port written: what the URL
+// parser makes of both. A relative one never matches the built absolute address.
+function sameAddress(a, b) {
+  try {
+    const x = new URL(a)
+    const y = new URL(b)
+    return x.origin === y.origin && trimSlashes(x.pathname) === trimSlashes(y.pathname)
+  } catch {
+    return false
+  }
+}
+
 // The base the frame's path goes under: the built frame host plus the API's path,
 // or the API base itself.
 export function frameBase(apiUrl, builtApiUrl, builtFrameUrl) {
   if (!apiUrl || !builtApiUrl || !builtFrameUrl) return apiUrl
-  if (trimSlashes(apiUrl) !== trimSlashes(builtApiUrl)) return apiUrl
+  if (!sameAddress(apiUrl, builtApiUrl)) return apiUrl
   let api
   let host
   try {

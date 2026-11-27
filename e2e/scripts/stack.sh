@@ -215,12 +215,16 @@ build_loader() {
 # One copy of frontend/ feeds all three builds: loader, widget, dashboard.
 build_frontend() {
   local src="$CACHE_DIR/frontend-$EDITION" out="$CACHE_DIR/dist-$EDITION" changes
+  # The loader has the frame host built in: a different one needs a fresh build
+  local frame_stamp="$CACHE_DIR/frame-url-$EDITION"
   changes="$(sync_frontend_copy "$src")"
-  if [[ -n "$changes" || ! -f "$out/index.html" || ! -f "$(widget_assets_dir)/widget.js" || -n "${E2E_REBUILD_FRONTEND:-}" ]]; then
+  if [[ -n "$changes" || ! -f "$out/index.html" || ! -f "$(widget_assets_dir)/widget.js" || -n "${E2E_REBUILD_FRONTEND:-}" \
+        || "$(cat "$frame_stamp" 2>/dev/null)" != "$(widget_frame_url)" ]]; then
     log "building loader, widget and dashboard ($EDITION)"
     build_loader "$src"
     build_widget "$src"
     (cd "$src" && node_modules/.bin/vite build --outDir "$out" --emptyOutDir --logLevel warn) >&2
+    widget_frame_url > "$frame_stamp"
   fi
   # Runtime config: what docker-entrypoint.sh writes in a real deployment.
   local setup_widget=""

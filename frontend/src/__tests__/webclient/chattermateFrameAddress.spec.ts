@@ -33,6 +33,10 @@ describe('frameBase', () => {
     expect(frameBase(`${BASE_URL}/`, BASE_URL, `${FRAME_HOST}/`)).toBe(`${FRAME_HOST}/api/v1`)
   })
 
+  it('matches the API whatever the case or a default port written', () => {
+    expect(frameBase('https://API.example.com:443/api/v1', BASE_URL, FRAME_HOST)).toBe(`${FRAME_HOST}/api/v1`)
+  })
+
   it('keeps a path prefix on the frame host, as the redirect does', () => {
     expect(frameBase(BASE_URL, BASE_URL, `${FRAME_HOST}/chat`)).toBe(`${FRAME_HOST}/chat/api/v1`)
   })
@@ -41,6 +45,8 @@ describe('frameBase', () => {
     ['no frame host built in', BASE_URL, BASE_URL, ''],
     ['no API built in', BASE_URL, '', FRAME_HOST],
     ['the page uses another backend', 'https://self.example/api/v1', BASE_URL, FRAME_HOST],
+    ['the page uses another path on the same host', 'https://api.example.com/v2', BASE_URL, FRAME_HOST],
+    ['the page uses a relative address', '/api/v1', BASE_URL, FRAME_HOST],
     ['the frame host is not a web address', BASE_URL, BASE_URL, 'javascript:alert(1)'],
     ['the frame host is not a URL', BASE_URL, BASE_URL, 'not a url'],
   ])('keeps the API base when %s', (_case, apiUrl, builtApi, builtFrame) => {
