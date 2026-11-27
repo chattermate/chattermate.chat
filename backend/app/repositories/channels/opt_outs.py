@@ -60,11 +60,16 @@ class ChannelOptOutRepository:
             return False
         return True
 
-    def opt_in(self, channel_account_id, contact: str) -> bool:
-        """Clear a STOP (START). True when there was one."""
+    def opt_in(self, channel_account_id, contacts: Iterable[str]) -> bool:
+        """Clear a STOP (START) under any of these forms of the number. True when there was one."""
+        if isinstance(contacts, str):
+            contacts = [contacts]
+        wanted = [c for c in set(contacts) if c]
+        if not wanted:
+            return False
         removed = (self.db.query(ChannelOptOut)
                    .filter(ChannelOptOut.channel_account_id == channel_account_id,
-                           ChannelOptOut.contact == contact)
+                           ChannelOptOut.contact.in_(wanted))
                    .delete(synchronize_session=False))
         self.db.commit()
         return removed > 0

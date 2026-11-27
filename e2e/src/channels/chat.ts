@@ -11,6 +11,14 @@ export interface ChannelChat {
   send(text: string): Promise<void>
   /** Every text the business sent into this chat, oldest first. */
   replies(): Promise<string[]>
+  /** How the dashboard labels this customer until it learns their name ("Line user U56cf1f8"). */
+  readonly unnamedLabel?: string
+}
+
+/** What the customer's platform profile shares about them. */
+export interface ChatOptions {
+  /** The name the platform's profile lookup gives; unset = the platform shares none. */
+  profileName?: string
 }
 
 /** A chat on a channel that can show reply buttons (WhatsApp, Messenger, Instagram, Telegram). */
@@ -23,7 +31,7 @@ export interface ButtonChat extends ChannelChat {
 
 /** A channel account connected to the test org and routed to the test agent. */
 export interface ConnectedChannel<C extends ChannelChat = ChannelChat> {
-  chatWith(customerName: string): C
+  chatWith(customerName: string, options?: ChatOptions): C
 }
 
 export interface ConnectContext {
@@ -44,12 +52,15 @@ export class Chat implements ChannelChat {
   protected readonly customerName: string
   private readonly deliver: (text: string) => Promise<void>
   private readonly read: () => Promise<string[]>
+  readonly unnamedLabel?: string
 
-  constructor(channel: string, customerName: string, deliver: (text: string) => Promise<void>, read: () => Promise<string[]>) {
+  constructor(channel: string, customerName: string, deliver: (text: string) => Promise<void>, read: () => Promise<string[]>,
+    unnamedLabel?: string) {
     this.channel = channel
     this.customerName = customerName
     this.deliver = deliver
     this.read = read
+    this.unnamedLabel = unnamedLabel
   }
 
   send(text: string): Promise<void> {
@@ -79,9 +90,10 @@ export class ChatWithButtons<B extends Button = Button> extends Chat implements 
       read: () => Promise<string[]>
       latestButtons: () => Promise<B[]>
       deliverTap: (button: B) => Promise<void>
+      unnamedLabel?: string
     },
   ) {
-    super(channel, customerName, io.deliver, io.read)
+    super(channel, customerName, io.deliver, io.read, io.unnamedLabel)
     this.latestButtons = io.latestButtons
     this.deliverTap = io.deliverTap
   }
@@ -97,6 +109,12 @@ export class ChatWithButtons<B extends Button = Button> extends Chat implements 
       await this.deliverTap(button)
     })
   }
+}
+
+/** Runs `prepare` once, before the first delivery: a profile is looked up on the first message. */
+export function once(prepare: () => Promise<unknown>): () => Promise<void> {
+  let done: Promise<unknown> | undefined
+  return async () => { await (done ??= prepare()) }
 }
 
 export type WebhookPayload = { json: string } | { form: Record<string, string> }

@@ -33,7 +33,7 @@ from app.channels.base import InboundMessage
 from app.core.logger import get_logger
 from app.models.channels import ChannelAccount, ChannelType, OptOutSource
 from app.repositories.channels import ChannelOptOutRepository
-from app.utils.phone import normalize_msisdn
+from app.utils.phone import normalize_msisdn, whatsapp_equivalents
 
 logger = get_logger(__name__)
 
@@ -91,7 +91,7 @@ def opt_out(db: Session, account: ChannelAccount, contact: str, source: str) -> 
 
 def opt_in(db: Session, account: ChannelAccount, contact: str) -> bool:
     """START: True when they had opted out."""
-    if not ChannelOptOutRepository(db).opt_in(account.id, contact):
+    if not ChannelOptOutRepository(db).opt_in(account.id, whatsapp_equivalents(contact)):
         return False
     _tell_listeners(db, account, contact, False)
     return True
@@ -121,5 +121,6 @@ def opt_out_reply(db: Session, account: ChannelAccount, inbound: InboundMessage)
 
 
 def is_opted_out(db: Session, account: ChannelAccount, phone: Optional[str]) -> bool:
-    """Whether this number told the account STOP."""
-    return ChannelOptOutRepository(db).is_opted_out(account.id, normalize_msisdn(phone))
+    """Whether this number told the account STOP, under any form WhatsApp
+    gives it (a Mexican STOP arrives from +521..., the order says +52...)."""
+    return bool(ChannelOptOutRepository(db).opted_out_of(account.id, whatsapp_equivalents(phone)))

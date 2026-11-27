@@ -28,6 +28,13 @@ export class PeoplePage {
     })
   }
 
+  /** Engaged people nothing identifies yet (no email, phone or lead): a channel customer known only by name. */
+  async showAnonymous(): Promise<void> {
+    await step('Open the Anonymous tab', async () => {
+      await this.page.getByRole('button', { name: /^Anonymous/ }).click()
+    })
+  }
+
   async search(term: string): Promise<void> {
     await this.page.getByPlaceholder('Search name, email or company…').fill(term)
   }

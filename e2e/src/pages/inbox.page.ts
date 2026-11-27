@@ -271,6 +271,17 @@ export class InboxPage {
     return this.page.getByRole('complementary', { name: 'Customer and conversation details' })
   }
 
+  /** Names the open chat's customer from the details panel, opening it first if it is closed. */
+  async renameCustomer(name: string): Promise<void> {
+    await step(`Agent names the customer "${name}"`, async () => {
+      if (!(await this.details.isVisible())) await this.detailsToggle.click()
+      await this.details.getByRole('button', { name: 'Edit customer name' }).click()
+      await this.details.getByLabel('Customer name', { exact: true }).fill(name)
+      await this.details.getByRole('button', { name: 'Save' }).click()
+      await expect(this.details.getByLabel('Customer name', { exact: true })).toBeHidden()
+    })
+  }
+
   async reply(text: string): Promise<void> {
     await step(`Agent replies "${text}"`, async () => {
       await this.messageInput.fill(text)
@@ -289,6 +300,42 @@ export class InboxPage {
 
   get messageInput(): Locator {
     return this.page.getByPlaceholder('Type a message or paste a screenshot')
+  }
+
+  /** The composer's top edge, which drags the box taller or shorter (not on phones) */
+  get composerResizeHandle(): Locator {
+    return this.page.getByRole('separator', { name: 'Resize the message box' })
+  }
+
+  /** Pastes `text` into the reply box from the clipboard, as an agent pastes a long answer */
+  async pasteReply(text: string): Promise<void> {
+    await step('Agent pastes a long reply', async () => {
+      await this.page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+      await this.page.evaluate((value) => navigator.clipboard.writeText(value), text)
+      await this.messageInput.focus()
+      await this.page.keyboard.press('ControlOrMeta+V')
+      await expect(this.messageInput).toHaveValue(text)
+    })
+  }
+
+  /** The reply box's height on screen, in pixels */
+  async replyBoxHeight(): Promise<number> {
+    const box = await this.messageInput.boundingBox()
+    return Math.round(box?.height ?? 0)
+  }
+
+  /** Drags the composer's top edge up by `pixels` (down when negative) */
+  async dragComposerTaller(pixels: number): Promise<void> {
+    await step(`Agent drags the message box ${pixels}px taller`, async () => {
+      const box = await this.composerResizeHandle.boundingBox()
+      if (!box) throw new Error('The composer has no resize handle')
+      const x = box.x + box.width / 2
+      const y = box.y + box.height / 2
+      await this.page.mouse.move(x, y)
+      await this.page.mouse.down()
+      await this.page.mouse.move(x, y - pixels, { steps: 8 })
+      await this.page.mouse.up()
+    })
   }
 
   /** The agent's message bubble that carries `text`. */

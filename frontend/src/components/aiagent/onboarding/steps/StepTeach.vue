@@ -28,8 +28,15 @@ import {
   useLearningWatch,
   withoutUploadPrefix,
 } from '@/composables/useLearningWatch'
+import { useOnboardingState } from '@/composables/useOnboardingState'
+import { SLOW_FIRST_PAGE_MS, useSlowWait } from '@/composables/useSlowWait'
+import { useSourceRemoval, type RemovableSource } from '@/composables/useSourceRemoval'
+import { notifySetupChanged } from '@/utils/setupEvents'
+import { signupSiteUrl } from '@/utils/website'
+import TeachReading from './TeachReading.vue'
+import TeachSourceRemove from './TeachSourceRemove.vue'
 import TeachTextFallback from './TeachTextFallback.vue'
-import type { QueueItem } from '@/types/knowledge'
+import type { KnowledgeItem, QueueItem } from '@/types/knowledge'
 import { organizationService } from '@/services/organization'
 
 const props = defineProps<{
@@ -63,19 +70,23 @@ const {
   handleUrlUpload,
   handleFileUpload,
   fetchKnowledge,
-  withScheme,
+  error: loadError,
 } = useKnowledgeManagement(props.agentId, props.organizationId)
 
 const urlInput = ref<HTMLInputElement | null>(null)
 const pasteButton = ref<HTMLButtonElement | null>(null)
 
 const advancing = ref(false)
+// What the agent already has is known, so an empty step can be called empty.
+const loaded = ref(false)
 // Sending a batch with a website in it: the server checks it can be reached.
 const reading = ref(false)
 const textSaving = ref(false)
 // Sending the sources, or waiting to hear whether they could be read: the
 // batch is in flight, so nothing on the step may change it.
-const busy = computed(() => advancing.value || isUploading.value || textSaving.value)
+const { remove, removing, removedQueueIds, removalError } = useSourceRemoval(props.agentId, () => fetchKnowledge())
+const busy = computed(() => advancing.value || isUploading.value || textSaving.value || removing.value)
+const onboarding = useOnboardingState()
 
 // A website from the last attempt that failed fast (e.g. a domain that doesn't
 // resolve), shown with a way round it instead of moving on with nothing learned
@@ -91,22 +102,29 @@ const setFailure = (failure: QueueItem | null) => {
 
 // Nothing new to send: Continue would move on without the site that failed.
 const nothingStaged = computed(() => !urls.value.length && !files.value.length && !newUrl.value.trim())
-const continueLabel = computed(() => {
-  if (reading.value) return 'Reading your site…'
-  if (advancing.value) return 'Adding…'
-  return crawlFailure.value && nothingStaged.value ? 'Continue without it' : 'Continue'
-})
-
 // A source sent from here or by the setup assistant stays on the step while it
 // is read, then turns into an indexed row or says why it couldn't be read. A
 // failure already on screen stays: it may hold text they are pasting.
 const handleLearned = async (ids: number[]) => {
+  // One they removed hasn't finished: nothing to move on for
+  if (ids.every((id) => removedQueueIds.has(id))) return
   const failed = queueItems.value.find((q) => ids.includes(q.id) && q.status === 'failed')
   await fetchKnowledge()
   if (failed && !crawlFailure.value) setFailure(failed)
   moveOnIfLearned()
 }
 const { learning: crawling } = useLearningWatch(props.agentId, queueItems, handleLearned)
+// A site can be stopped at any point; other kinds only while they wait.
+const canRemove = (item: QueueItem) =>
+  item.status === 'pending' || !!item.knowledge_id || ['website', 'sitemap'].includes(item.source_type)
+const isShared = (item: KnowledgeItem) => !!item.agents?.some((agent) => agent.id !== props.agentId)
+const removeSource = async (source: RemovableSource) => {
+  await remove(source)
+  onboarding.patch(props.organizationId, { signupSiteOffered: true })
+  // The row, and the button that had focus, are gone
+  await nextTick()
+  urlInput.value?.focus()
+}
 
 // A site is searchable from its first stored page, so its source is already
 // in knowledgeItems while it is read: show it once, as learning.
@@ -115,6 +133,47 @@ const indexedItems = computed(() => {
   return knowledgeItems.value.filter((k) => !stillLearning.has(k.id))
 })
 const pagesSoFar = computed(() => pagesLearnedSoFar(crawling.value))
+
+// Moving on now would leave the agent with nothing to answer from.
+const nothingToLearnFrom = computed(
+  () => loaded.value && !loadError.value && !indexedItems.value.length && !crawling.value.length && nothingStaged.value,
+)
+// Something is being read and nothing can be answered from yet: Continue
+// waits for the first page, unless that takes unusually long.
+const waitingForFirstPage = computed(
+  () =>
+    loaded.value &&
+    crawling.value.length > 0 &&
+    !pagesSoFar.value &&
+    !indexedItems.value.length &&
+    nothingStaged.value &&
+    !crawlFailure.value,
+)
+// When the oldest of them was sent; now, if the server didn't say.
+const mounted = Date.now()
+const waitingSince = computed(() => {
+  if (!waitingForFirstPage.value) return null
+  const sent = crawling.value.map((q) => Date.parse(q.created_at) || mounted)
+  return Math.min(...sent)
+})
+const { slow } = useSlowWait(waitingSince, SLOW_FIRST_PAGE_MS)
+const readingDocuments = computed(() => crawling.value.every(isPdfSource))
+// What the agent has to learn from, as others showing setup need to know it
+const sourcesNow = computed(() =>
+  [
+    crawling.value.map((q) => q.id).join(),
+    indexedItems.value.map((k) => k.id).join(),
+    pagesSoFar.value > 0,
+    crawlFailure.value?.id,
+  ].join('|'),
+)
+watch(sourcesNow, () => loaded.value && notifySetupChanged())
+const continueLabel = computed(() => {
+  if (reading.value) return 'Reading your site…'
+  if (advancing.value) return 'Adding…'
+  if (crawlFailure.value && nothingStaged.value) return 'Continue without it'
+  return nothingToLearnFrom.value ? 'Skip for now' : 'Continue'
+})
 
 // The assistant has said to try the agent, and that happens on the next step:
 // once everything is read, or a site still being read has its first few pages
@@ -201,20 +260,19 @@ const unstageFile = (index: number) => {
 // "Add" for it to count. In the list it reads as added, with an × to
 // drop it.
 const prefillFromOrgDomain = async () => {
+  // Sent as the agent was made, or taken off since: theirs to add again
+  if (onboarding.get(props.organizationId).signupSiteOffered) return
   try {
     const org = await organizationService.getOrganization(props.organizationId)
     if (!org?.domain || newUrl.value || urls.value.length) return
-    const domainUrl = withScheme(org.domain)
+    const domainUrl = signupSiteUrl(org.domain)
+    if (!domainUrl) return
     // Back from a later step, the domain may still be crawling — not indexed
     // yet, so the dedupe below can't see it. Staging it again would re-send it.
     // If it already failed, suggesting it again would only fail again. The
     // queue lists newest first, so this is its latest attempt.
     const last = queueItems.value.find((q) => q.source === domainUrl)
     if (last && last.status !== 'completed') return
-    // The server only accepts websites with a full domain (acme.com, not
-    // localhost): don't suggest one it will refuse.
-    if (!new URL(domainUrl).hostname.includes('.')) return
-
     newUrl.value = domainUrl
     stageUrl()
     // stageUrl flags an already-indexed URL, or a plan with no room left. That
@@ -242,6 +300,7 @@ onMounted(async () => {
   if (moveOnIfLearned()) return
   await prefillFromOrgDomain()
   restoreLastFailure()
+  loaded.value = true
 })
 
 // Flush any staged URLs/files, then advance — but only when the server took
@@ -272,7 +331,10 @@ const handleContinue = async () => {
   }
 
   if (!failed) {
-    if (filesAccepted) emit('next') // else the PDF error is on screen
+    // Else the PDF error is on screen, or the step stays to show the reading
+    if (filesAccepted && !waitingForFirstPage.value) emit('next')
+    // The button that had focus is gone while the reading is waited for
+    else if (waitingForFirstPage.value) await nextTick(() => urlInput.value?.focus())
     return
   }
   setFailure(failed)
@@ -352,6 +414,13 @@ const handleTextAdded = () => {
     </ul>
 
     <!-- Sent, and being read now -->
+    <TeachReading
+      v-if="crawling.length"
+      :pages="pagesSoFar"
+      :can-try="indexedItems.length > 0"
+      :documents="readingDocuments"
+      :slow="slow"
+    />
     <ul v-if="crawling.length" class="source-list learning" aria-label="Learning">
       <li v-for="item in crawling" :key="item.id" class="source-row">
         <font-awesome-icon
@@ -361,6 +430,12 @@ const handleTextAdded = () => {
         />
         <span class="source-name">{{ queueItemName(item) }}</span>
         <span class="source-tag pending">{{ learnedSoFar(item) }}</span>
+        <TeachSourceRemove
+          v-if="canRemove(item)"
+          :name="queueItemName(item)"
+          :disabled="busy"
+          @remove="removeSource({ knowledgeId: item.knowledge_id, queueId: item.id })"
+        />
       </li>
     </ul>
 
@@ -370,6 +445,11 @@ const handleTextAdded = () => {
         <font-awesome-icon icon="fa-solid fa-check" class="source-icon done" aria-hidden="true" />
         <span class="source-name">{{ withoutUploadPrefix(item.name) }}</span>
         <span class="source-tag">indexed</span>
+        <TeachSourceRemove
+          :name="withoutUploadPrefix(item.name)"
+          :disabled="busy"
+          @remove="removeSource({ knowledgeId: item.id, shared: isShared(item) })"
+        />
       </li>
     </ul>
 
@@ -386,9 +466,17 @@ const handleTextAdded = () => {
     </div>
 
     <p v-if="uploadError" class="step-error" role="alert">{{ uploadError }}</p>
+    <p v-if="removalError" class="step-error" role="alert">{{ removalError }}</p>
 
-    <div v-if="crawlFailure" class="crawl-failure">
-      <p class="step-error" role="alert">We couldn't read {{ queueItemName(crawlFailure) }}. {{ crawlFailure.reason }}</p>
+    <!-- A way to give the agent something, when a site failed or nothing is added -->
+    <div v-if="crawlFailure || showTextFallback || nothingToLearnFrom" class="crawl-failure" :class="{ failed: crawlFailure }">
+      <div v-if="crawlFailure" class="failure-note" role="alert">
+        <font-awesome-icon icon="fa-solid fa-triangle-exclamation" class="failure-icon" aria-hidden="true" />
+        <p>
+          <strong>We couldn't read {{ queueItemName(crawlFailure) }}.</strong> <span>{{ crawlFailure.reason }}</span>
+        </p>
+      </div>
+      <p v-else-if="nothingToLearnFrom" class="empty-note" role="status">Your agent has nothing to answer from yet. Add a website or PDF, or paste some text.</p>
       <TeachTextFallback
         v-if="showTextFallback"
         :agent-id="agentId"
@@ -407,7 +495,8 @@ const handleTextAdded = () => {
 
     <div class="step-actions">
       <button type="button" class="btn-ghost" :disabled="busy" @click="emit('back')">Back</button>
-      <button type="button" class="btn-accent" :disabled="busy" @click="handleContinue">
+      <button v-if="slow" type="button" class="btn-text" :disabled="busy" @click="emit('next')">Skip for now</button>
+      <button v-if="!waitingForFirstPage" type="button" class="btn-accent" :disabled="busy || !loaded" @click="handleContinue">
         {{ continueLabel }}
         <span v-if="!advancing" class="arrow" aria-hidden="true">→</span>
       </button>
@@ -532,24 +621,6 @@ const handleTextAdded = () => {
   color: var(--muted);
 }
 
-.source-remove {
-  background: none;
-  border: none;
-  color: var(--muted2);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-
-.source-remove:hover:not(:disabled) {
-  color: var(--text);
-}
-
-.source-remove:disabled {
-  cursor: not-allowed;
-}
-
 .progress {
   height: 6px;
   background: var(--o08);
@@ -570,6 +641,48 @@ const handleTextAdded = () => {
   padding: 14px 16px;
   border: 1px solid var(--o12);
   border-radius: var(--radius-input);
+}
+
+.crawl-failure.failed {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.failure-note {
+  display: flex;
+  gap: 12px;
+}
+
+.failure-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--warning-color);
+}
+
+.failure-note p {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.failure-note strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.failure-note span {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text);
 }
 
 .failure-actions {

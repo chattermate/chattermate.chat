@@ -92,7 +92,7 @@ export interface RecordedCall {
 export interface Fault {
   provider: string
   action?: string
-  /** Only calls whose path or body contains this — scope a fault to one test's account or customer. */
+  /** Only calls whose path, query or body contains this — scope a fault to one test's account or customer. */
   contains?: string
   status: number
   body?: unknown
@@ -780,7 +780,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     action = rest[1] ?? ''
   }
 
-  const fault = matchingFault(provider, action, `${path}\n${raw}`)
+  // The query is in the haystack: Graph names the customer there (`me/conversations?user_id=`)
+  const fault = matchingFault(provider, action, `${path}${url.search}\n${raw}`)
   const rejected = fault ? null : rejection(provider, action, method, body)
   let result: Answer
   if (fault) result = { status: fault.status, body: fault.body ?? {} }

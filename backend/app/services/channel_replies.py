@@ -18,7 +18,7 @@ button, a shared location — and how a tap on one of the agent's own choices
 reads back as the full option.
 """
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -53,7 +53,8 @@ def inbound_attributes(inbound: InboundMessage, channel_type: str) -> dict:
     return attributes
 
 
-def reply_text(db: Session, channel_account_id: UUID, inbound: InboundMessage) -> str:
+def reply_text(db: Session, channel_account_id: UUID, inbound: InboundMessage,
+               conversation_ids: Optional[List[str]] = None) -> str:
     """The text to store and answer for this message.
 
     A tap arrives as the button's title, which may have been cut to fit (or,
@@ -63,23 +64,25 @@ def reply_text(db: Session, channel_account_id: UUID, inbound: InboundMessage) -
     on this account — by the tap's reply context where the platform gives
     one, otherwise as the latest reply that offered the choice.
     """
-    choice = _tapped_choice(db, channel_account_id, inbound) or _numbered_choice(db, channel_account_id, inbound)
+    # Every id the chat may be stored under (a WhatsApp number's forms, see external_ids)
+    ids = conversation_ids or [inbound.external_conversation_id]
+    choice = _tapped_choice(db, channel_account_id, inbound, ids) or _numbered_choice(db, channel_account_id, inbound, ids)
     if choice is not None:
         return choice
     return inbound.text or (inbound.interactive.title if inbound.interactive else "") or ""
 
 
-def _tapped_choice(db: Session, channel_account_id: UUID, inbound: InboundMessage) -> Optional[str]:
+def _tapped_choice(db: Session, channel_account_id: UUID, inbound: InboundMessage, ids: List[str]) -> Optional[str]:
     if inbound.interactive is None:
         return None
     repo = ChatRepository(db)
     if inbound.reply_to_message_id:
         offered = repo.in_channel_chat_by_external_message_id(
-            channel_account_id, inbound.external_conversation_id, inbound.reply_to_message_id)
+            channel_account_id, ids, inbound.reply_to_message_id)
         candidates = [offered] if offered is not None else []
     else:
         candidates = repo.latest_replies_in_channel_chat(
-            channel_account_id, inbound.external_conversation_id, RECENT_OFFERS)
+            channel_account_id, ids, RECENT_OFFERS)
     for offered in candidates:
         text = sent_choice_text(_record(offered), inbound.interactive.id)
         if text is not None:
@@ -87,7 +90,7 @@ def _tapped_choice(db: Session, channel_account_id: UUID, inbound: InboundMessag
     return None
 
 
-def _numbered_choice(db: Session, channel_account_id: UUID, inbound: InboundMessage) -> Optional[str]:
+def _numbered_choice(db: Session, channel_account_id: UUID, inbound: InboundMessage, ids: List[str]) -> Optional[str]:
     """A bare number answering our latest reply — the AI's or a person's —
     when that reply showed its choices numbered (as text, or alongside
     buttons a desktop app hides)."""
@@ -95,7 +98,7 @@ def _numbered_choice(db: Session, channel_account_id: UUID, inbound: InboundMess
     if inbound.interactive is not None or not typed.isdecimal():
         return None
     latest = ChatRepository(db).latest_replies_in_channel_chat(
-        channel_account_id, inbound.external_conversation_id, 1)
+        channel_account_id, ids, 1)
     return sent_numbered_choice(_record(latest[0]), typed) if latest else None
 
 

@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from app.channels import get_adapter
 from app.channels.app_hooks import OutboundRecord, emit_channel_event, outbound_event
 from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE, MessageSource
-from app.services.channel_chat import placeholder_name
+from app.utils.customer_names import placeholder_name
 from app.services.channel_opt_outs import is_opted_out
 from app.services.business_message import remember_business_message
 from app.services.channel_status import record_sent
@@ -41,6 +41,7 @@ from app.repositories.channels import (
 )
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
+from app.repositories.channels.conversations import external_ids
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.utils.phone import normalize_phone, to_wa_id
 
@@ -278,7 +279,7 @@ async def start_outbound_conversation(
     # Resolved BEFORE the template is validated: whether this opens a thread or
     # rejoins one decides which rules the template must satisfy.
     conv_repo = ChannelConversationRepository(db)
-    existing = conv_repo.get_active(account.id, wa_id)
+    existing = conv_repo.get_active_any(account.id, external_ids(account.channel_type, wa_id))
 
     template = await _approved_outbound_template(
         db, account, template_name, language, starts_conversation=existing is None,

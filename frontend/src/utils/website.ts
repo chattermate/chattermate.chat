@@ -45,3 +45,17 @@ export const withScheme = (url: string): string => {
   // Leading slashes would produce https:////host — drop them first.
   return `https://${trimmed.replace(/^\/+/, '')}`
 }
+
+/**
+ * The website to learn from the domain given at signup, or null when the server
+ * would refuse it: it takes https only, and a full domain (acme.com, not
+ * localhost).
+ */
+export const signupSiteUrl = (domain?: string | null): string | null => {
+  const url = withScheme(domain ?? '').replace(/^http:\/\//i, 'https://')
+  try {
+    return new URL(url).hostname.includes('.') ? url : null
+  } catch {
+    return null
+  }
+}

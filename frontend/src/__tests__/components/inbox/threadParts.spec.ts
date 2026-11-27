@@ -35,6 +35,13 @@ vi.mock('@/utils/permissions', () => ({
   permissionChecks: { canViewTickets: () => false, canViewPeople: () => true },
 }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
+const screen = vi.hoisted(() => ({ mobile: false }))
+vi.mock('@/composables/useBreakpoint', async () => {
+  const { ref: vueRef } = await import('vue')
+  return {
+    useBreakpoint: () => ({ isMobile: vueRef(screen.mobile), isTablet: vueRef(screen.mobile), isBelowWide: vueRef(false) }),
+  }
+})
 // The open-source build: every enterprise slot renders nothing
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
@@ -400,6 +407,12 @@ describe('ThreadComposer', () => {
     wrapper.unmount()
   })
 
+  it('tells the agent Shift+Enter breaks the line', () => {
+    const wrapper = mountComposer()
+    expect(wrapper.find('.newline-hint').text()).toBe('Shift ↵ new line')
+    wrapper.unmount()
+  })
+
   it('offers Send and close once there is something to send', async () => {
     expect(mountComposer().find('[aria-label="More send options"]').exists()).toBe(false)
     const wrapper = mountComposer({ modelValue: 'Done, refund sent.' })
@@ -415,6 +428,31 @@ describe('ThreadComposer', () => {
     await wrapper.find('.window-closed .btn').trigger('click')
     expect(wrapper.emitted('send-template')).toHaveLength(1)
     wrapper.unmount()
+  })
+
+  it('offers a resize handle that steps with the arrow keys and remembers it for you', async () => {
+    localStorage.clear()
+    const wrapper = mountComposer()
+    const handle = wrapper.find('[role="separator"]')
+    expect(handle.attributes('aria-label')).toBe('Resize the message box')
+    const before = Number(handle.attributes('aria-valuenow'))
+    await handle.trigger('keydown', { key: 'ArrowUp' })
+    expect(Number(handle.attributes('aria-valuenow'))).toBe(before + 16)
+    expect(localStorage.getItem('cm-inbox-composer-height:me')).toBe(String(before + 16))
+    await handle.trigger('keydown', { key: 'Home' })
+    expect(localStorage.getItem('cm-inbox-composer-height:me')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('has no resize handle on phones', () => {
+    screen.mobile = true
+    try {
+      const wrapper = mountComposer()
+      expect(wrapper.find('[role="separator"]').exists()).toBe(false)
+      wrapper.unmount()
+    } finally {
+      screen.mobile = false
+    }
   })
 })
 

@@ -23,7 +23,7 @@ limitations under the License.
  */
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ChatDetail } from '@/types/chat'
+import type { ChatDetail, CustomerInfo } from '@/types/chat'
 import { listTeammates, type Teammate } from '@/services/users'
 import { agentService } from '@/services/agent'
 import channelsService, { type ChannelAccount } from '@/services/channels'
@@ -201,6 +201,13 @@ function onChatUpdated(chat: ChatDetail) {
   })
 }
 
+function onCustomerRenamed(sessionId: string, customer: CustomerInfo) {
+  list.patchConversation(sessionId, { customer })
+  // Another chat may have opened while the name was saving
+  const chat = thread.chat.value
+  if (chat?.session_id === sessionId) thread.update({ ...chat, customer: { ...chat.customer, ...customer } })
+}
+
 function refreshThread() {
   if (thread.selectedId.value) void thread.open(thread.selectedId.value, true)
 }
@@ -358,6 +365,7 @@ useInboxShortcuts({
         :overlay="detailsOverlay || isMobile"
         @close="closeDrawer"
         @open-conversation="openConversation"
+        @customer-renamed="onCustomerRenamed"
       />
     </template>
 

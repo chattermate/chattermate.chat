@@ -281,10 +281,11 @@
   --topbar: rgba(255,255,255,.85);
 
   /* Accent and status inks are used as text on white and on their own pale
-     tints: darkened until they reach WCAG AA 4.5:1 on both. */
-  --accent-ink: #44700A;
+     tints: darkened until they reach WCAG AA 4.5:1 on both. The accent also
+     has to hold on two stacked tints (an accent chip on a selected row). */
+  --accent-ink: #416A0A;
   --logo-ring: transparent;
-  --c-lime: #44700A;
+  --c-lime: #416A0A;
   --c-teal: #097171;
   --c-purple: #6454BF;
   --c-coral: #AC4829;

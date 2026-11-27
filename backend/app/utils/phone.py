@@ -71,3 +71,40 @@ def normalize_msisdn(value: str | None) -> str | None:
 def to_wa_id(phone: str) -> str:
     """Meta addresses WhatsApp users by E.164 without the '+'."""
     return phone.lstrip("+")
+
+
+# Countries where WhatsApp's id for a mobile number has an extra digit the
+# number as written lacks: (country code, digits after it as written, the extra
+# digit). Mexico's wa_id has a 1 after 52, Argentina's a 9 after 54. Brazil
+# goes the other way (whatsapp_equivalents): older accounts drop the 9 that
+# starts a mobile number (55 + area code + 9 + 8 digits).
+_MX = ("52", 10, "1")
+_AR = ("54", 10, "9")
+
+
+def whatsapp_equivalents(phone: str | None) -> tuple[str, ...]:
+    """Every E.164 form that reaches the same WhatsApp user as this number,
+    itself first. A STOP or a reply arrives under the wa_id, while an order
+    or a form gives the number as people write it; matching on one form
+    misses the other."""
+    value = normalize_msisdn(phone)
+    if value is None:
+        return ()
+    found = [value]
+    digits = value[1:]
+    for code, national, extra in (_MX, _AR):
+        rest = digits[len(code):]
+        if not digits.startswith(code):
+            continue
+        if len(rest) == national:
+            found.append(f"+{code}{extra}{rest}")
+        elif len(rest) == national + 1 and rest.startswith(extra):
+            found.append(f"+{code}{rest[1:]}")
+    if digits.startswith("55"):
+        rest = digits[2:]
+        area, local = rest[:2], rest[2:]
+        if len(local) == 9 and local.startswith("9"):
+            found.append(f"+55{area}{local[1:]}")
+        elif len(local) == 8 and local[0] in "6789":
+            found.append(f"+55{area}9{local}")
+    return tuple(found)

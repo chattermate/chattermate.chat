@@ -16,7 +16,7 @@ limitations under the License.
 
 import pytest
 
-from app.utils.phone import normalize_msisdn, normalize_phone, to_wa_id
+from app.utils.phone import normalize_msisdn, normalize_phone, to_wa_id, whatsapp_equivalents
 
 
 class TestNormalizePhone:
@@ -93,3 +93,35 @@ class TestNormalizeMsisdn:
 class TestToWaId:
     def test_strips_the_plus(self):
         assert to_wa_id("+911234567890") == "911234567890"
+
+
+class TestWhatsAppEquivalents:
+    @pytest.mark.parametrize("written, wa_form", [
+        ("+525512345678", "+5215512345678"),      # Mexico: wa_id adds a 1 after 52
+        ("+541112345678", "+5491112345678"),      # Argentina: a 9 after 54
+        ("+5511987654321", "+551187654321"),      # Brazil: older wa_ids drop the leading 9
+    ])
+    def test_both_forms_of_one_number_find_each_other(self, written, wa_form):
+        assert whatsapp_equivalents(written) == (written, wa_form)
+        assert whatsapp_equivalents(wa_form) == (wa_form, written)
+
+    def test_accepts_a_bare_wa_id(self):
+        assert whatsapp_equivalents("5215512345678") == ("+5215512345678", "+525512345678")
+
+    @pytest.mark.parametrize("phone", ["+447700900123", "+919876543210", "+15551234567"])
+    def test_other_countries_have_one_form(self, phone):
+        assert whatsapp_equivalents(phone) == (phone,)
+
+    def test_a_brazilian_landline_has_one_form(self):
+        assert whatsapp_equivalents("+551132345678") == ("+551132345678",)
+
+    @pytest.mark.parametrize("phone", [None, "", "garbage"])
+    def test_no_number_no_forms(self, phone):
+        assert whatsapp_equivalents(phone) == ()
+
+
+def test_external_ids_only_widen_whatsapp():
+    from app.repositories.channels.conversations import external_ids
+    assert external_ids("whatsapp", "525512345678") == ["525512345678", "5215512345678"]
+    assert external_ids("telegram", "525512345678") == ["525512345678"]
+    assert external_ids("whatsapp", "not-a-number") == ["not-a-number"]

@@ -22,6 +22,7 @@ import pytest
 from sqlalchemy import text
 
 from app.knowledge import source_learning
+from app.knowledge.page_sink import SourceRemoved
 from app.knowledge.source_learning import SourceLearning
 from app.models.agent import Agent
 from app.models.knowledge import Knowledge, SourceType
@@ -248,3 +249,56 @@ class TestPlanSlots:
     def test_a_run_with_nothing_stored_yet_still_holds_its_slot(self, db, test_organization):
         _run(db, test_organization.id)
         assert KnowledgeRepository(db).count_sources_in_use(test_organization.id) == 1
+
+
+class TestARunTheUserTookAway:
+    def test_deleting_the_source_takes_the_run_filling_it(self, db, sessions, synced, vector_rows, test_organization):
+        run = _run(db, test_organization.id)
+        learning = _learning(run)
+        learning.first_page()
+        [source] = _sources(db, test_organization.id)
+        run_id = run.id
+
+        KnowledgeRepository(db).delete_with_data(source.id)
+
+        assert KnowledgeQueueRepository(db).get_by_id(run_id) is None
+        assert KnowledgeRepository(db).count_sources_in_use(test_organization.id) == 0
+        assert learning.removed()
+
+    def test_a_finished_run_stays_when_its_source_is_deleted(self, db, sessions, synced, vector_rows, test_organization):
+        run = _run(db, test_organization.id)
+        _learning(run).first_page()
+        [source] = _sources(db, test_organization.id)
+        run.status = QueueStatus.COMPLETED
+        db.commit()
+
+        KnowledgeRepository(db).delete_with_data(source.id)
+
+        assert KnowledgeQueueRepository(db).get_by_id(run.id) is not None
+
+    def test_a_run_removed_before_its_first_page_counts_as_removed(self, db, sessions, test_organization):
+        run = _run(db, test_organization.id)
+        learning = _learning(run)
+        assert not learning.removed()
+
+        db.delete(run)
+        db.commit()
+
+        assert learning.removed()
+
+    def test_finishing_does_not_bring_the_source_back(self, db, sessions, synced, vector_rows, test_organization):
+        run = _run(db, test_organization.id)
+        learning = _learning(run)
+        learning.first_page()
+        [source] = _sources(db, test_organization.id)
+        KnowledgeRepository(db).delete_with_data(source.id)
+
+        with pytest.raises(SourceRemoved):
+            learning.finish()
+
+        assert _sources(db, test_organization.id) == []
+
+    def test_finishing_a_wanted_run_sets_the_source_up(self, db, sessions, synced, test_organization):
+        _learning(_run(db, test_organization.id)).finish()
+
+        assert len(_sources(db, test_organization.id)) == 1

@@ -781,3 +781,55 @@ def test_inbox_counts_need_a_chat_permission(
 
     response = client.get("/api/chats/counts")
     assert response.status_code == 403
+
+
+class TestRenameCustomer:
+    """Naming the customer from the inbox (Messenger/LINE often give only an id)."""
+
+    def test_names_the_customer(self, client, db, test_chat_session, test_customer):
+        test_customer.full_name = "Line user U56cf1f8"
+        db.commit()
+        response = client.patch(f"/api/chats/{test_chat_session.session_id}/customer",
+                                json={"full_name": "  Somchai Prasert "})
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Somchai Prasert"
+        db.refresh(test_customer)
+        assert test_customer.full_name == "Somchai Prasert"
+
+    @pytest.mark.parametrize("name", ["", "   ", "x" * 256])
+    def test_refuses_a_blank_or_overlong_name(self, client, db, test_chat_session, test_customer, name):
+        response = client.patch(f"/api/chats/{test_chat_session.session_id}/customer",
+                                json={"full_name": name})
+        assert response.status_code == 422
+        db.refresh(test_customer)
+        assert test_customer.full_name == "Test Customer"
+
+    def test_another_orgs_chat_is_not_found(self, client, db, test_chat_session, test_customer):
+        other = Organization(id=uuid4(), name="Other", domain="other.example", timezone="UTC")
+        db.add(other)
+        db.commit()
+        test_chat_session.organization_id = other.id
+        db.commit()
+        response = client.patch(f"/api/chats/{test_chat_session.session_id}/customer",
+                                json={"full_name": "Somchai"})
+        assert response.status_code == 404
+        db.refresh(test_customer)
+        assert test_customer.full_name == "Test Customer"
+
+    def test_a_chat_the_teammate_cannot_see_is_not_found(self, client, db, test_user, test_customer, test_agent):
+        view_all = db.query(Permission).filter_by(name="view_all_chats").first()
+        db.execute(role_permissions.delete().where(role_permissions.c.permission_id == view_all.id))
+        other_user = User(id=uuid4(), email="other2@example.com", hashed_password="x", is_active=True,
+                          organization_id=test_user.organization_id, full_name="Other",
+                          role_id=test_user.role_id)
+        db.add(other_user)
+        db.commit()
+        session = SessionToAgent(session_id=uuid4(), user_id=other_user.id, agent_id=test_agent.id,
+                                 customer_id=test_customer.id, organization_id=test_user.organization_id,
+                                 status=SessionStatus.OPEN, assigned_at=datetime.now(timezone.utc))
+        db.add(session)
+        db.commit()
+        response = client.patch(f"/api/chats/{session.session_id}/customer", json={"full_name": "Somchai"})
+        assert response.status_code == 404
+        db.refresh(test_customer)
+        assert test_customer.full_name == "Test Customer"

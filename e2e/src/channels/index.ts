@@ -32,4 +32,5 @@ export const channelsWithButtons = {
 } satisfies Record<string, ChannelConnector<ButtonChat>>
 
 export type { EmailChat } from './email'
+export type { LineChat } from './line'
 export type { ButtonChat, ChannelChat, ChannelConnector, ConnectedChannel } from './chat'

@@ -451,6 +451,37 @@ class TestProfileEnrichment:
         assert await adapter.fetch_profile(MagicMock(), "PSID1") == {}
 
     @pytest.mark.asyncio
+    async def test_a_refused_lookup_reads_the_name_off_the_page_conversation(self, monkeypatch):
+        """Without Business Asset User Profile Access Meta refuses the PSID
+        lookup; the Page's conversation still lists the person by name."""
+        adapter, graph = self._adapter("messenger", monkeypatch, None)
+        graph.side_effect = [
+            (False, {"error": {"message": "(#100) No profile available"}}),
+            (True, {"data": [{"participants": {"data": [
+                {"id": "PAGE1", "name": "Thailiving Law"},
+                {"id": "PSID1", "name": "Somchai Prasert"},
+            ]}}]}),
+        ]
+        assert await adapter.fetch_profile(MagicMock(), "PSID1") == {"name": "Somchai Prasert"}
+        path, token = graph.await_args.args
+        assert (path, token) == ("me/conversations", "PAGE_TOKEN")
+        assert graph.await_args.kwargs["params"] == {
+            "platform": "messenger", "user_id": "PSID1", "fields": "participants"}
+
+    @pytest.mark.asyncio
+    async def test_no_conversation_match_keeps_the_placeholder(self, monkeypatch):
+        adapter, graph = self._adapter("messenger", monkeypatch, None)
+        graph.side_effect = [(False, {"error": {}}),
+                             (True, {"data": [{"participants": {"data": [{"id": "PAGE1", "name": "P"}]}}]})]
+        assert await adapter.fetch_profile(MagicMock(), "PSID1") == {}
+
+    @pytest.mark.asyncio
+    async def test_instagram_never_takes_the_conversation_detour(self, monkeypatch):
+        adapter, graph = self._adapter("instagram", monkeypatch, (False, {"error": {}}))
+        assert await adapter.fetch_profile(MagicMock(settings={}), "IGSID1") == {}
+        graph.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_instagram_uses_the_ig_name_fields(self, monkeypatch):
         adapter, graph = self._adapter(
             "instagram", monkeypatch, (True, {"name": "Ada", "username": "ada_l"}))
