@@ -19,7 +19,8 @@ OPENAI_COMPATIBLE for llama.cpp, which rejects response_format sent with tools
 ("failed to parse grammar").
 """
 
-from unittest.mock import MagicMock, Mock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -29,7 +30,7 @@ from app.agents.chat_agent import ChatAgent
 from app.agents.faq_generator import FAQGeneratorAgent
 from app.agents.ticket_investigator import TicketInvestigatorAgent
 from app.core.config import settings
-from app.core.model_catalog import list_providers, structured_output_via_tool
+from app.core.model_catalog import list_providers, min_output_tokens, structured_output_via_tool
 
 NATIVE_PROVIDERS = ["OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "DEEPSEEK", "CHATTERMATE"]
 
@@ -60,6 +61,15 @@ def test_the_setting_adds_providers(value):
         assert structured_output_via_tool("OPENAI_COMPATIBLE")
         assert structured_output_via_tool("GROQ")
         assert not structured_output_via_tool("OPENAI")
+
+
+def test_only_the_catalog_sets_an_output_floor():
+    """An opted-in self-hosted server keeps its normal budget: its context
+    window may not fit Groq's 4000-token floor."""
+    assert min_output_tokens("GROQ") >= 4000
+    with _opt_in("OPENAI_COMPATIBLE"):
+        assert min_output_tokens("OPENAI_COMPATIBLE") == 0
+    assert min_output_tokens("NOT_A_PROVIDER") == 0
 
 
 def test_the_setting_cannot_add_an_unknown_provider():
@@ -139,8 +149,8 @@ def test_opted_in_openai_compatible_chat_answers_through_the_json_tool():
     assert agent.agent.response_model is None
     assert not agent.agent.structured_outputs
     assert "calling the `json` tool" in _prompt(agent)
-    # Thinking models need room before the tool call, as on Groq.
-    assert mock_create.call_args.kwargs["max_tokens"] >= 4000
+    # No Groq floor: a local context window may not fit 4000 output tokens.
+    assert mock_create.call_args.kwargs["max_tokens"] < 4000
     # The line that talks the model out of searching is left out.
     assert "Do not keep searching indefinitely" not in _prompt(agent)
 
@@ -154,3 +164,123 @@ def test_chat_keeps_native_structured_output_without_the_option(provider):
     assert agent.agent.structured_outputs
     assert mock_create.call_args.kwargs["max_tokens"] < 4000
     assert "Do not keep searching indefinitely" in _prompt(agent)
+
+
+def test_groq_chat_keeps_its_output_floor():
+    agent, mock_create = _chat_agent("GROQ")
+    assert agent._use_json_tool_output
+    assert mock_create.call_args.kwargs["max_tokens"] >= 4000
+
+
+# --- A whole turn on the json-tool path -------------------------------------
+
+def _json_tool(agent: ChatAgent):
+    return next(t for t in agent.agent.tools if getattr(t, "name", None) == "json")
+
+
+async def _workflow_turn(agent: ChatAgent, arun) -> object:
+    with patch.object(agent, "_arun", side_effect=arun), \
+         patch("app.agents.chat_agent.check_inbound"), \
+         patch("app.agents.chat_agent.check_output", side_effect=lambda msg, **_: (msg, None)):
+        return await agent._get_llm_response_only("Do you ship to Canada?", session_id=str(uuid4()))
+
+
+@pytest.mark.asyncio
+async def test_opted_in_turn_reads_the_reply_from_the_json_tool():
+    with _opt_in("OPENAI_COMPATIBLE"):
+        agent, _ = _chat_agent("OPENAI_COMPATIBLE")
+    tool = _json_tool(agent)
+
+    async def arun(message, session_id):
+        tool.entrypoint(message="Yes, we ship to Canada.", end_chat=True)
+        return SimpleNamespace(content="recorded", messages=[])
+
+    response = await _workflow_turn(agent, arun)
+    assert response.message == "Yes, we ship to Canada."
+    assert response.end_chat is True
+
+
+@pytest.mark.asyncio
+async def test_opted_in_turn_recovers_when_the_model_skips_the_json_tool():
+    """Small local models often answer in plain text instead of calling `json`."""
+    with _opt_in("OPENAI_COMPATIBLE"):
+        agent, _ = _chat_agent("OPENAI_COMPATIBLE")
+    answer = SimpleNamespace(role="assistant", content="We ship to Canada in 5 days.", tool_calls=None)
+
+    async def arun(message, session_id):
+        return SimpleNamespace(content="We ship to Canada in 5 days.", messages=[answer])
+
+    response = await _workflow_turn(agent, arun)
+    assert response.message == "We ship to Canada in 5 days."
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_turn_does_not_reuse_the_last_capture():
+    with _opt_in("OPENAI_COMPATIBLE"):
+        agent, _ = _chat_agent("OPENAI_COMPATIBLE")
+    tool = _json_tool(agent)
+
+    async def first(message, session_id):
+        tool.entrypoint(message="First answer.", end_chat=True)
+        return SimpleNamespace(content="recorded", messages=[])
+
+    async def second(message, session_id):
+        return SimpleNamespace(content="Second answer.",
+                               messages=[SimpleNamespace(role="assistant", content="Second answer.", tool_calls=None)])
+
+    await _workflow_turn(agent, first)
+    response = await _workflow_turn(agent, second)
+    assert response.message == "Second answer."
+    assert not response.end_chat
+
+
+# --- FAQ generation on an opted-in server ------------------------------------
+
+def _faq_agent():
+    with _opt_in("OPENAI_COMPATIBLE"):
+        return FAQGeneratorAgent(api_key="k", model_name="qwen3-8b", model_type="OPENAI_COMPATIBLE",
+                                 base_url="http://localhost:8080/v1")
+
+
+@pytest.mark.asyncio
+async def test_opted_in_faq_generation_reads_the_json_tool():
+    def fake_agent(**kwargs):
+        assert kwargs["response_model"] is None and kwargs["structured_outputs"] is False
+        agent = MagicMock()
+
+        async def arun(message, stream):
+            kwargs["tools"][0].entrypoint(
+                faqs=[{"question": "Do you ship abroad?", "answer": "Yes, to 30 countries.", "category": "Shipping"}])
+            return MagicMock(content="recorded")
+
+        agent.arun = arun
+        return agent
+
+    with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
+         patch("agno.agent.Agent", side_effect=fake_agent):
+        faqs = await _faq_agent().generate_from_text("Shipping policy...")
+    assert [f.question for f in faqs] == ["Do you ship abroad?"]
+
+
+@pytest.mark.asyncio
+async def test_opted_in_faq_generation_falls_back_to_plain_json():
+    """A local model that ignores the `json` tool still yields FAQs."""
+    calls = []
+
+    def fake_agent(**kwargs):
+        agent = MagicMock()
+        if not calls:
+            calls.append("json-tool")
+            agent.arun = AsyncMock(return_value=MagicMock(content="Here are some FAQs."))
+        else:
+            calls.append("plain-json")
+            agent.arun = AsyncMock(return_value=MagicMock(content=(
+                '{"faqs": [{"question": "Do you ship abroad?", '
+                '"answer": "Yes, to 30 countries.", "category": "Shipping"}]}')))
+        return agent
+
+    with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
+         patch("agno.agent.Agent", side_effect=fake_agent):
+        faqs = await _faq_agent().generate_from_text("Shipping policy...")
+    assert calls == ["json-tool", "plain-json"]
+    assert [f.question for f in faqs] == ["Do you ship abroad?"]

@@ -19,7 +19,7 @@ from typing import Optional, Type
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
-from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL, structured_output_via_tool
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL, min_output_tokens, structured_output_via_tool
 from app.channels.constants import MessageSource, is_widget_channel
 from app.agents import agent_extensions
 from app.services import reply_ui
@@ -250,9 +250,9 @@ def recover_groq_no_capture(response) -> ChatResponse:
     agno's native structured output (OpenAI/Anthropic)."""
     salvaged = _salvage_groq_answer_text(response)
     if salvaged:
-        logger.warning("Groq ended without the `json` tool; recovered the assistant's answer text")
+        logger.warning("Model ended without the `json` tool; recovered the assistant's answer text")
         return parse_response_content(salvaged)
-    logger.warning("Groq ended without the `json` tool and produced no answer text")
+    logger.warning("Model ended without the `json` tool and produced no answer text")
     return parse_response_content(response)
 
 
@@ -1009,11 +1009,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
         # Initialize model with utility function
         base_max_tokens = 2000 if (self.shopify_instructions_added or self.mcp_instructions_added) else 1000
-        # Reasoning models (Groq's GPT-OSS, local Qwen/DeepSeek) spend output tokens
-        # thinking BEFORE emitting the `json` tool call; too small a budget truncates
-        # the tool arguments into invalid JSON. Give the json-tool path headroom.
-        if structured_output_via_tool(model_type):
-            base_max_tokens = max(base_max_tokens, 4000)
+        # Groq's GPT-OSS spends output tokens reasoning BEFORE the `json` tool call;
+        # too small a budget truncates the tool arguments into invalid JSON. The
+        # catalog sets that floor per provider; an opted-in self-hosted server gets
+        # none, as its context window may not fit one.
+        base_max_tokens = max(base_max_tokens, min_output_tokens(model_type))
         model = create_model(
             model_type=model_type,
             api_key=api_key,
@@ -1150,7 +1150,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 # error reply is shown instead of a bare "No response generated".
                 if not salvaged:
                     raise
-                logger.warning("Groq json tool call unparseable (likely truncated); salvaged structured fields")
+                logger.warning("json tool call unparseable (likely truncated); salvaged structured fields")
                 response_content = _build_chat_response_from_capture(salvaged, self._response_model)
             else:
                 # The json-tool path returns the structured turn via the `json` tool; everything
@@ -1569,7 +1569,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     # Empty salvage → nothing usable; re-raise for the normal error reply.
                     if not salvaged:
                         raise
-                    logger.warning("Groq json tool call unparseable (likely truncated); salvaged structured fields")
+                    logger.warning("json tool call unparseable (likely truncated); salvaged structured fields")
                     _salvaged_content = _build_chat_response_from_capture(salvaged, self._response_model)
                     response = None
 

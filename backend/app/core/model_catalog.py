@@ -55,6 +55,10 @@ class CatalogProvider(TypedDict):
     # sent together with tools (Groq). Defaults to False when absent; the
     # JSON_TOOL_OUTPUT_PROVIDERS setting turns it on for more providers.
     structured_output_via_tool: bool
+    # Floor for a chat turn's output budget. Groq's GPT-OSS reasons before the
+    # `json` tool call, and a small budget truncates its arguments. Absent: no
+    # floor (a self-hosted server's context window may be too small for one).
+    min_output_tokens: int
 
 
 def _m(value: str, label: str) -> CatalogModel:
@@ -219,6 +223,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "requires_api_key": True,
         "custom_allowed": True,
         "structured_output_via_tool": True,
+        "min_output_tokens": 4000,
         "api_key_url": "https://console.groq.com/keys",
         # gpt-oss-120b is the durable pick. gpt-oss-20b is intentionally NOT listed: the
         # smaller model leaks OpenAI "harmony" formatting (calls the response tool as
@@ -283,11 +288,20 @@ def structured_output_via_tool(provider: str) -> bool:
     Studio or Ollama). Agents ask this, never a provider name; see
     app.agents.structured_output for the tool itself.
     """
+    # Groq's flag lives on its catalog entry: delisting GROQ would take existing
+    # Groq configs off this path (tests/agents/test_structured_output_via_tool.py).
     if not is_known_provider(provider):
         return False
     provider = provider.upper()
     return (MODEL_CATALOG[provider].get("structured_output_via_tool", False)
             or provider in _json_tool_output_setting())
+
+
+def min_output_tokens(provider: str) -> int:
+    """The catalog's floor for this provider's chat output budget, else 0."""
+    if not is_known_provider(provider):
+        return 0
+    return MODEL_CATALOG[provider.upper()].get("min_output_tokens", 0)
 
 
 def list_providers() -> List[dict]:
