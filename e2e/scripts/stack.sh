@@ -80,9 +80,12 @@ psql_admin() { psql "$PG_URL/postgres" -v ON_ERROR_STOP=1 -qtA "$@"; }
 # SQLAlchemy needs the driver in the scheme; psql accepts both spellings.
 db_url() { local base="${PG_URL#postgres://}"; base="${base#postgresql://}"; echo "postgresql+psycopg://$base/$1"; }
 
+# The frame host the backend redirects frames to; the loader is built to ask it directly.
+widget_frame_url() { echo "${E2E_WIDGET_FRAME_URL-http://localhost:$BACKEND_PORT}"; }
+
 backend_env() {
   export ENV_FILE="$E2E_DIR/.env.e2e"
-  export WIDGET_FRAME_URL="${E2E_WIDGET_FRAME_URL-http://localhost:$BACKEND_PORT}"
+  WIDGET_FRAME_URL="$(widget_frame_url)"; export WIDGET_FRAME_URL
   export DATABASE_URL; DATABASE_URL="$(db_url "$1")"
   if [[ "$EDITION" == oss ]]; then
     export NO_ENTERPRISE=1
@@ -206,18 +209,22 @@ build_widget() {
 build_loader() {
   local src="$1"
   (cd "$src" && node_modules/.bin/tsx scripts/loader-build.ts public/webclient/chattermate.min.js \
-    "http://127.0.0.1:$BACKEND_PORT/api/v1") >&2
+    "http://127.0.0.1:$BACKEND_PORT/api/v1" "$(widget_frame_url)") >&2
 }
 
 # One copy of frontend/ feeds all three builds: loader, widget, dashboard.
 build_frontend() {
   local src="$CACHE_DIR/frontend-$EDITION" out="$CACHE_DIR/dist-$EDITION" changes
+  # The loader has the frame host built in: a different one needs a fresh build
+  local frame_stamp="$CACHE_DIR/frame-url-$EDITION"
   changes="$(sync_frontend_copy "$src")"
-  if [[ -n "$changes" || ! -f "$out/index.html" || ! -f "$(widget_assets_dir)/widget.js" || -n "${E2E_REBUILD_FRONTEND:-}" ]]; then
+  if [[ -n "$changes" || ! -f "$out/index.html" || ! -f "$(widget_assets_dir)/widget.js" || -n "${E2E_REBUILD_FRONTEND:-}" \
+        || "$(cat "$frame_stamp" 2>/dev/null)" != "$(widget_frame_url)" ]]; then
     log "building loader, widget and dashboard ($EDITION)"
     build_loader "$src"
     build_widget "$src"
     (cd "$src" && node_modules/.bin/vite build --outDir "$out" --emptyOutDir --logLevel warn) >&2
+    widget_frame_url > "$frame_stamp"
   fi
   # Runtime config: what docker-entrypoint.sh writes in a real deployment.
   local setup_widget=""

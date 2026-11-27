@@ -4,7 +4,8 @@ import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 import createLoaderExtension from 'virtual:cm-loader-ext'
 import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
-import { createFrameOriginCache, removePreconnects, warmUpConnections } from './loader/preconnect.js'
+import { createFrameOriginCache, removePreconnects, warmUpConnections, webOrigin } from './loader/preconnect.js'
+import { frameBase } from './loader/frameAddress.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
 import { createOpenShell, shellCss } from './loader/openShell.js'
@@ -319,9 +320,21 @@ import {
     return createFrameOriginCache(storage, window.chattermateId)
   }
 
+  // The frame host this loader was built with, if any (see loader/frameAddress.js).
+  // Once a frame asked for there never started, the rest of this page goes through
+  // the API, whose own redirect knows where the frame really is.
+  let directFrameFailed = false
+  function frameApiBase() {
+    if (directFrameFailed) return config.baseUrl
+    const builtApi = typeof __CHATTERMATE_API_URL__ !== 'undefined' ? __CHATTERMATE_API_URL__ : ''
+    const builtFrame = typeof __CHATTERMATE_FRAME_URL__ !== 'undefined' ? __CHATTERMATE_FRAME_URL__ : ''
+    return frameBase(config.baseUrl, builtApi, builtFrame)
+  }
+
   // Start the connections the frame will need while the page is still loading.
   function warmUp() {
-    warmUpConnections(document, config.baseUrl, frameOriginCache().read())
+    const builtFrameHost = webOrigin(frameApiBase(), window.location.href)
+    warmUpConnections(document, config.baseUrl, [builtFrameHost, frameOriginCache().read()])
   }
 
   function currentLauncherLook() {
@@ -1848,12 +1861,13 @@ import {
       policyListener = null
     }
 
-    // The frame's address, under the API base the page configured. Only a web
-    // address becomes a frame: a javascript: or data: one would run in the page.
+    // The frame's address, under the API base the page configured (or straight on the
+    // frame host that API redirects to). Only a web address becomes a frame: a
+    // javascript: or data: one would run in the page.
     function frameUrl() {
       let url
       try {
-        url = new URL(config.baseUrl + '/widgets/' + encodeURIComponent(window.chattermateId) + '/frame', window.location.href)
+        url = new URL(frameApiBase() + '/widgets/' + encodeURIComponent(window.chattermateId) + '/frame', window.location.href)
       } catch (e) {
         return null
       }
@@ -1875,7 +1889,19 @@ import {
       retryOnOpen = true
     }
 
+    // A frame asked for straight on the built frame host that never started (the host
+    // down, or a loader built with the wrong one): ask once more through the API. Not
+    // for a policy refusal: the API's redirect ends on that same host.
+    function retryThroughApi() {
+      if (frameRefusedByPolicy || directFrameFailed || frameApiBase() === config.baseUrl) return false
+      directFrameFailed = true
+      teardownFrame()
+      prefetchWidget()
+      return true
+    }
+
     function frameDidNotStart() {
+      if (retryThroughApi()) return
       if (frameRefusedByPolicy && fallBackInPage(frameSources())) return
       const host = window.location.hostname || 'this site'
       if (frameRefusedByPolicy) {

@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 // Opening the connections the widget frame will need before the frame asks for them.
-// The frame starts at the API host, which redirects it to the frame host; the page,
+// The frame starts at the API host, which redirects it to the frame host (unless the
+// loader was built with that host: loader/frameAddress.js); the page,
 // bundle and bootstrap all come from there. Each new connection costs a DNS lookup
 // and a TLS handshake, which on a slow link is most of a second.
 //
@@ -81,12 +82,13 @@ export function preconnect(doc, origin) {
   doc.head.appendChild(link)
 }
 
-// The API host (the frame's first stop) and, for a returning visitor, the frame host
-// the last frame came from. Skipped when the page is itself on that origin.
-export function warmUpConnections(doc, apiUrl, frameOrigin) {
+// The API host, the frame host the loader was built with and, for a returning
+// visitor, the frame host the last frame came from. Skipped when the page is itself
+// on that origin.
+export function warmUpConnections(doc, apiUrl, frameOrigins) {
   const pageOrigin = doc && doc.location ? doc.location.origin : null
   const base = doc && doc.location ? doc.location.href : undefined
-  ;[webOrigin(apiUrl, base), frameOrigin].forEach(function (origin) {
+  ;[webOrigin(apiUrl, base)].concat(frameOrigins || []).forEach(function (origin) {
     if (origin && origin !== pageOrigin) preconnect(doc, origin)
   })
 }
