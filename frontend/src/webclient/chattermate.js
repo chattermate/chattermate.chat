@@ -1919,6 +1919,18 @@ import {
       frameTimer = setTimeout(frameDidNotStart, FRAME_LOAD_MS)
     }
 
+    // A chat opened before its widget mounted got no focus from the open (toggleChat
+    // only hands it to a mounted frame), and Firefox won't let a cross-origin frame
+    // focus its own input: the visitor's typing went nowhere. Hand it over now,
+    // unless they have moved on to something else on the page meanwhile.
+    function focusChatOpenedEarly() {
+      if (!isOpen || !iframe) return
+      const active = document.activeElement
+      const stillWaiting = !active || active === document.body || active === button
+        || container.contains(active)
+      if (stillWaiting) iframe.focus()
+    }
+
     // The widget is mounted and listening: give it what it needs to render.
     function onWidgetReady() {
       clearFrameTimer()
@@ -1930,6 +1942,7 @@ import {
       }
       widgetMounted = true
       setWidgetStarting(false)
+      focusChatOpenedEarly()
       // Developer display overrides, known now. Dashboard defaults merge later; the
       // CUSTOMIZATION_UPDATE reply re-sends the final values.
       postToFrame(widgetDisplayPayload())
