@@ -29,6 +29,7 @@ from app.channels.app_hooks import (
 )
 from app.channels.base import InboundMessage
 from app.core.logger import get_logger
+from app.database import release_connection
 from app.models.channels import ChannelAccount
 from app.models.session_to_agent import SessionStatus
 
@@ -117,8 +118,9 @@ async def app_claims(db: Session, account: ChannelAccount, session_record, custo
     handler = inbound_handler()
     if handler is None or not _open_and_unheld(session_record):
         return False
-    # Nothing may sit in an open transaction while an outside service thinks
-    db.commit()
+    # Nothing may sit in an open transaction, or hold a request's connection
+    # slot, while an outside service thinks
+    release_connection(db)
     context = _context(account, session_record, customer_id, inbound, received_at)
     try:
         # Exactly True: anything else (a stray truthy string, a forgotten

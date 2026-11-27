@@ -142,11 +142,13 @@ async def test_the_app_thinks_without_the_message_holding_a_session_slot(
 @pytest.mark.asyncio
 async def test_a_new_customers_profile_is_fetched_without_holding_a_session_slot(
         db, account, quiet_channel, monkeypatch):
-    slot_free_while_fetching = []
+    slot_free_while_fetching, session_ready = [], []
 
     async with session_slots_taken(database.OFF_LOOP_SESSIONS - 1) as slots:
         async def fetch_profile(account, user_id):
             slot_free_while_fetching.append(not slots.locked())
+            # setup ran on the off-loop session first: the conversation exists
+            session_ready.append(db.query(SessionToAgent).count() == 1)
             return {"name": "Priya"}
         monkeypatch.setattr(quiet_channel.adapter, "fetch_profile", fetch_profile)
         register_inbound_handler(AsyncMock(return_value=True))
@@ -154,6 +156,7 @@ async def test_a_new_customers_profile_is_fetched_without_holding_a_session_slot
         await process_channel_message(account.id, _inbound())
 
     assert slot_free_while_fetching == [True]
+    assert session_ready == [True]
 
 
 @pytest.mark.asyncio

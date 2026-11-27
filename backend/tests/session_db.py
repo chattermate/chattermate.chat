@@ -34,7 +34,9 @@ def serve_socket_db(monkeypatch, db) -> None:
 @asynccontextmanager
 async def session_slots_taken(count: int):
     """Take count of the slots session_off_loop shares between requests, as
-    in-flight requests would, and give them back on exit. Yields the slots."""
+    in-flight requests would, and give them back on exit. Yields the slots.
+    database._slots() is the same per-loop semaphore session_off_loop waits on;
+    if that changes, change this with it."""
     slots = database._slots()
     for _ in range(count):
         await slots.acquire()

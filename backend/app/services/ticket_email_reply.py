@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.channels.base import InboundMessage
 from app.core.logger import get_logger
-from app.database import close_session, session_off_loop
+from app.database import close_session, release_connection, session_off_loop
 from app.models.ticket import Ticket
 from app.repositories.ticket import TicketRepository
 from app.services.ticket_email import (
@@ -101,12 +101,12 @@ async def record_ticket_email_reply(
         )
         db.commit()
         db.refresh(ticket)
+        status, display_number = str(ticket.status), ticket.display_number
+        release_connection(db)  # the emit can be a network call (Redis)
 
         from app.services.ticket_events import emit_ticket_update
-        await emit_ticket_update(
-            organization_id, ticket.id, "comment", {"status": str(ticket.status)}
-        )
-        logger.info(f"Email reply appended to {ticket.display_number}")
+        await emit_ticket_update(organization_id, ticket_id, "comment", {"status": status})
+        logger.info(f"Email reply appended to {display_number}")
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to record email reply on ticket {ticket_id}: {e}")

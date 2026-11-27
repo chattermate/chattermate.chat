@@ -91,10 +91,6 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
 
         org_id = str(account.organization_id)
         customer_id = _get_or_create_customer(db, account, inbound, org_id)
-        # If the customer still has a synthesized placeholder name, resolve the
-        # real one via the platform API — only then, not on every message.
-        if adapter is not None:
-            await _enrich_customer_name(db, adapter, account, inbound, customer_id)
         session_record, conversation, is_new_session = _get_or_create_session(
             db, account, inbound, agent_id, customer_id, org_id
         )
@@ -127,6 +123,11 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # platform, the model). Give back the request connection slot taken
         # above: what's left reads and writes briefly as it goes.
         release_connection(db)
+
+        # If the customer still has a synthesized placeholder name, resolve the
+        # real one via the platform API — only then, not on every message.
+        if adapter is not None:
+            await _enrich_customer_name(db, adapter, account, inbound, customer_id)
 
         # An installed extension (an external app) may answer first. Its reply
         # can land while we wait, so the customer's message keeps the time it
@@ -344,7 +345,6 @@ async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
     customer = CustomerRepository(db).get_by_id(uuid.UUID(customer_id))
     if customer is None or not is_placeholder_name(customer.full_name, account.channel_type):
         return
-    release_connection(db)  # not held through the platform's reply
     try:
         enrichment = await adapter.fetch_profile(account, inbound.external_user_id)
     except Exception as e:
