@@ -13,16 +13,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Groq-safe structured output helpers.
+Structured output through a `json` tool instead of response_format.
 
-Groq's API rejects response_format (JSON mode) whenever tools are present
-("json mode cannot be combined with tool/function calling"), so agno's
-structured-output path degrades to prompt-only JSON — which GPT-OSS/Llama
-drift away from. GPT-OSS's native structured-output convention on Groq IS a
-tool call named `json`, so callers register a real `json` tool whose
-parameters are the response-model fields, mark it stop_after_tool_call, and
-read the result from the captured arguments. Shared by the chat agent and the
-FAQ generator; other providers keep using agno's native response_model path.
+Some providers can't take response_format (JSON mode) and tools in one
+request. Groq rejects it ("json mode cannot be combined with tool/function
+calling"); llama.cpp fails with "failed to parse grammar"; LM Studio accepts it
+but the model then stops calling tools. So for providers where
+app.core.model_catalog.structured_output_via_tool holds (Groq always; others
+through JSON_TOOL_OUTPUT_PROVIDERS), callers register a real
+`json` tool whose parameters are the response-model fields, mark it
+stop_after_tool_call, and read the result from the captured arguments. (On
+Groq this is also GPT-OSS's own structured-output convention.) Shared by the
+chat agent, the FAQ generator and the ticket investigator; other providers
+keep agno's native response_model path.
 """
 
 import json

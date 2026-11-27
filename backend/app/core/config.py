@@ -218,6 +218,13 @@ class Settings(BaseSettings):
     # cancelled instead of hanging the chat handler forever (issue #269).
     AGENT_RUN_TIMEOUT: int = int(os.getenv("AGENT_RUN_TIMEOUT", "90"))
 
+    # Providers whose structured replies come back as a `json` tool call instead
+    # of response_format, on top of the ones the model catalog always flags
+    # (Groq). Comma-separated. Set OPENAI_COMPATIBLE for a local llama.cpp, LM
+    # Studio or Ollama server: they can't take response_format and tools in one
+    # request (llama.cpp answers 400 "failed to parse grammar").
+    JSON_TOOL_OUTPUT_PROVIDERS: str = os.getenv("JSON_TOOL_OUTPUT_PROVIDERS", "")
+
     # agno's own run reporting to api.agno.com (see app.core.agno_telemetry).
     # Off unless an operator opts in.
     AGNO_TELEMETRY: bool = os.getenv("AGNO_TELEMETRY", "false").lower() == "true"

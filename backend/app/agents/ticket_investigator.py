@@ -26,6 +26,7 @@ from app.agents.structured_output import (
 )
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.model_catalog import structured_output_via_tool
 from app.models.schemas.investigation import (
     HYPOTHESES_JSON_TOOL_SCHEMA,
     RCA_JSON_TOOL_SCHEMA,
@@ -162,7 +163,8 @@ class TicketInvestigatorAgent:
     model. Phase 2 implements triage; the hypothesis-driven investigation
     phases land next (see the AI-ticketing plan).
 
-    Groq gets the shared `json`-tool structured-output path; every other
+    Providers where structured_output_via_tool holds (Groq, plus any listed in
+    JSON_TOOL_OUTPUT_PROVIDERS) get the shared `json`-tool path; every other
     provider uses agno's native response_model — the FAQ generator pattern.
     """
 
@@ -171,7 +173,7 @@ class TicketInvestigatorAgent:
         self.model_name = model_name
         self.model_type = model_type
         self.base_url = base_url
-        self._use_groq_json_tool = model_type.upper() == "GROQ"
+        self._use_json_tool_output = structured_output_via_tool(model_type)
         # Metering hook, fired once per provider call — set by the worker.
         self.on_llm_call: Optional[Callable[[], None]] = None
         # Token usage accumulated across every phase of this run; the worker
@@ -249,15 +251,16 @@ class TicketInvestigatorAgent:
         tool_call_limit: Optional[int] = None,
         tool_hooks: Optional[List[Callable]] = None,
     ) -> Optional[BaseModel]:
-        """One agent run with a validated structured result. Groq uses the
-        shared `json`-tool capture path; other providers use agno's native
+        """One agent run with a validated structured result. Providers where
+        structured_output_via_tool holds use the shared `json`-tool capture
+        path; other providers use agno's native
         response_model. extra_tools/tool_hooks/tool_call_limit let callers run
         evidence-gathering (MCP) tools before the final structured output."""
         capture: dict = {}
         tools = list(extra_tools or [])
         structured_outputs = True
         agno_response_model = response_model
-        if self._use_groq_json_tool:
+        if self._use_json_tool_output:
             tools.append(
                 build_groq_json_tool(
                     capture,
@@ -314,7 +317,7 @@ class TicketInvestigatorAgent:
             return None
 
         try:
-            if self._use_groq_json_tool:
+            if self._use_json_tool_output:
                 data = dict(capture)
                 if not data:
                     content = str(getattr(response, "content", None) or "")

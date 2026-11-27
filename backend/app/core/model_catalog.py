@@ -50,6 +50,15 @@ class CatalogProvider(TypedDict):
     # Whether this provider needs a user-supplied base URL (e.g. a self-hosted or
     # third-party OpenAI-compatible endpoint). Defaults to False when absent.
     requires_base_url: bool
+    # Whether structured replies must come back as a `json` tool call instead of
+    # response_format: set where the provider always rejects response_format
+    # sent together with tools (Groq). Defaults to False when absent; the
+    # JSON_TOOL_OUTPUT_PROVIDERS setting turns it on for more providers.
+    structured_output_via_tool: bool
+    # Floor for a chat turn's output budget. Groq's GPT-OSS reasons before the
+    # `json` tool call, and a small budget truncates its arguments. Absent: no
+    # floor (a self-hosted server's context window may be too small for one).
+    min_output_tokens: int
 
 
 def _m(value: str, label: str) -> CatalogModel:
@@ -213,6 +222,8 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "Groq",
         "requires_api_key": True,
         "custom_allowed": True,
+        "structured_output_via_tool": True,
+        "min_output_tokens": 4000,
         "api_key_url": "https://console.groq.com/keys",
         # gpt-oss-120b is the durable pick. gpt-oss-20b is intentionally NOT listed: the
         # smaller model leaks OpenAI "harmony" formatting (calls the response tool as
@@ -232,6 +243,9 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "requires_api_key": True,
         "custom_allowed": True,
         "requires_base_url": True,
+        # Not flagged: gateways like OpenRouter handle response_format fine. A
+        # local server (llama.cpp, LM Studio, Ollama) can't take it together
+        # with tools; JSON_TOOL_OUTPUT_PROVIDERS=OPENAI_COMPATIBLE switches it on.
         # No hosted console — points at the provider's own docs for getting a key.
         "api_key_url": "",
         # No suggested models: the endpoint and model catalog are whatever the
@@ -256,6 +270,38 @@ def requires_base_url(provider: str) -> bool:
     if not is_known_provider(provider):
         return False
     return MODEL_CATALOG[provider.upper()].get("requires_base_url", False)
+
+
+def _json_tool_output_setting() -> set:
+    """Providers the operator added through JSON_TOOL_OUTPUT_PROVIDERS."""
+    from app.core.config import settings
+    raw = settings.JSON_TOOL_OUTPUT_PROVIDERS or ""
+    return {name.strip().upper() for name in raw.split(",") if name.strip()}
+
+
+def structured_output_via_tool(provider: str) -> bool:
+    """Return True if this provider's structured replies use the `json` tool
+    instead of response_format.
+
+    True where the catalog flags the provider (Groq) or the operator listed it
+    in JSON_TOOL_OUTPUT_PROVIDERS (e.g. OPENAI_COMPATIBLE for llama.cpp, LM
+    Studio or Ollama). Agents ask this, never a provider name; see
+    app.agents.structured_output for the tool itself.
+    """
+    # Groq's flag lives on its catalog entry: delisting GROQ would take existing
+    # Groq configs off this path (tests/agents/test_structured_output_via_tool.py).
+    if not is_known_provider(provider):
+        return False
+    provider = provider.upper()
+    return (MODEL_CATALOG[provider].get("structured_output_via_tool", False)
+            or provider in _json_tool_output_setting())
+
+
+def min_output_tokens(provider: str) -> int:
+    """The catalog's floor for this provider's chat output budget, else 0."""
+    if not is_known_provider(provider):
+        return 0
+    return MODEL_CATALOG[provider.upper()].get("min_output_tokens", 0)
 
 
 def list_providers() -> List[dict]:

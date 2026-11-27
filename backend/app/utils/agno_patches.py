@@ -65,8 +65,9 @@ _PATCHED_FLAG = "_chattermate_answers_at_limit"
 # repeat; without one, a plain flag is enough.
 _EXHAUSTED = "_chattermate_tools_exhausted"
 
-# Groq's structured output arrives as a tool call of this name rather than as
-# text. Kept in step with app.agents.structured_output.build_groq_json_tool.
+# Structured output on the json-tool path (see structured_output_via_tool) arrives as a
+# tool call of this name rather than as text. Kept in step with
+# app.agents.structured_output.build_groq_json_tool.
 CAPTURE_TOOL_NAME = "json"
 
 # Replaces agno's own limit-error text, which only tells the model it may not
