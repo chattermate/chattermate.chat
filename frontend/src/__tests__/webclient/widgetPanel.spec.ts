@@ -63,8 +63,13 @@ const composer = () => wrapper.find('textarea[aria-label="Message"]')
 const sendButton = () => wrapper.find('.cm-send')
 const status = () => wrapper.find('.cm-status').text()
 
-beforeEach(() => resetSocket())
+beforeEach(() => {
+    resetSocket()
+    // The loader handed the frame focus (it focuses the iframe on an open).
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+})
 afterEach(() => {
+    vi.restoreAllMocks()
     wrapper?.unmount()
     wrapper = undefined
     hooks.beforeAuthorize = null
@@ -577,6 +582,16 @@ describe('with the embed loader (plan 1.5)', () => {
 })
 
 describe('focus when the panel opens', () => {
+    it('leaves focus on the site when the page reports it open without handing the frame focus', async () => {
+        vi.mocked(document.hasFocus).mockReturnValue(false)
+        await mountPanel()
+        vi.useFakeTimers()
+        // A chat opened before it loaded, while the visitor typed in the site's search box
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: true })
+        await vi.advanceTimersByTimeAsync(2000)
+        expect(document.activeElement).not.toBe(composer().element)
+    })
+
     it('focuses the composer about 520ms after the page shows it, never while hidden', async () => {
         await mountPanel()
         vi.useFakeTimers()

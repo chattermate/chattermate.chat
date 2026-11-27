@@ -3,6 +3,12 @@ import { env } from '../env'
 import { unique } from '../support/ids'
 import { step } from '../support/step'
 
+/**
+ * How long after an open the panel focuses its field: frontend usePanelVisibility's
+ * OPEN_FOCUS_DELAY_MS. Kept in step with it, as e2e doesn't import the app's source.
+ */
+const OPEN_FOCUS_DELAY_MS = 520
+
 export interface EmbedOptions {
   /** window.chattermateConfig — launcher, displayMode, position, trigger, … */
   config?: Record<string, unknown>
@@ -10,6 +16,8 @@ export interface EmbedOptions {
   token?: string
   /** Put a `[data-chattermate-open]` button on the page. */
   withTriggerButton?: boolean
+  /** Put the site's own search box on the page (hostSearchBox). */
+  withSearchBox?: boolean
   /** Open the site under its second origin (env.customerSiteOtherUrl). */
   onOtherOrigin?: boolean
   /** The dashboard's iframe snippet instead of the script: the chat is already open. */
@@ -217,6 +225,7 @@ export class ChatWidget {
       if (options.config) params.set('config', JSON.stringify(options.config))
       if (options.token) params.set('token', options.token)
       if (options.withTriggerButton) params.set('trigger', '1')
+      if (options.withSearchBox) params.set('search', '1')
       if (options.snippet) params.set('snippet', options.snippet)
       if (options.withActions) params.set('actions', '1')
       if (options.context) params.set('context', JSON.stringify(options.context))
@@ -251,7 +260,15 @@ export class ChatWidget {
     })
   }
 
-  /** The visitor comes back to the site with `token` kept from an earlier visit. */
+  /**
+   * The chat's open motion has played: the panel moves focus into its composer only
+   * after it (OPEN_FOCUS_DELAY_MS). Checking that focus stayed somewhere else has to
+   * wait past that; a timer in the page, as there is no event to wait for.
+   */
+  async waitForOpenMotion(): Promise<void> {
+    await this.page.evaluate((ms) => new Promise((resolve) => setTimeout(resolve, ms)), OPEN_FOCUS_DELAY_MS * 2)
+  }
+
   /** The slow network catches up: the bundle held back by embed({ chatHeldBack }) arrives. */
   async letChatLoad(): Promise<void> {
     await step('The chat finishes loading', async () => {
@@ -259,6 +276,7 @@ export class ChatWidget {
     })
   }
 
+  /** The visitor comes back to the site with `token` kept from an earlier visit. */
   async returnWithStoredToken(token: string): Promise<void> {
     await step('Customer comes back to the site', async () => {
       // The loader's own storage key (chattermate.js tokenKey)
@@ -516,6 +534,11 @@ export class ChatWidget {
       ({ method, args }) => (window as unknown as { ChatterMate: Record<string, (...a: unknown[]) => unknown> }).ChatterMate[method](...args),
       { method, args },
     )
+  }
+
+  /** The site's own search box (embed with withSearchBox). */
+  get hostSearchBox(): Locator {
+    return this.page.getByRole('searchbox', { name: 'Search the store' })
   }
 
   /** The page's own "Chat with us" button (embed with withTriggerButton). */

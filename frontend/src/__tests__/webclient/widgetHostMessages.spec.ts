@@ -35,6 +35,8 @@ beforeEach(() => {
     resetSocket()
     // Not framed, window.parent === window: postToHost lands on this spy.
     hostPost = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
+    // The loader handed the frame focus (it focuses the iframe on an open).
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
 })
 
 afterEach(() => {
@@ -125,6 +127,16 @@ describe('WIDGET_VISIBILITY', () => {
         await mountAttached({ customization: { chat_style: 'ASK_ANYTHING' } })
 
         expect(document.activeElement).toBe(paletteInput(wrapper).element)
+    })
+
+    it('leaves focus on the site when the frame was not handed it', async () => {
+        vi.mocked(document.hasFocus).mockReturnValue(false)
+        await mountAttached({ customization: { chat_style: 'ASK_ANYTHING' } })
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: false })
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: true })
+        await settle(wrapper)
+
+        expect(document.activeElement).not.toBe(paletteInput(wrapper).element)
     })
 
     it('does not focus the palette while hidden, and focuses it once shown', async () => {

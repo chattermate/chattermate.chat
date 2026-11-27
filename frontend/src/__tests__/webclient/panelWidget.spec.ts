@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import type { VueWrapper } from '@vue/test-utils'
 import PanelWidget from '@/webclient/panel/PanelWidget.vue'
@@ -31,7 +31,10 @@ import type { WidgetMessage } from '@/types/widget'
 let wrapper: VueWrapper<any> | undefined
 let ctrl: FakeController
 
+// The loader handed the frame focus (it focuses the iframe on an open).
+beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true) })
 afterEach(() => {
+    vi.restoreAllMocks()
     wrapper?.unmount()
     wrapper = undefined
     vi.useRealTimers()

@@ -138,6 +138,12 @@ const focusInput = () => {
     nextTick(() => inputEl.value?.focus())
 }
 
+// Only when the embedder handed focus to the frame (it focuses the iframe on an open).
+// Otherwise the visitor is busy on the site, and focusing here would take it from them.
+const focusInputIfHandedFocus = () => {
+    if (document.hasFocus()) focusInput()
+}
+
 // An iframe cannot size its embedder, so the palette measures its own content and
 // asks the loader for that height — that's what makes the box hug a short answer
 // instead of sitting at a fixed height with dead space under it. The loader clamps.
@@ -183,11 +189,11 @@ watch(() => props.newChatArmed, () => nextTick(() => reportHeight()))
 // Focus only once the embedder actually shows the widget: the iframe is created
 // eagerly at page load, so focusing on mount would steal it from the host page.
 watch(() => props.active, (visible) => {
-    if (visible) focusInput()
+    if (visible) focusInputIfHandedFocus()
 })
 
 onMounted(() => {
-    if (props.active) focusInput()
+    if (props.active) focusInputIfHandedFocus()
     // Not in the dashboard preview, where Esc and the chord belong to the dashboard.
     if (!props.preview) window.addEventListener('keydown', onKeydown)
     if (contentEl.value && typeof ResizeObserver !== 'undefined') {
