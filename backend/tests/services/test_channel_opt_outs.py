@@ -236,6 +236,30 @@ def test_the_repository_reads_a_batch_of_contacts(db, account):
     assert repo.opted_out_of(account.id, [CONTACT, "+19990000000"]) == {CONTACT}
 
 
+MX_WA_ID = "5215512345678"
+MX_WRITTEN = "+525512345678"
+
+
+@pytest.mark.asyncio
+async def test_a_stop_from_a_wa_id_covers_the_number_as_written(
+        db, account, use_test_db, quiet_channel, replies, no_ai):
+    await process_channel_message(account.id, InboundMessage(
+        external_account_id="PN123", external_conversation_id=MX_WA_ID, external_user_id=MX_WA_ID,
+        external_message_id="wamid.MX", text="STOP", profile={"phone": MX_WA_ID}))
+    assert channel_opt_outs.is_opted_out(db, account, MX_WRITTEN)
+    assert channel_opt_outs.is_opted_out(db, account, "+" + MX_WA_ID)
+
+
+@pytest.mark.asyncio
+async def test_start_from_either_form_clears_the_stop(db, account, use_test_db, quiet_channel, replies, no_ai):
+    ChannelOptOutRepository(db).opt_out(account, MX_WRITTEN, OptOutSource.STOP_WORD)
+    await process_channel_message(account.id, InboundMessage(
+        external_account_id="PN123", external_conversation_id=MX_WA_ID, external_user_id=MX_WA_ID,
+        external_message_id="wamid.MX2", text="START", profile={"phone": MX_WA_ID}))
+    assert not channel_opt_outs.is_opted_out(db, account, MX_WRITTEN)
+    assert channel_opt_outs.STARTED_REPLY in _said(replies)
+
+
 # --- Buttons the business owns (register_button_handler) -------------------------------------------
 
 @pytest.mark.asyncio
@@ -345,6 +369,26 @@ async def test_an_opted_out_number_gets_no_template(db, account, templates, quie
             source=channel_chat.MessageSource.APP)
     assert (refused.value.status_code, refused.value.reason) == (409, whatsapp_outbound.OutboundReason.OPTED_OUT)
     send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_reply_from_the_wa_id_joins_the_thread_we_started(
+        db, account, templates, quiet_channel, use_test_db, replies, no_ai, monkeypatch):
+    monkeypatch.setattr(quiet_channel, "send_template",
+                        AsyncMock(return_value=SendResult(ok=True, external_message_id="wamid.OUT")))
+    sent = await whatsapp_outbound.start_outbound_conversation(
+        db, account, to=MX_WRITTEN, template_name="order_placed", language="en",
+        source=channel_chat.MessageSource.APP)
+    await process_channel_message(account.id, InboundMessage(
+        external_account_id="PN123", external_conversation_id=MX_WA_ID, external_user_id=MX_WA_ID,
+        external_message_id="wamid.MX3", text="where is it?", profile={"phone": MX_WA_ID}))
+    assert db.query(SessionToAgent).count() == 1
+    session = db.query(SessionToAgent).one()
+    assert str(session.session_id) == str(sent.session_id)
+    # One person: the reply is the customer the order message started with
+    from app.models.customer import Customer
+    assert db.query(Customer).filter(Customer.organization_id == account.organization_id,
+                                     Customer.phone.in_([MX_WRITTEN, "+" + MX_WA_ID])).count() == 1
 
 
 @pytest.mark.asyncio
