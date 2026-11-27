@@ -94,7 +94,8 @@ test.describe('opening the chat before it has loaded', () => {
 
     await widget.launcher.click()
     await expect(widget.loadingWindow).toBeVisible()
-    await widget.launcher.click()
+    // The outline's own close: on a phone the launcher is hidden while the chat is open
+    await widget.loadingWindowClose.click()
     await expect(widget.loadingWindow).toBeHidden()
     await widget.launcher.click()
     await expect(widget.loadingWindow).toBeVisible()
