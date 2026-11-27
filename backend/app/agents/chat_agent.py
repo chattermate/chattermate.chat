@@ -19,7 +19,7 @@ from typing import Optional, Type
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
-from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL, structured_output_via_tool
 from app.channels.constants import MessageSource, is_widget_channel
 from app.agents import agent_extensions
 from app.services import reply_ui
@@ -242,7 +242,7 @@ def _salvage_groq_answer_text(response) -> str | None:
 
 
 def recover_groq_no_capture(response) -> ChatResponse:
-    """Groq path only: the model finished without calling the `json` tool, so
+    """json-tool path only: the model finished without calling the `json` tool, so
     the structured capture is empty. Recover the assistant's own answer text
     (which parse_response_content misses because it reads only response.content).
     Falls back to the normal parse — and then ensure_nonempty_message — when
@@ -417,9 +417,10 @@ class ChatAgent(ChatAgentMCPMixin):
             if settings.AGENT_LINKS_DEFER_TO_INSTRUCTIONS:
                 knowledge_tool_prompt += LINKS_DEFER_TO_INSTRUCTIONS
 
-            # For non-Groq models, add the search limit instruction
-            # For Groq, skip this to avoid discouraging tool usage
-            if model_type.upper() != 'GROQ':
+            # Skipped on the `json`-tool path (Groq, local OpenAI-compatible
+            # servers): those models already under-use the
+            # search tool, and this line discourages it further.
+            if not structured_output_via_tool(model_type):
                 knowledge_tool_prompt += """
 
             IMPORTANT: If you attempt to search for information but cannot find relevant results after a few tries, or if you've already searched multiple times without success, respond with a helpful message like "I apologize, but I don't have specific information about that in our knowledge base at the moment. Is there anything else I can help you with?" Do not keep searching indefinitely."""
@@ -1008,10 +1009,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
         # Initialize model with utility function
         base_max_tokens = 2000 if (self.shopify_instructions_added or self.mcp_instructions_added) else 1000
-        # Groq's GPT-OSS/reasoning models spend output tokens on internal reasoning
-        # BEFORE emitting the `json` tool call; too small a budget truncates the tool
-        # arguments into invalid JSON (Groq 400). Give the Groq path extra headroom.
-        if model_type.upper() == 'GROQ':
+        # Reasoning models (Groq's GPT-OSS, local Qwen/DeepSeek) spend output tokens
+        # thinking BEFORE emitting the `json` tool call; too small a budget truncates
+        # the tool arguments into invalid JSON. Give the json-tool path headroom.
+        if structured_output_via_tool(model_type):
             base_max_tokens = max(base_max_tokens, 4000)
         model = create_model(
             model_type=model_type,
@@ -1036,15 +1037,17 @@ Keep your responses concise and focused. Provide clear, actionable information i
         if host_action_functions:
             all_tools.extend(host_action_functions)
 
-        # Groq can't combine response_format (JSON mode) with tools, so its native
-        # structured-output path degrades to unreliable prompt-only JSON. For Groq we
-        # instead register a `json` tool (GPT-OSS's own structured-output convention)
-        # and read the ChatResponse from its arguments; other providers keep agno's
-        # native response_model path. See build_groq_response_tool above.
-        self._groq_json_capture = {}
-        self._use_groq_json_tool = model_type.upper() == 'GROQ'
-        if self._use_groq_json_tool:
-            all_tools.append(build_groq_response_tool(self._groq_json_capture, choice_limits is not None))
+        # Some providers can't combine response_format (JSON mode) with tools: Groq
+        # rejects it, llama.cpp fails to build the grammar, LM Studio stops calling
+        # tools. For those (structured_output_via_tool: Groq, plus any provider in
+        # JSON_TOOL_OUTPUT_PROVIDERS, e.g. OPENAI_COMPATIBLE for a local server) we
+        # register a `json` tool and read the ChatResponse from its arguments;
+        # other providers keep agno's native response_model path.
+        # See build_groq_response_tool above.
+        self._json_tool_capture = {}
+        self._use_json_tool_output = structured_output_via_tool(model_type)
+        if self._use_json_tool_output:
+            all_tools.append(build_groq_response_tool(self._json_tool_capture, choice_limits is not None))
             system_message = (system_message or "") + _GROQ_JSON_INSTRUCTION
             response_model = None
             structured_outputs = False
@@ -1127,7 +1130,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             )
 
             # Get AI response WITHOUT storing user message
-            self._groq_json_capture.clear()
+            self._json_tool_capture.clear()
             if self.knowledge_tool is not None:
                 self.knowledge_tool.reset_turn()
             try:
@@ -1139,10 +1142,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 )
                 raise
             except Exception as arun_exc:
-                # Groq only: a truncated `json` tool call is rejected as invalid JSON;
+                # json-tool path only: Groq rejects a truncated `json` tool call as invalid JSON;
                 # salvage the (mostly-complete) fields so the lead/end_chat survive.
-                # Non-Groq providers re-raise unchanged — no behavior change for them.
-                salvaged = _salvage_groq_json_error(arun_exc) if self._use_groq_json_tool else None
+                # Other providers re-raise unchanged — no behavior change for them.
+                salvaged = _salvage_groq_json_error(arun_exc) if self._use_json_tool_output else None
                 # Empty salvage means nothing usable survived — re-raise so the normal
                 # error reply is shown instead of a bare "No response generated".
                 if not salvaged:
@@ -1150,12 +1153,12 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 logger.warning("Groq json tool call unparseable (likely truncated); salvaged structured fields")
                 response_content = _build_chat_response_from_capture(salvaged, self._response_model)
             else:
-                # Groq path returns the structured turn via the `json` tool; everything
+                # The json-tool path returns the structured turn via the `json` tool; everything
                 # else parses agno's native structured output.
-                if self._use_groq_json_tool and self._groq_json_capture:
-                    response_content = _build_chat_response_from_capture(self._groq_json_capture, self._response_model)
-                elif self._use_groq_json_tool:
-                    # Groq finished without the `json` tool — recover its answer text.
+                if self._use_json_tool_output and self._json_tool_capture:
+                    response_content = _build_chat_response_from_capture(self._json_tool_capture, self._response_model)
+                elif self._use_json_tool_output:
+                    # The model finished without the `json` tool — recover its answer text.
                     response_content = recover_groq_no_capture(response)
                 else:
                     response_content = parse_response_content(response, self._response_model)
@@ -1550,7 +1553,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 # Get AI response; storing the message left a read open,
                 # which mustn't hold the connection through the model call
                 release_connection(db)
-                self._groq_json_capture.clear()
+                self._json_tool_capture.clear()
                 _salvaged_content = None
                 try:
                     response = await self._arun(message, session_id)
@@ -1561,8 +1564,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     )
                     raise
                 except Exception as arun_exc:
-                    # Groq only: salvage a truncated `json` tool call (see get_response).
-                    salvaged = _salvage_groq_json_error(arun_exc) if self._use_groq_json_tool else None
+                    # json-tool path only: salvage a truncated `json` tool call (see get_response).
+                    salvaged = _salvage_groq_json_error(arun_exc) if self._use_json_tool_output else None
                     # Empty salvage → nothing usable; re-raise for the normal error reply.
                     if not salvaged:
                         raise
@@ -1586,14 +1589,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
                            customer_id: str, db, chat_repo: ChatRepository) -> ChatResponse:
         """Turn a finished agno run into the reply: parse it, attach citations,
         apply the output guardrail, handle end-chat and transfer, store it."""
-        # Groq path returns the structured turn via the `json` tool; everything
+        # The json-tool path returns the structured turn via the `json` tool; everything
         # else parses agno's native structured output.
         if _salvaged_content is not None:
             response_content = _salvaged_content
-        elif self._use_groq_json_tool and self._groq_json_capture:
-            response_content = _build_chat_response_from_capture(self._groq_json_capture, self._response_model)
-        elif self._use_groq_json_tool:
-            # Groq finished without the `json` tool — recover its answer text.
+        elif self._use_json_tool_output and self._json_tool_capture:
+            response_content = _build_chat_response_from_capture(self._json_tool_capture, self._response_model)
+        elif self._use_json_tool_output:
+            # The model finished without the `json` tool — recover its answer text.
             response_content = recover_groq_no_capture(response)
         else:
             response_content = parse_response_content(response, self._response_model)
@@ -1716,7 +1719,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 if self.knowledge_tool is not None:
                     self.knowledge_tool.reset_turn()
                 release_connection(db)
-                self._groq_json_capture.clear()
+                self._json_tool_capture.clear()
                 tools = paused_run_tools(self.agent, run_id, session_id)
                 if tools is None:
                     raise RuntimeError(f"No paused run {run_id} in session {session_id}")
