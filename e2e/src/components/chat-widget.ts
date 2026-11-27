@@ -3,6 +3,12 @@ import { env } from '../env'
 import { unique } from '../support/ids'
 import { step } from '../support/step'
 
+/**
+ * How long after an open the panel focuses its field: frontend usePanelVisibility's
+ * OPEN_FOCUS_DELAY_MS. Kept in step with it, as e2e doesn't import the app's source.
+ */
+const OPEN_FOCUS_DELAY_MS = 520
+
 export interface EmbedOptions {
   /** window.chattermateConfig — launcher, displayMode, position, trigger, … */
   config?: Record<string, unknown>
@@ -254,14 +260,13 @@ export class ChatWidget {
     })
   }
 
-  /** The visitor comes back to the site with `token` kept from an earlier visit. */
   /**
    * The chat's open motion has played: the panel moves focus into its composer only
-   * after it (OPEN_FOCUS_DELAY_MS, 520 ms). Checking that focus stayed somewhere else
-   * has to wait that long; a timer in the page, as there is no event to wait for.
+   * after it (OPEN_FOCUS_DELAY_MS). Checking that focus stayed somewhere else has to
+   * wait past that; a timer in the page, as there is no event to wait for.
    */
   async waitForOpenMotion(): Promise<void> {
-    await this.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)))
+    await this.page.evaluate((ms) => new Promise((resolve) => setTimeout(resolve, ms)), OPEN_FOCUS_DELAY_MS * 2)
   }
 
   /** The slow network catches up: the bundle held back by embed({ chatHeldBack }) arrives. */
@@ -271,6 +276,7 @@ export class ChatWidget {
     })
   }
 
+  /** The visitor comes back to the site with `token` kept from an earlier visit. */
   async returnWithStoredToken(token: string): Promise<void> {
     await step('Customer comes back to the site', async () => {
       // The loader's own storage key (chattermate.js tokenKey)

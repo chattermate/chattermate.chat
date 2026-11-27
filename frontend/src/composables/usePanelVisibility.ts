@@ -16,7 +16,10 @@ limitations under the License.
 
 import { onScopeDispose, type Ref } from 'vue'
 
-/** The panel's open cascade takes about this long; the composer is focused after it. */
+/**
+ * The panel's open cascade takes about this long; the composer is focused after it.
+ * e2e/src/components/chat-widget.ts mirrors this value: change both together.
+ */
 export const OPEN_FOCUS_DELAY_MS = 520
 
 export interface PanelVisibilityHooks {
