@@ -53,6 +53,9 @@ CUSTOM_BRANDING_FEATURE = "custom_branding"
 # The agent's own Offline reply text (services/agent_offline.py); a plan flag
 # newer than some plan rows, so read with plan_flag_on
 OFFLINE_MESSAGE_FEATURE = "offline_message"
+# The agent's own "a teammate joined" text (services/handover_notice.py); read
+# with plan_flag_on for the same reason
+HANDOVER_MESSAGE_FEATURE = "handover_message"
 
 
 def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:

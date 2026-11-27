@@ -110,6 +110,12 @@ DEFAULT_OFFLINE_MESSAGE = (
 )
 
 
+# What a messaging-channel customer is told when a teammate joins, when
+# handover_message is NULL (services/handover_notice.py). The e2e suite checks
+# this exact text (e2e/src/api/agents.ts HANDOVER_NOTICE): change both together.
+DEFAULT_HANDOVER_MESSAGE = "You're now connected with a member of our team."
+
+
 class Agent(Base):
     __tablename__ = "agents"
 
@@ -136,6 +142,12 @@ class Agent(Base):
     # After the offline message the website asks the visitor for an email we
     # don't have, so the team's reply still reaches them
     offline_ask_email = Column(Boolean, default=True, nullable=False, server_default="true")
+    # Tell a messaging-channel customer when a teammate joins the chat; off for
+    # teams who introduce themselves anyway
+    handover_notice_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    # That message's text. NULL sends DEFAULT_HANDOVER_MESSAGE; custom text
+    # needs a plan with it.
+    handover_message = Column(Text, nullable=True)
     # Offer the AI's choices as tappable buttons on messaging channels that
     # can show them (WhatsApp, Messenger, Instagram, Telegram); not the widget
     channel_quick_replies = Column(Boolean, default=False, nullable=False, server_default="false")

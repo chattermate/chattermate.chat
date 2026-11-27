@@ -58,6 +58,14 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  handoverNoticeEnabled: {
+    type: Boolean,
+    default: true
+  },
+  handoverMessage: {
+    type: String as () => string | null,
+    default: null
+  },
   channelQuickReplies: {
     type: Boolean,
     default: false
@@ -125,6 +133,8 @@ const isRatingLocked = computed(() => {
 // Your own offline text is a paid feature; Free sends the default
 const { isLocked } = useFeatureLock()
 const isOfflineMessageLocked = computed(() => isLocked('offline-message'))
+// The same for the teammate-joined text; switching it off is on every plan
+const isHandoverMessageLocked = computed(() => isLocked('handover-message'))
 
 // Upgrade modal state
 const showUpgradeModal = ref(false)
@@ -160,6 +170,10 @@ const localAiRepliesEnabled = ref(props.aiRepliesEnabled)
 const localOfflineMessage = ref(props.offlineMessage ?? '')
 const defaultOfflineMessage = ref('')
 const localOfflineAskEmail = ref(props.offlineAskEmail)
+// The same default-as-placeholder rule as the offline message
+const localHandoverNoticeEnabled = ref(props.handoverNoticeEnabled)
+const localHandoverMessage = ref(props.handoverMessage ?? '')
+const defaultHandoverMessage = ref('')
 const localChannelQuickReplies = ref(props.channelQuickReplies)
 const localAskForRating = ref(props.askForRating)
 const localHandoffCollectEmail = ref(props.handoffCollectEmail)
@@ -190,8 +204,18 @@ onMounted(async () => {
   }
 })
 
+onMounted(async () => {
+  try {
+    defaultHandoverMessage.value = await agentService.getHandoverMessageDefault()
+  } catch (e) {
+    console.error('Could not load the default teammate joined message:', e)
+  }
+})
+
 watch(() => props.offlineMessage, (v) => { localOfflineMessage.value = v ?? '' })
 watch(() => props.offlineAskEmail, (v) => { localOfflineAskEmail.value = v })
+watch(() => props.handoverNoticeEnabled, (v) => { localHandoverNoticeEnabled.value = v })
+watch(() => props.handoverMessage, (v) => { localHandoverMessage.value = v ?? '' })
 
 watch(() => props.guardrailPrompt, (v) => {
   localGuardrailPrompt.value = v ?? defaultGuardrailPrompt.value
@@ -293,6 +317,8 @@ const handleSave = () => {
     // null goes back to the default, which follows any improvement to it
     offlineMessage: localOfflineMessage.value.trim() || null,
     offlineAskEmail: localOfflineAskEmail.value,
+    handoverNoticeEnabled: localHandoverNoticeEnabled.value,
+    handoverMessage: localHandoverMessage.value.trim() || null,
     channelQuickReplies: localChannelQuickReplies.value,
     askForRating: localAskForRating.value,
     handoffCollectEmail: localHandoffCollectEmail.value,
@@ -406,7 +432,7 @@ const handleSave = () => {
       </p>
       <!-- On a plan without it: the text customers get, and how to change it -->
       <template v-if="isOfflineMessageLocked">
-        <p class="offline-message-default">{{ defaultOfflineMessage }}</p>
+        <p class="default-notice-text">{{ defaultOfflineMessage }}</p>
         <LockedNote feature="offline_message" action="to write your own offline message." />
       </template>
       <template v-else>
@@ -429,6 +455,43 @@ const handleSave = () => {
         </label>
       </div>
       <p class="helper-text">On your website, ask visitors we have no email for, so your reply reaches them.</p>
+    </section>
+
+    <!-- What a channel customer gets when someone on the team takes over -->
+    <section class="detail-section handover-message-section">
+      <div class="toggle-header">
+        <h4 class="section-title">Teammate Joined Message</h4>
+        <label class="switch">
+          <input type="checkbox" v-model="localHandoverNoticeEnabled" :disabled="!isEditing" aria-label="Teammate joined message">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="helper-text">
+        Sent on messaging channels when someone on your team takes over a chat. Your website chat shows this on its own.
+        Turn it off if your team introduces themselves.
+      </p>
+      <template v-if="localHandoverNoticeEnabled">
+        <template v-if="isHandoverMessageLocked">
+          <!-- The lock is on the wording only: the switch above works on every plan -->
+          <p class="default-notice-text">
+            {{ defaultHandoverMessage }}
+            <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon" />
+          </p>
+          <LockedNote feature="handover_message" action="to write your own message." />
+        </template>
+        <template v-else>
+          <textarea
+            class="instructions-textarea"
+            v-model="localHandoverMessage"
+            rows="2"
+            maxlength="500"
+            aria-label="Teammate joined message text"
+            :placeholder="defaultHandoverMessage"
+            :readonly="!isEditing"
+          ></textarea>
+          <p class="helper-text">Leave empty to send the default shown.</p>
+        </template>
+      </template>
     </section>
 
     <!-- Transfer and Rating Section -->
@@ -801,7 +864,7 @@ const handleSave = () => {
   margin-top: var(--space-md);
 }
 
-.offline-message-default {
+.default-notice-text {
   margin: 0;
   color: var(--text-color);
   font-size: var(--text-sm);

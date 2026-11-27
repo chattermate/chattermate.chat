@@ -72,6 +72,9 @@ export async function saveOfflineMessage(api: ApiClient, agentId: string, text: 
   await api.put(`/agent/${agentId}`, { data: { offline_message: text } })
 }
 
+/** What a channel customer gets when a teammate takes over, by default (backend DEFAULT_HANDOVER_MESSAGE). */
+export const HANDOVER_NOTICE = "You're now connected with a member of our team."
+
 /** What a channel customer is sent once when no AI will answer (backend HUMAN_ONLY_ACK). */
 export const TEAM_WILL_REPLY = 'Thanks for your message. Someone from our team will reply here shortly.'
 
