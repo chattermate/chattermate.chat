@@ -27,7 +27,7 @@ from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import conversation_token
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 @pytest.fixture

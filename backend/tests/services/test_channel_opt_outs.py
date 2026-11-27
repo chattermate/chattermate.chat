@@ -38,6 +38,7 @@ from app.repositories.channels import (
 from app.services import agent_rooms, app_first_routing, channel_chat, channel_opt_outs, whatsapp_outbound
 from app.services.channel_chat import process_channel_message
 from app.services.message_delivery import DeliveryResult
+from tests.session_db import serve_session_off_loop
 
 CUSTOMER = "447700900123"
 CONTACT = "+447700900123"
@@ -65,16 +66,7 @@ def account(db, test_organization, test_agent):
 
 @pytest.fixture
 def use_test_db(db, monkeypatch):
-    class _NonClosing:
-        def __init__(self, inner):
-            self._inner = inner
-
-        def __getattr__(self, name):
-            return getattr(self._inner, name)
-
-        def close(self):
-            pass
-    monkeypatch.setattr(channel_chat, "SessionLocal", lambda: _NonClosing(db))
+    serve_session_off_loop(monkeypatch, channel_chat, db)
     return db
 
 

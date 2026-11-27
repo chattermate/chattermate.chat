@@ -28,7 +28,7 @@ from app.models.organization import Organization
 from app.models.user import User
 from uuid import UUID, uuid4
 from app.services.conversation_token import VERIFIED_SCOPE
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 @pytest.fixture

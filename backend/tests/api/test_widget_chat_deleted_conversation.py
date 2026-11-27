@@ -32,7 +32,7 @@ from app.models.session_to_agent import SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import ai_access, host_action_runtime, message_delivery, widget_reply
 from app.services.customer_erasure import erase_customers, erase_sessions
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 SCOPE = "browser-key-1"
 

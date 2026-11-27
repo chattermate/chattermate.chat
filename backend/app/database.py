@@ -71,7 +71,9 @@ Base = declarative_base()
 
 # Sessions from get_db and session_off_loop hold their connection across
 # awaits. At most this many at once, leaving the rest of the pool to code that
-# opens its own SessionLocal() (agent tools, services) where it runs
+# opens its own SessionLocal() (agent tools, services) where it runs.
+# Background tasks (channel webhooks) share these slots with requests, so they
+# release_connection() before waiting on anything outside
 OTHER_SESSIONS_HEADROOM = 5
 OFF_LOOP_SESSIONS = POOL_SIZE + MAX_OVERFLOW - OTHER_SESSIONS_HEADROOM
 

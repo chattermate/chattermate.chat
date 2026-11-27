@@ -41,7 +41,7 @@ from app.models.workflow_connection import WorkflowConnection
 from app.models.rating import Rating
 import datetime
 from socketio.exceptions import ConnectionRefusedError as SocketRefused
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 @pytest.fixture
 def test_ai_config(db, test_organization) -> AIConfig:

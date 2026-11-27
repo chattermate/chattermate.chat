@@ -41,6 +41,7 @@ from app.services.business_message import remember_business_message
 from app.services.channel_chat import process_channel_message
 from app.services.customer_erasure import erase_customers, erase_sessions
 from app.services.message_delivery import DeliveryResult
+from tests.session_db import serve_session_off_loop
 
 
 def make_inbound(text="hello"):
@@ -73,15 +74,8 @@ def routed_account(db, account, test_agent):
 
 @pytest.fixture
 def use_test_db(db, monkeypatch):
-    """process_channel_message opens its own SessionLocal; bind it to the test db."""
-    class _NonClosing:
-        def __init__(self, inner):
-            self._inner = inner
-        def __getattr__(self, name):
-            return getattr(self._inner, name)
-        def close(self):
-            pass  # keep the fixture-owned session usable after processing
-    monkeypatch.setattr(channel_chat, "SessionLocal", lambda: _NonClosing(db))
+    """process_channel_message opens its own session; bind it to the test db."""
+    serve_session_off_loop(monkeypatch, channel_chat, db)
     return db
 
 

@@ -31,6 +31,7 @@ from app.models.ticket_activity import TicketActivityType
 from app.repositories.channels import ChannelAccountRepository
 from app.services.ticket import TicketService
 from app.services.ticket_email import new_ticket_message_id, ticket_root_message_id
+from tests.session_db import serve_session_off_loop
 
 WEBHOOK_BASE = "/api/v1/webhooks/email"
 
@@ -188,18 +189,8 @@ class TestReplyEndToEnd:
         service.transition_status(ticket, TicketStatus.RESOLVED_PENDING_CONFIRMATION)
         db.commit()
 
-        class _NonClosing:
-            def __init__(self, inner):
-                self._inner = inner
-
-            def __getattr__(self, name):
-                return getattr(self._inner, name)
-
-            def close(self):
-                pass
-
         from app.services import ticket_email_reply
-        monkeypatch.setattr(ticket_email_reply, "SessionLocal", lambda: _NonClosing(db))
+        serve_session_off_loop(monkeypatch, ticket_email_reply, db)
 
         with patch("app.services.ticket_events.emit_ticket_update", AsyncMock()):
             response = post(client, email_account,

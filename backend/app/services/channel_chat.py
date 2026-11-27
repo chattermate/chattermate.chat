@@ -29,7 +29,7 @@ from app.channels.interactive import from_options
 from app.channels.interactive_limits import InteractiveLimits
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
-from app.database import SessionLocal, release_connection
+from app.database import close_session, release_connection, session_off_loop
 from app.models.channels import ChannelAccount
 from app.models.session_to_agent import SessionStatus
 from app.repositories.agent import AgentRepository
@@ -72,7 +72,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
     to the handling human), and delivers the reply through the channel's
     adapter. Runs from a BackgroundTask with its own DB session.
     """
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account_repo = ChannelAccountRepository(db)
         account = account_repo.get_by_id(account_id)
@@ -91,10 +91,6 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
 
         org_id = str(account.organization_id)
         customer_id = _get_or_create_customer(db, account, inbound, org_id)
-        # If the customer still has a synthesized placeholder name, resolve the
-        # real one via the platform API — only then, not on every message.
-        if adapter is not None:
-            await _enrich_customer_name(db, adapter, account, inbound, customer_id)
         session_record, conversation, is_new_session = _get_or_create_session(
             db, account, inbound, agent_id, customer_id, org_id
         )
@@ -122,6 +118,16 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # channel can show them
         choice_limits = (adapter.choice_limits_for(conversation)
                          if adapter is not None and agent is not None and agent.channel_quick_replies else None)
+
+        # Everything from here waits on outside services (the app, the
+        # platform, the model). Give back the request connection slot taken
+        # above: what's left reads and writes briefly as it goes.
+        release_connection(db)
+
+        # If the customer still has a synthesized placeholder name, resolve the
+        # real one via the platform API — only then, not on every message.
+        if adapter is not None:
+            await _enrich_customer_name(db, adapter, account, inbound, customer_id)
 
         # An installed extension (an external app) may answer first. Its reply
         # can land while we wait, so the customer's message keeps the time it
@@ -224,7 +230,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
     except Exception as e:
         logger.error(f"Error processing channel message: {e}", exc_info=True)
     finally:
-        db.close()
+        close_session(db)
 
 
 async def _send_channel_prompts(db, adapter, account, conversation, response) -> None:
@@ -245,7 +251,7 @@ async def _send_channel_prompts(db, adapter, account, conversation, response) ->
 async def process_channel_interaction(account_id, interaction: ChannelInteraction) -> None:
     """Handle a non-message interaction (a shared phone number) from a channel.
     Runs from a BackgroundTask with its own DB session."""
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
@@ -260,7 +266,7 @@ async def process_channel_interaction(account_id, interaction: ChannelInteractio
     except Exception as e:
         logger.error(f"Error processing channel interaction: {e}", exc_info=True)
     finally:
-        db.close()
+        close_session(db)
 
 
 def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:

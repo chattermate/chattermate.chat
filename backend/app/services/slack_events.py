@@ -22,6 +22,7 @@ the Messages-tab welcome, the Home tab view, and the Assistant sidebar — all o
 which the Slack Marketplace requires an app with the Messages tab enabled to use.
 """
 
+from typing import Optional
 from uuid import UUID
 
 from app.channels.slack import (
@@ -41,7 +42,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.redis import get_redis
 from app.core.s3 import get_s3_signed_url
-from app.database import SessionLocal
+from app.database import close_session, release_connection, session_off_loop
 from app.repositories.agent import AgentRepository
 from app.repositories.channels import ChannelAccountRepository
 from app.repositories.channels.agent_config import AgentChannelConfigRepository
@@ -91,52 +92,48 @@ async def deliver_home_welcome(account_id: UUID, user_id: str, channel: str) -> 
         return
     if _already_welcomed(account_id, user_id):
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
             return
+        token = SlackAdapter._access_token(account)
         text = _welcome_text(_assigned_agent(db, account))
-        await slack_api("chat.postMessage", SlackAdapter._access_token(account),
-                        {"channel": channel, "text": text})
+        release_connection(db)  # read all it needs; don't hold a connection slot through Slack's reply
+        await slack_api("chat.postMessage", token, {"channel": channel, "text": text})
     except Exception as e:
         logger.error(f"Slack Messages-tab welcome failed: {e}")
     finally:
-        db.close()
+        close_session(db)
 
 
 async def handle_assistant_thread_started(account_id: UUID, channel_id: str, thread_ts: str) -> None:
     """On assistant-sidebar open: show a status, offer starter prompts, welcome."""
     if not channel_id or not thread_ts:
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
             return
         token = SlackAdapter._access_token(account)
+        text = _welcome_text(_assigned_agent(db, account))
+        release_connection(db)  # read all it needs; don't hold a connection slot through Slack's replies
         await set_assistant_status(token, channel_id, thread_ts, ASSISTANT_READY_STATUS)
         await set_suggested_prompts(token, channel_id, thread_ts, STARTER_PROMPTS, SUGGESTED_PROMPTS_TITLE)
-        text = _welcome_text(_assigned_agent(db, account))
         await slack_api("chat.postMessage", token,
                         {"channel": channel_id, "text": text, "thread_ts": thread_ts})
     except Exception as e:
         logger.error(f"Slack assistant welcome failed: {e}")
     finally:
-        db.close()
+        close_session(db)
 
 
-async def _agent_card(agent) -> dict:
-    """Flatten an Agent into the resolved shape build_home_view expects."""
-    photo_url = None
+def _agent_card(agent) -> dict:
+    """Flatten an Agent into the shape build_home_view expects; the photo URL
+    is the stored one until _signed_photo_url resolves it."""
     customization = getattr(agent, "customization", None)
-    if customization and customization.photo_url:
-        photo_url = customization.photo_url
-        if settings.S3_FILE_STORAGE:
-            try:
-                photo_url = await get_s3_signed_url(customization.photo_url)
-            except Exception as e:
-                logger.debug(f"Could not sign agent photo URL: {e}")
+    photo_url = customization.photo_url if customization and customization.photo_url else None
     instructions = agent.instructions or []
     return {
         "name": agent.display_name or agent.name,
@@ -144,6 +141,17 @@ async def _agent_card(agent) -> dict:
         "instruction": instructions[0] if instructions else "",
         "photo_url": photo_url,
     }
+
+
+async def _signed_photo_url(photo_url: Optional[str]) -> Optional[str]:
+    """A photo URL Slack can load: signed when files live in S3."""
+    if not photo_url or not settings.S3_FILE_STORAGE:
+        return photo_url
+    try:
+        return await get_s3_signed_url(photo_url)
+    except Exception as e:
+        logger.debug(f"Could not sign agent photo URL: {e}")
+        return photo_url
 
 
 def _dashboard_url() -> str:
@@ -155,16 +163,20 @@ async def publish_agent_home(account_id: UUID, user_id: str) -> None:
     workspace, how to use it, and a link to the dashboard."""
     if not user_id:
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
             return
+        token = SlackAdapter._access_token(account)
         agent = _assigned_agent(db, account)
-        card = await _agent_card(agent) if agent is not None else None
+        card = _agent_card(agent) if agent is not None else None
+        release_connection(db)  # read all it needs; don't hold a connection slot through Slack's reply
+        if card is not None:
+            card["photo_url"] = await _signed_photo_url(card["photo_url"])
         view = build_home_view(card, _dashboard_url())
-        await publish_home_view(SlackAdapter._access_token(account), user_id, view)
+        await publish_home_view(token, user_id, view)
     except Exception as e:
         logger.error(f"Slack Home tab publish failed: {e}")
     finally:
-        db.close()
+        close_session(db)

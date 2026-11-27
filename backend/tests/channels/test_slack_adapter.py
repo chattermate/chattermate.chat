@@ -367,8 +367,8 @@ class TestAppSurfaceDispatch:
 
 class TestHomeWelcomeDelivery:
     def _patch_common(self, monkeypatch):
-        db = MagicMock()
-        monkeypatch.setattr(slack_events, "SessionLocal", lambda: db)
+        db = MagicMock(new=[], dirty=[], deleted=[])  # reads only, as the handlers do
+        monkeypatch.setattr(slack_events, "session_off_loop", AsyncMock(return_value=db))
         account = MagicMock(); account.is_active = True
         repo = MagicMock(); repo.get_by_id.return_value = account
         monkeypatch.setattr(slack_events, "ChannelAccountRepository", lambda d: repo)
@@ -398,6 +398,52 @@ class TestHomeWelcomeDelivery:
         monkeypatch.setattr(slack_events, "get_redis", lambda: None)
         await slack_events.deliver_home_welcome("acc1", "U1", "")
         api.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_session_is_let_go_before_any_slack_call(self, monkeypatch):
+        """Slack can be slow or rate-limit; a connection slot requests share
+        must not wait on it."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(slack_events, "get_redis", lambda: None)
+        order = []
+        monkeypatch.setattr(slack_events, "release_connection", lambda db: order.append("released"))
+
+        async def slack(*args, **kwargs):
+            order.append("slack")
+        for name in ("slack_api", "set_assistant_status", "set_suggested_prompts", "publish_home_view"):
+            monkeypatch.setattr(slack_events, name, slack)
+
+        await slack_events.deliver_home_welcome("acc1", "U1", "D1")
+        await slack_events.handle_assistant_thread_started("acc1", "D2", "111.222")
+        await slack_events.publish_agent_home("acc1", "U1")
+
+        assert order == ["released", "slack",
+                         "released", "slack", "slack", "slack",
+                         "released", "slack"]
+
+    @pytest.mark.asyncio
+    async def test_home_tab_signs_the_agent_photo_after_letting_the_session_go(self, monkeypatch):
+        self._patch_common(monkeypatch)
+        agent = MagicMock(display_name="Ava", is_active=True, instructions=["Help"])
+        agent.customization.photo_url = "agents/ava.png"
+        monkeypatch.setattr(slack_events, "_assigned_agent", lambda d, a: agent)
+        monkeypatch.setattr(slack_events.settings, "S3_FILE_STORAGE", True)
+        released = []
+        monkeypatch.setattr(slack_events, "release_connection", lambda db: released.append(True))
+
+        async def sign(url):
+            assert released, "signed while still holding the session"
+            return f"https://signed/{url}"
+        monkeypatch.setattr(slack_events, "get_s3_signed_url", sign)
+        build = MagicMock(return_value={})
+        monkeypatch.setattr(slack_events, "build_home_view", build)
+        monkeypatch.setattr(slack_events, "publish_home_view", AsyncMock())
+
+        await slack_events.publish_agent_home("acc1", "U1")
+
+        card = build.call_args.args[0]
+        assert card["photo_url"] == "https://signed/agents/ava.png"
+        assert card["name"] == "Ava"
 
     @pytest.mark.asyncio
     async def test_assistant_started_sets_status_prompts_and_welcome(self, monkeypatch):

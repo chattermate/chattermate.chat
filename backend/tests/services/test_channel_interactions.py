@@ -30,18 +30,12 @@ from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import channel_chat
 from app.services.channel_chat import process_channel_interaction, process_channel_message
+from tests.session_db import serve_session_off_loop
 
 
 @pytest.fixture
 def use_test_db(db, monkeypatch):
-    class _NonClosing:
-        def __init__(self, inner):
-            self._inner = inner
-        def __getattr__(self, name):
-            return getattr(self._inner, name)
-        def close(self):
-            pass
-    monkeypatch.setattr(channel_chat, "SessionLocal", lambda: _NonClosing(db))
+    serve_session_off_loop(monkeypatch, channel_chat, db)
     return db
 
 

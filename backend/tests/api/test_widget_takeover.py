@@ -41,7 +41,7 @@ from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import conversation_token
 from app.services.contact_capture import CONTACT_EMAIL_META_KEY
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 VICTIM_BROWSER = "victim-browser"
 
