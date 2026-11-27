@@ -52,6 +52,10 @@ export interface Agent {
   offline_message?: string | null
   /** After the offline message, ask website visitors for an email we don't have. */
   offline_ask_email?: boolean
+  /** Tell a messaging-channel customer when a teammate joins the chat. */
+  handover_notice_enabled?: boolean
+  /** That message's text; null sends the default. */
+  handover_message?: string | null
   knowledge: Array<{
     id: number
     name: string
@@ -90,6 +94,8 @@ export interface AgentUpdate {
   guardrail_enabled?: boolean
   offline_message?: string | null
   offline_ask_email?: boolean
+  handover_notice_enabled?: boolean
+  handover_message?: string | null
   customization?: AgentCustomization
 }
 

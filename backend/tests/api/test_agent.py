@@ -31,6 +31,7 @@ from io import BytesIO
 from PIL import Image as PILImage
 from app.core.config import settings
 from app.services.agent_offline import DEFAULT_OFFLINE_MESSAGE
+from app.models.agent import DEFAULT_HANDOVER_MESSAGE
 from app.services.file_storage import local_upload_path
 from app.core.auth import get_current_user, require_permissions, get_unified_auth
 from app.models.schemas.agent_customization import CustomizationCreate
@@ -1940,6 +1941,29 @@ def test_offline_message_round_trip_and_blank_means_default(client, db, test_use
 
     too_long = "x" * 501
     assert client.put(f"/api/agents/{test_agent.id}", json={"offline_message": too_long}).status_code == 422
+
+
+def test_handover_message_round_trip_switch_and_blank_means_default(client, db, test_user, test_agent):
+    response = client.get(f"/api/agents/{test_agent.id}")
+    assert (response.json()["handover_notice_enabled"], response.json()["handover_message"]) == (True, None)
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"handover_message": "  Hi, Jesper here.  "})
+    assert response.status_code == 200
+    assert response.json()["handover_message"] == "Hi, Jesper here."
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"handover_notice_enabled": False})
+    assert (response.json()["handover_notice_enabled"], response.json()["handover_message"]) == (False, "Hi, Jesper here.")
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"handover_message": "   "})
+    assert response.json()["handover_message"] is None
+
+    assert client.put(f"/api/agents/{test_agent.id}", json={"handover_message": "x" * 501}).status_code == 422
+
+
+def test_handover_message_default_is_served(client):
+    response = client.get("/api/agents/handover-message-default")
+    assert response.status_code == 200
+    assert response.json() == {"message": DEFAULT_HANDOVER_MESSAGE}
 
 
 def test_offline_message_default_is_served(client):

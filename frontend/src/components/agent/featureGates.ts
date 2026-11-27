@@ -95,6 +95,14 @@ export const FEATURE_GATES = {
     description: 'Write what customers get while the agent is Offline.',
     bullets: ['Your own words', 'On the website and every channel'],
   },
+  'handover-message': {
+    feature: 'handover_message',
+    newFlag: true,
+    name: 'Teammate joined message',
+    title: 'Unlock Your Own Teammate Joined Message',
+    description: 'Write what channel customers get when someone on your team takes over.',
+    bullets: ['Your own words', 'On every messaging channel'],
+  },
   ticketing: {
     feature: 'ai_ticketing',
     name: 'AI Ticketing',

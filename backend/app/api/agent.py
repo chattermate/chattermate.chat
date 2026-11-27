@@ -34,7 +34,7 @@ from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.workflow import WorkflowRepository
 from app.models.schemas.agent import AgentUpdate, AgentResponse, AgentCreate, AgentRosterItem, AgentWithCustomizationResponse
 from sqlalchemy.orm import Session
-from app.models.agent import DEFAULT_OFFLINE_MESSAGE, Agent, AgentCustomization
+from app.models.agent import DEFAULT_HANDOVER_MESSAGE, DEFAULT_OFFLINE_MESSAGE, Agent, AgentCustomization
 from app.models.organization import Organization
 from app.agents.guardrail_policy import DEFAULT_GUARDRAIL_PROMPT
 from app.models.schemas.agent_customization import CustomizationCreate, CustomizationResponse, customization_schema
@@ -195,6 +195,8 @@ async def create_agent(
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
             offline_ask_email=agent.offline_ask_email is not False,
+            handover_notice_enabled=agent.handover_notice_enabled is not False,
+            handover_message=agent.handover_message,
             knowledge=[],
             groups=[]
         )
@@ -377,6 +379,8 @@ async def update_agent(
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
             offline_ask_email=agent.offline_ask_email is not False,
+            handover_notice_enabled=agent.handover_notice_enabled is not False,
+            handover_message=agent.handover_message,
             knowledge=[{
                 "id": k.id,
                 "name": k.source,
@@ -448,6 +452,16 @@ async def get_offline_message_default(
     return {"message": DEFAULT_OFFLINE_MESSAGE}
 
 
+@router.get("/handover-message-default")
+async def get_handover_message_default(
+    auth_info: dict = Depends(
+        require_any_unified_permission("view_agents", "manage_agents")),
+):
+    """What a channel customer is told when a teammate joins, when the agent
+    has no text of its own. Declared before /{agent_id}, as above."""
+    return {"message": DEFAULT_HANDOVER_MESSAGE}
+
+
 @router.get("/customization-schema")
 async def get_customization_schema(
     auth_info: dict = Depends(
@@ -517,6 +531,8 @@ async def get_organization_agents(
                 guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
                 offline_message=agent.offline_message,
                 offline_ask_email=agent.offline_ask_email is not False,
+                handover_notice_enabled=agent.handover_notice_enabled is not False,
+                handover_message=agent.handover_message,
                 knowledge=[{
                     "id": k.id,
                     "name": k.source,
@@ -720,6 +736,8 @@ async def update_agent_groups(
             guardrail_enabled=agent.guardrail_enabled if agent.guardrail_enabled is not None else True,
             offline_message=agent.offline_message,
             offline_ask_email=agent.offline_ask_email is not False,
+            handover_notice_enabled=agent.handover_notice_enabled is not False,
+            handover_message=agent.handover_message,
             groups=agent.groups,
             knowledge=[{
                 "id": k.id,

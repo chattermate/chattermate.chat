@@ -188,6 +188,12 @@ export const agentService = {
     return response.data?.message ?? ''
   },
 
+  /** What a channel customer is told when a teammate joins, by default. */
+  async getHandoverMessageDefault(): Promise<string> {
+    const response = await api.get('/agent/handover-message-default')
+    return response.data?.message ?? ''
+  },
+
   async generateInstructions(prompt: string, existingInstructions?: string[]): Promise<string[]> {
     const response = await api.post('/agent/generate-instructions', {
         prompt,

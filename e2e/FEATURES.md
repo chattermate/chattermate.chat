@@ -107,7 +107,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Workflows | One-message flow greets once and answers once with no AI call; a question branches on the answer; AND across two answers (true, false, an answer that looks like code, a non-number); a missing branch stops instead of taking the other | `specs/workflows/workflows.spec.ts` | P2 | ✅ |
 | MCP connectors | An agent answers from a real MCP server's tool; header secrets masked on read, kept on save; a server that is down costs only its own tools, and Test says it could not connect | `specs/mcp/connectors.spec.ts` | P2 | ✅ |
 | Channels | Telegram, WhatsApp, Messenger, Instagram, Slack, LINE, SMS (Twilio, Plivo), email: a signed inbound message gets the AI reply on the same channel | `specs/channels/replies.spec.ts` | P2 | ✅ |
-| Channels | WhatsApp customer asks for a person → agent takes over in the inbox → reply goes out on WhatsApp | `specs/channels/handover.spec.ts` | P2 | ✅ |
+| Channels | WhatsApp customer asks for a person → agent takes over in the inbox → reply goes out on WhatsApp; the teammate-joined message in the agent's words, or none when switched off | `specs/channels/handover.spec.ts` | P2 | ✅ |
 | Channels | Several WhatsApp numbers: Manage lists each with its agent; manage or disconnect one alone; Add number opens a blank form; an expired one leads to Reconnect | `specs/channels/whatsapp-numbers.spec.ts`, `specs/channels/needs-reconnect.spec.ts` | P2 | ✅ |
 | Channels | Email reply is threaded (Re: subject, In-Reply-To) | `specs/channels/email.spec.ts` | P2 | ✅ |
 | Channels | Forged webhooks refused on every channel; echoes, receipts and bot messages never reach the model | `specs/channels/forged-webhooks.spec.ts` | P2 | ✅ |

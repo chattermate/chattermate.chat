@@ -1282,3 +1282,45 @@ def test_a_notice_sent_in_your_name_is_not_yours_to_edit(
 def test_which_channels_can_edit(channel, minutes):
     from app.services.message_edits import edit_window_minutes
     assert edit_window_minutes(channel) == minutes
+
+
+@pytest.mark.parametrize("enabled, own_text, expected", [
+    (True, None, "You're now connected with a member of our team."),
+    (True, "Hi, this is the Thailiving team.", "Hi, this is the Thailiving team."),
+    (False, "Hi, this is the Thailiving team.", None),
+])
+def test_takeover_on_a_channel_sends_the_agents_handover_message(
+    client, db, test_agent, create_chat_session, enabled, own_text, expected
+):
+    """Default text, the agent's own, or nothing when it is switched off; the
+    thread holds exactly what the customer got."""
+    from unittest.mock import AsyncMock
+    from app.services.message_delivery import DeliveryResult
+    test_agent.handover_notice_enabled = enabled
+    test_agent.handover_message = own_text
+    session = create_chat_session()
+    session.channel = 'line'
+    db.commit()
+
+    with patch('app.services.human_routing.deliver_to_customer',
+               new=AsyncMock(return_value=DeliveryResult(ok=True))) as deliver:
+        response = client.post(f"/api/v1/session-to-agent/{session.session_id}/takeover")
+
+    assert response.status_code == status.HTTP_200_OK
+    notices = [m["message"] for m in response.json()["messages"]
+               if (m.get("attributes") or {}).get("handover_notice")]
+    if expected is None:
+        assert notices == []
+        deliver.assert_not_awaited()
+    else:
+        assert notices == [expected]
+        assert deliver.await_args.args[2]["message"] == expected
+
+
+def test_a_website_takeover_sends_no_handover_message(client, db, create_chat_session):
+    """The widget shows a person joining in its own UI."""
+    from unittest.mock import AsyncMock
+    session = create_chat_session()
+    with patch('app.services.human_routing.deliver_to_customer', new=AsyncMock()) as deliver:
+        assert client.post(f"/api/v1/session-to-agent/{session.session_id}/takeover").status_code == 200
+    deliver.assert_not_awaited()

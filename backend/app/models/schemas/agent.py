@@ -33,6 +33,7 @@ AGENT_NAME_MAX = 100
 AGENT_DESCRIPTION_MAX = 500
 # The agent's own Offline reply (services/agent_offline.py)
 OFFLINE_MESSAGE_MAX = 500
+HANDOVER_MESSAGE_MAX = 500
 
 
 class KnowledgeItem(BaseModel):
@@ -90,6 +91,14 @@ class AgentBase(BaseModel):
         default=True,
         description="After the offline message, ask website visitors for an email we don't have."
     )
+    handover_notice_enabled: bool = Field(
+        default=True,
+        description="Tell a messaging-channel customer when a teammate joins the chat."
+    )
+    handover_message: Optional[str] = Field(
+        default=None, max_length=HANDOVER_MESSAGE_MAX,
+        description="What that message says. Null sends the default."
+    )
 
 
 class AgentCreate(AgentBase):
@@ -128,6 +137,8 @@ class AgentUpdate(BaseModel):
     guardrail_enabled: Optional[bool] = None
     offline_message: Optional[str] = Field(default=None, max_length=OFFLINE_MESSAGE_MAX)
     offline_ask_email: Optional[bool] = None
+    handover_notice_enabled: Optional[bool] = None
+    handover_message: Optional[str] = Field(default=None, max_length=HANDOVER_MESSAGE_MAX)
 
     @field_validator('name')
     @classmethod
@@ -143,9 +154,9 @@ class AgentUpdate(BaseModel):
     def strip_description(cls, value: Optional[str]) -> Optional[str]:
         return value.strip() if value is not None else None
 
-    @field_validator('offline_message')
+    @field_validator('offline_message', 'handover_message')
     @classmethod
-    def blank_offline_message_is_default(cls, value: Optional[str]) -> Optional[str]:
+    def blank_message_is_default(cls, value: Optional[str]) -> Optional[str]:
         """An emptied box goes back to the default text."""
         stripped = (value or '').strip()
         return stripped or None
@@ -204,6 +215,8 @@ class AgentResponse(BaseModel):
     guardrail_enabled: bool = True
     offline_message: Optional[str] = None
     offline_ask_email: bool = True
+    handover_notice_enabled: bool = True
+    handover_message: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

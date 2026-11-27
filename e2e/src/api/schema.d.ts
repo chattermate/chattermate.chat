@@ -2993,6 +2993,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/handover-message-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Handover Message Default
+         * @description What a channel customer is told when a teammate joins, when the agent
+         *     has no text of its own. Declared before /{agent_id}, as above.
+         */
+        get: operations["get_handover_message_default_api_v1_agent_handover_message_default_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/customization-schema": {
         parameters: {
             query?: never;
@@ -6079,6 +6100,17 @@ export interface components {
              * @default true
              */
             offline_ask_email: boolean;
+            /**
+             * Handover Notice Enabled
+             * @description Tell a messaging-channel customer when a teammate joins the chat.
+             * @default true
+             */
+            handover_notice_enabled: boolean;
+            /**
+             * Handover Message
+             * @description What that message says. Null sends the default.
+             */
+            handover_message?: string | null;
             /** Organization Id */
             organization_id?: string | null;
         };
@@ -6318,6 +6350,10 @@ export interface components {
             offline_message?: string | null;
             /** Offline Ask Email */
             offline_ask_email?: boolean | null;
+            /** Handover Notice Enabled */
+            handover_notice_enabled?: boolean | null;
+            /** Handover Message */
+            handover_message?: string | null;
         };
         /** AgentWithCustomizationResponse */
         AgentWithCustomizationResponse: {
@@ -6427,6 +6463,13 @@ export interface components {
              * @default true
              */
             offline_ask_email: boolean;
+            /**
+             * Handover Notice Enabled
+             * @default true
+             */
+            handover_notice_enabled: boolean;
+            /** Handover Message */
+            handover_message?: string | null;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -16587,6 +16630,26 @@ export interface operations {
         };
     };
     get_offline_message_default_api_v1_agent_offline_message_default_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_handover_message_default_api_v1_agent_handover_message_default_get: {
         parameters: {
             query?: never;
             header?: never;

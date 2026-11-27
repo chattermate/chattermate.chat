@@ -25,6 +25,7 @@ vi.mock('@/services/agent', () => ({
   agentService: {
     getGuardrailDefault: vi.fn().mockResolvedValue(''),
     getOfflineMessageDefault: vi.fn().mockResolvedValue(DEFAULT),
+    getHandoverMessageDefault: vi.fn().mockResolvedValue(''),
   },
 }))
 vi.mock('@/composables/useFeatureLock', () => ({

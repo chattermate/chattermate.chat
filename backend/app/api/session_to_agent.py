@@ -32,6 +32,7 @@ from app.services.agent_rooms import emit_to_org_inbox
 from app.services.message_edits import EditRefused, edit_sent_reply
 from app.services.chat_access import can_see_session, may_change_hands
 from app.services.chat_notifications import notify_chat_assigned
+from app.services.handover_notice import tell_customer_teammate_joined
 from app.services.human_routing import notify_customer, route_session_to_human
 from app.models.schemas.chat import ChatDetailResponse, Message, MessageEdit, TransferReasonType
 
@@ -40,9 +41,8 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Shown to the customer when a human takes over an external-channel chat. The
-# widget surfaces the handover in its own UI, so only channels need a message.
-HANDOVER_NOTICE = "You're now connected with a member of our team."
+# Kept on every agent, unlike the handover message (services/handover_notice.py):
+# a customer should always know when the AI is answering again.
 BACK_TO_AI_NOTICE = "You're chatting with our AI assistant again."
 
 
@@ -56,8 +56,9 @@ def _is_uuid(value: str) -> bool:
 
 
 async def _notify_customer_of_handover(db: Session, session, user: User) -> None:
-    """Tell a channel customer a human joined, and record it in the thread."""
-    await notify_customer(db, session, HANDOVER_NOTICE, user_id=str(user.id))
+    """Tell a channel customer a human joined, and record it in the thread,
+    in the agent's words or not at all where it has the message off."""
+    await tell_customer_teammate_joined(db, session, user_id=str(user.id))
 
 
 async def _load_manageable_session(db: Session, session_id: str, current_user: User):

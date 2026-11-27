@@ -307,6 +307,25 @@ describe('knowledge drafts', () => {
     const withNotice = [thread[0], { message_type: 'agent', message: "You're now connected with a member of our team.", attributes: { source: 'system' } }]
     expect(knowledgeDraft(withNotice, 1, 'team')).toBeNull()
   })
+
+  // The agent can word the teammate-joined notice itself or switch it off
+  it("skips the notice in the agent's own words too, and pairs the same with no notice at all", () => {
+    const question = { message_type: 'user', message: 'Can you review my condo contract?' }
+    const reply = { message_type: 'agent', message: 'Yes, send it over and we will review it within two working days.' }
+    const ownWords = { message_type: 'agent', message: 'Hi, this is the Thailiving team.', attributes: { source: 'system' } }
+    const expected = { question: question.message, answer: reply.message }
+    expect(knowledgeDraft([question, ownWords], 1, 'team')).toBeNull()
+    expect(knowledgeDraft([question, ownWords, reply], 1, 'team')).toEqual(expected)
+    expect(knowledgeDraft([question, reply], 1, 'team')).toEqual(expected)
+  })
+
+  it('places the handover card before the first team message, notice or not', () => {
+    const question = { message_type: 'user', message: 'Help', created_at: '' }
+    const notice = { message_type: 'agent', message: 'Hi, this is the Thailiving team.', attributes: { source: 'system' }, created_at: '' }
+    const reply = { message_type: 'agent', message: 'Hello, Tiger here.', created_at: '' }
+    expect(handoverIndex([question, notice, reply])).toBe(1)
+    expect(handoverIndex([question, reply])).toBe(1)
+  })
 })
 
 describe('mentions', () => {
