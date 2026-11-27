@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BASE_URL, WIDGET_ID, api, cleanupPage, frame, handshake, loadLoader, resetPage } from './loaderHarness'
+import { BASE_URL, WIDGET_ID, api, cleanupPage, frame, frames, handshake, loadLoader, resetPage } from './loaderHarness'
 import { frameBase } from '@/webclient/loader/frameAddress.js'
 
 // A loader built with the frame host asks it for the frame directly, skipping the
@@ -106,5 +106,65 @@ describe('loader frame address', () => {
     buildWith('')
     await loadLoader()
     expect(new URL(frame().src).origin).toBe(API_ORIGIN)
+  })
+
+  describe('when the frame host never starts the frame', () => {
+    const errorCard = () => document.querySelector('.chattermate-error-ui')
+
+    async function frameLoadsButNeverSaysHello() {
+      frame().dispatchEvent(new Event('load'))
+      await vi.advanceTimersByTimeAsync(3000)
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    it('asks once more through the API', async () => {
+      buildWith(FRAME_HOST)
+      await loadLoader({ fakeTimers: true })
+      await frameLoadsButNeverSaysHello()
+
+      expect(frames()).toHaveLength(1)
+      expect(new URL(frame().src).origin).toBe(API_ORIGIN)
+      expect(errorCard()).toBeNull()
+    })
+
+    it('starts the chat from wherever the API sends it', async () => {
+      buildWith(FRAME_HOST)
+      await loadLoader({ fakeTimers: true })
+      await frameLoadsButNeverSaysHello()
+
+      expect(handshake({ origin: FRAME_HOST })?.targetOrigin).toBe(FRAME_HOST)
+    })
+
+    it('says the chat could not load if the API address fails too', async () => {
+      buildWith(FRAME_HOST)
+      await loadLoader({ fakeTimers: true })
+      await frameLoadsButNeverSaysHello()
+      await frameLoadsButNeverSaysHello()
+
+      expect(frames()).toHaveLength(0)
+      expect(errorCard()).not.toBeNull()
+    })
+
+    it('keeps going through the API when the widget is rebuilt', async () => {
+      buildWith(FRAME_HOST)
+      await loadLoader({ fakeTimers: true })
+      await frameLoadsButNeverSaysHello()
+      api().reload()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(new URL(frame().src).origin).toBe(API_ORIGIN)
+    })
+
+    it('a loader built without a frame host has nothing to retry', async () => {
+      buildWith('')
+      await loadLoader({ fakeTimers: true })
+      await frameLoadsButNeverSaysHello()
+
+      expect(frames()).toHaveLength(0)
+      expect(errorCard()).not.toBeNull()
+    })
   })
 })

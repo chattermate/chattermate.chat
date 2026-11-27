@@ -321,7 +321,11 @@ import {
   }
 
   // The frame host this loader was built with, if any (see loader/frameAddress.js).
+  // Once a frame asked for there never started, the rest of this page goes through
+  // the API, whose own redirect knows where the frame really is.
+  let directFrameFailed = false
   function frameApiBase() {
+    if (directFrameFailed) return config.baseUrl
     const builtApi = typeof __CHATTERMATE_API_URL__ !== 'undefined' ? __CHATTERMATE_API_URL__ : ''
     const builtFrame = typeof __CHATTERMATE_FRAME_URL__ !== 'undefined' ? __CHATTERMATE_FRAME_URL__ : ''
     return frameBase(config.baseUrl, builtApi, builtFrame)
@@ -1885,7 +1889,19 @@ import {
       retryOnOpen = true
     }
 
+    // A frame asked for straight on the built frame host that never started (the host
+    // down, or a loader built with the wrong one): ask once more through the API. Not
+    // for a policy refusal: the API's redirect ends on that same host.
+    function retryThroughApi() {
+      if (frameRefusedByPolicy || directFrameFailed || frameApiBase() === config.baseUrl) return false
+      directFrameFailed = true
+      teardownFrame()
+      prefetchWidget()
+      return true
+    }
+
     function frameDidNotStart() {
+      if (retryThroughApi()) return
       if (frameRefusedByPolicy && fallBackInPage(frameSources())) return
       const host = window.location.hostname || 'this site'
       if (frameRefusedByPolicy) {
